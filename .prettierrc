@@ -1,0 +1,19 @@
+{
+  "plugins": [
+    "./prettier-plugin-uts.js"
+  ],
+  "overrides": [
+    {
+      "files": "*.uvue",
+      "options": {
+        "parser": "vue"
+      }
+    },
+    {
+      "files": "*.uts",
+      "options": {
+        "parser": "typescript"
+      }
+    }
+  ]
+}

@@ -1,0 +1,161 @@
+{
+  "project": {
+    "name": "ProPoints",
+    "description": "专业积分管理系统",
+    "type": "uni-app-x",
+    "version": "1.0.0",
+    "status": "initialized"
+  },
+  "scan": {
+    "timestamp": "2025-12-12T16:01:15+08:00",
+    "previousTimestamp": "2025-12-12T14:26:11+08:00",
+    "strategy": "incremental-update",
+    "truncated": false,
+    "changesSinceLastScan": {
+      "newFiles": [],
+      "modifiedFiles": [],
+      "deletedFiles": [],
+      "newDirectories": [],
+      "summary": "源代码无变更，项目结构保持稳定"
+    }
+  },
+  "techStack": {
+    "framework": "uni-app-x",
+    "language": ["uts", "vue3"],
+    "style": "scss",
+    "platforms": ["app-android"],
+    "devTool": "HBuilderX",
+    "versionControl": "git"
+  },
+  "structure": {
+    "root": "/home/zhang/HBbuilderProjects/ProPoints",
+    "entryPoints": [
+      "main.uts",
+      "App.uvue"
+    ],
+    "configFiles": [
+      "manifest.json",
+      "pages.json",
+      "platformConfig.json"
+    ],
+    "styleFiles": [
+      "uni.scss"
+    ],
+    "staticAssets": [
+      "static/logo.png"
+    ],
+    "documentationFiles": [
+      "CLAUDE.md",
+      "pages/index/CLAUDE.md",
+      ".claude/index.json"
+    ]
+  },
+  "modules": [
+    {
+      "name": "index",
+      "path": "pages/index",
+      "type": "page",
+      "entry": "index.uvue",
+      "status": "template",
+      "hasTests": false,
+      "hasConfig": false,
+      "hasDocs": true,
+      "docsPath": "pages/index/CLAUDE.md"
+    }
+  ],
+  "coverage": {
+    "totalFiles": 9,
+    "scannedFiles": 9,
+    "percentage": 100,
+    "byCategory": {
+      "config": { "total": 3, "scanned": 3 },
+      "source": { "total": 3, "scanned": 3 },
+      "style": { "total": 1, "scanned": 1 },
+      "html": { "total": 1, "scanned": 1 },
+      "static": { "total": 1, "scanned": 0, "reason": "binary-file" },
+      "documentation": { "total": 3, "scanned": 3 }
+    }
+  },
+  "ignored": {
+    "patterns": [
+      "node_modules/**",
+      ".git/**",
+      "dist/**",
+      "unpackage/**",
+      "*.log",
+      "*.png",
+      "*.jpg",
+      "*.jpeg",
+      "*.gif"
+    ],
+    "files": [
+      {
+        "path": "static/logo.png",
+        "reason": "binary-image-file"
+      }
+    ],
+    "directories": [
+      {
+        "path": ".git",
+        "reason": "version-control-system"
+      }
+    ]
+  },
+  "gaps": {
+    "missingModules": [],
+    "missingTests": ["pages/index"],
+    "missingDocs": [],
+    "recommendations": [
+      "项目处于初始化状态，建议开始开发业务功能模块",
+      "考虑创建 components/ 目录存放可复用组件",
+      "考虑创建 utils/ 目录存放工具函数",
+      "考虑创建 api/ 目录存放网络请求封装",
+      "考虑创建 store/ 目录存放状态管理（如 Pinia）",
+      "建议在 manifest.json 中填写 appid（发布前需申请）"
+    ]
+  },
+  "nextSteps": [
+    {
+      "priority": "high",
+      "action": "开发积分管理核心功能页面",
+      "paths": ["pages/points/", "pages/user/"]
+    },
+    {
+      "priority": "medium",
+      "action": "创建通用组件库",
+      "paths": ["components/"]
+    },
+    {
+      "priority": "medium",
+      "action": "配置网络请求封装",
+      "paths": ["api/", "utils/request.uts"]
+    },
+    {
+      "priority": "low",
+      "action": "配置 Git 远程仓库",
+      "paths": [".git/config"]
+    }
+  ],
+  "scanHistory": [
+    {
+      "timestamp": "2025-12-12T14:23:22+08:00",
+      "strategy": "full-scan",
+      "filesScanned": 9,
+      "coverage": 100
+    },
+    {
+      "timestamp": "2025-12-12T14:26:11+08:00",
+      "strategy": "incremental-update",
+      "filesScanned": 9,
+      "coverage": 100,
+      "changes": "Git 仓库初始化"
+    },
+    {
+      "timestamp": "2025-12-12T16:01:15+08:00",
+      "strategy": "incremental-update",
+      "filesScanned": 9,
+      "coverage": 100,
+      "changes": "确认无变更，项目结构稳定"
+    }
+  ]
+}
