@@ -1,0 +1,23 @@
+{
+  "session_id": "ai-1769191245-285744",
+  "ccb_project_id": "ae8b147693249bb0fdf18ed84c72158dc511f6f9a3ab16ca2969a109dd5de537",
+  "runtime_dir": "/tmp/claude-ai-zhang/ai-1769191245-285744/codex",
+  "input_fifo": "/tmp/claude-ai-zhang/ai-1769191245-285744/codex/input.fifo",
+  "output_fifo": "/tmp/claude-ai-zhang/ai-1769191245-285744/codex/output.fifo",
+  "terminal": "tmux",
+  "tmux_session": null,
+  "pane_id": "%5",
+  "pane_title_marker": "CCB-Codex",
+  "tmux_log": "/tmp/claude-ai-zhang/ai-1769191245-285744/codex/bridge_output.log",
+  "work_dir": "/home/zhang/HBbuilderProjects/ProPoints",
+  "work_dir_norm": "/home/zhang/HBbuilderProjects/ProPoints",
+  "start_dir": "/home/zhang/HBbuilderProjects/ProPoints",
+  "active": false,
+  "started_at": "2026-01-24 02:00:46",
+  "start_cmd": "export PATH=/home/zhang/.local/share/codex-dual/bin:'/home/zhang/.local/bin:/home/zhang/.claude/bin:/run/user/1000/fnm_multishells/252777_1769188695465/bin:/home/zhang/.local/share/fnm:/home/zhang/.claude/bin:/run/user/1000/fnm_multishells/252277_1769188646524/bin:/home/zhang/.local/share/fnm:/home/zhang/.vscode-server/data/User/globalStorage/github.copilot-chat/debugCommand:/home/zhang/.vscode-server/data/User/globalStorage/github.copilot-chat/copilotCli:/home/zhang/.vscode-server/bin/c9d77990917f3102ada88be140d28b038d1dd7c7/bin/remote-cli:/home/zhang/.local/bin:/home/zhang/.claude/bin:/home/zhang/.cargo/bin:/home/zhang/.local/bin:/home/zhang/.local/share/pnpm:/run/user/1000/fnm_multishells/251943_1769188638958/bin:/home/zhang/.local/share/fnm:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/usr/lib/wsl/lib:/mnt/c/WINDOWS/system32:/mnt/c/WINDOWS:/mnt/c/WINDOWS/System32/Wbem:/mnt/c/WINDOWS/System32/WindowsPowerShell/v1.0/:/mnt/c/WINDOWS/System32/OpenSSH/:/mnt/c/Program Files/dotnet/:/mnt/c/Program Files/Git/cmd:/mnt/c/Program Files (x86)/Tencent/微信web开发者工具/dll:/mnt/c/Program Files/PowerShell/7/:/mnt/c/Program Files/Bandizip:/mnt/c/Program Files/Docker/Docker/resources/bin:/mnt/c/Program Files/WezTerm:/mnt/c/Users/Zhang/AppData/Local/Microsoft/WindowsApps:/mnt/c/Users/Zhang/AppData/Local/Programs/Microsoft VS Code/bin:/mnt/c/Users/Zhang/AppData/Local/Microsoft/WinGet/Links:/snap/bin'; codex -c disable_paste_burst=true resume 019bebde-9afc-7d23-a805-882eef037a60",
+  "ended_at": "2026-02-01 13:41:57",
+  "updated_at": "2026-01-24 02:00:45",
+  "codex_start_cmd": "codex resume 019bebde-9afc-7d23-a805-882eef037a60",
+  "codex_session_id": "019bebde-9afc-7d23-a805-882eef037a60",
+  "codex_session_path": "/home/zhang/.codex/sessions/2026/01/24/rollout-2026-01-24T01-19-53-019bebde-9afc-7d23-a805-882eef037a60.jsonl"
+}
