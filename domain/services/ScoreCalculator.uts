@@ -1,0 +1,72 @@
+/**
+ * 工分计算引擎
+ * 负责计算发酵仓总工分、会话总工分等
+ */
+
+import { PointsUnits, floor1 } from '../models/types.uts'
+
+/**
+ * 计算发酵仓总工分（整数单位）
+ * 公式：floor1(曲坯数量/20 × 工序系数) × 10
+ *
+ * @param kojiCount 曲坯数量
+ * @param coef 工序系数
+ * @returns 工分单位（整数，1单位=0.1分）
+ */
+export function calcBinTotalPointsUnits(kojiCount: number, coef: number): PointsUnits {
+  const points = floor1((kojiCount / 20) * coef)
+  return Math.floor(points * 10)
+}
+
+/**
+ * 计算会话/岗位池子总工分（整数单位）
+ * 用于堆曲、安曲晾堂等按会话计分的场景
+ *
+ * @param baseKojiCount 基础曲坯数量（堆曲=当日拆曲总量，晾堂=当日安曲总量）
+ * @param coef 岗位系数
+ * @returns 工分单位（整数，1单位=0.1分）
+ */
+export function calcSessionTotalPointsUnits(baseKojiCount: number, coef: number): PointsUnits {
+  const points = floor1((baseKojiCount / 20) * coef)
+  return Math.floor(points * 10)
+}
+
+/**
+ * 晾堂岗位系数类型
+ */
+type LiangTangCoefType = {
+  WHEAT_MATERIAL: number
+  MACHINE_GUARD: number
+  KOJI_UNLOADER: number
+  MICRO_OPERATOR: number
+}
+
+/**
+ * 晾堂岗位系数
+ */
+export const LIANG_TANG_COEF: LiangTangCoefType = {
+  WHEAT_MATERIAL: 0.85,  // 麦料
+  MACHINE_GUARD: 0.8,    // 守机
+  KOJI_UNLOADER: 0.8,    // 下曲
+  MICRO_OPERATOR: 0.7    // 微机
+}
+
+/**
+ * 计算晾堂岗位池子总工分
+ * @param dailyAnQuKojiCount 当日安曲总曲坯数
+ * @param roleCode 岗位代码
+ * @returns 工分单位
+ */
+export function calcLiangTangPoolUnits(dailyAnQuKojiCount: number, roleCode: string): PointsUnits {
+  let coef = 0.0
+  if (roleCode == 'WHEAT_MATERIAL') {
+    coef = LIANG_TANG_COEF.WHEAT_MATERIAL
+  } else if (roleCode == 'MACHINE_GUARD') {
+    coef = LIANG_TANG_COEF.MACHINE_GUARD
+  } else if (roleCode == 'KOJI_UNLOADER') {
+    coef = LIANG_TANG_COEF.KOJI_UNLOADER
+  } else if (roleCode == 'MICRO_OPERATOR') {
+    coef = LIANG_TANG_COEF.MICRO_OPERATOR
+  }
+  return calcSessionTotalPointsUnits(dailyAnQuKojiCount, coef)
+}

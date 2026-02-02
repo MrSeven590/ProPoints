@@ -1,0 +1,130 @@
+/**
+ * 工分分配器
+ * 负责跨仓比例抽取算法等
+ */
+
+import { PointsUnits } from '../models/types.uts'
+import { AssignmentSourceCreateParams } from '../models/assignment.uts'
+
+/**
+ * 发酵仓信息（用于跨仓抽取计算）
+ */
+export type BinInfo = {
+  bin_id: number
+  stage_bin_id: number
+  koji_count: number
+}
+
+/**
+ * 跨仓比例抽取结果
+ */
+export type CrossBinAllocationResult = {
+  sources: AssignmentSourceCreateParams[]
+  totalUnits: PointsUnits
+}
+
+/**
+ * 跨仓比例抽取算法（最大余数法）
+ *
+ * 使用整数单位（1单位=0.1分），避免浮点数漂移。
+ * 仅从当日该环节（同一 StageSession）的发酵仓中抽取工分。
+ *
+ * @param bins 发酵仓列表（来自同一 StageSession）
+ * @param totalUnits 跨仓岗位目标工分（整数单位）
+ * @returns 分配结果
+ */
+export function allocateCrossBinPoints(
+  bins: BinInfo[],
+  totalUnits: PointsUnits
+): CrossBinAllocationResult {
+  if (bins.length == 0 || totalUnits <= 0) {
+    return {
+      sources: [] as AssignmentSourceCreateParams[],
+      totalUnits: 0
+    } as CrossBinAllocationResult
+  }
+
+  // 1. 计算权重和
+  let sumK = 0
+  for (let i = 0; i < bins.length; i++) {
+    sumK += bins[i].koji_count
+  }
+
+  if (sumK == 0) {
+    return {
+      sources: [] as AssignmentSourceCreateParams[],
+      totalUnits: 0
+    } as CrossBinAllocationResult
+  }
+
+  // 2. 计算原始份额和取整下界
+  const rawShares: number[] = []
+  const baseShares: number[] = []
+  const remainders: number[] = []
+
+  for (let i = 0; i < bins.length; i++) {
+    const raw = (totalUnits * bins[i].koji_count) / sumK
+    rawShares.push(raw)
+    baseShares.push(Math.floor(raw))
+    remainders.push(raw - Math.floor(raw))
+  }
+
+  // 3. 计算需要补齐的单位数
+  let baseSum = 0
+  for (let i = 0; i < baseShares.length; i++) {
+    baseSum += baseShares[i]
+  }
+  let remaining = totalUnits - baseSum
+
+  // 4. 最大余数补齐
+  // 创建索引数组并按余数从大到小排序（平局按 bin_id 升序）
+  const indices: number[] = []
+  for (let i = 0; i < bins.length; i++) {
+    indices.push(i)
+  }
+
+  // 简单冒泡排序（按余数降序，平局按 bin_id 升序）
+  for (let i = 0; i < indices.length - 1; i++) {
+    for (let j = i + 1; j < indices.length; j++) {
+      const idxI = indices[i]
+      const idxJ = indices[j]
+      let shouldSwap = false
+
+      if (remainders[idxJ] > remainders[idxI]) {
+        shouldSwap = true
+      } else if (remainders[idxJ] == remainders[idxI]) {
+        if (bins[idxJ].bin_id < bins[idxI].bin_id) {
+          shouldSwap = true
+        }
+      }
+
+      if (shouldSwap) {
+        const temp = indices[i]
+        indices[i] = indices[j]
+        indices[j] = temp
+      }
+    }
+  }
+
+  // 前 remaining 个各+1单位
+  for (let i = 0; i < remaining && i < indices.length; i++) {
+    baseShares[indices[i]] += 1
+  }
+
+  // 5. 构建结果
+  const sources: AssignmentSourceCreateParams[] = []
+  for (let i = 0; i < bins.length; i++) {
+    if (baseShares[i] > 0) {
+      sources.push({
+        assignment_id: 0, // 待填充
+        stage_bin_id: bins[i].stage_bin_id,
+        source_points_units: baseShares[i]
+      } as AssignmentSourceCreateParams)
+    }
+  }
+
+  return {
+    sources: sources,
+    totalUnits: totalUnits
+  } as CrossBinAllocationResult
+}

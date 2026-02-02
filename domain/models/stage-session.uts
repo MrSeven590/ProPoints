@@ -1,0 +1,216 @@
+/**
+ * 工序会话（录入单）相关类型定义
+ */
+
+import {
+  StageCode,
+  SyncStatus,
+  SessionStatus,
+  Timestamp,
+  DateString,
+  PointsUnits
+} from './types.uts'
+
+// ============================================
+// 工序会话类型
+// ============================================
+
+/**
+ * 工序会话实体（录入单）
+ */
+export type StageSession = {
+  id: number
+  uuid: string
+  session_date: DateString
+  class_no: number
+  stage_code: StageCode
+  round_id: number | null
+  coef_set_id: number | null
+  session_room_code: string | null        // 堆曲仓号等会话标识
+  session_total_koji_count: number | null // 会话总曲坯数（堆曲用）
+  session_total_points_units: PointsUnits | null  // 会话总工分
+  status: SessionStatus
+  published_at: Timestamp | null
+  created_at: Timestamp
+  updated_at: Timestamp
+  version: number
+  sync_status: SyncStatus
+}
+
+/**
+ * 工序会话创建参数
+ */
+export type StageSessionCreateParams = {
+  session_date: DateString
+  class_no: number
+  stage_code: StageCode
+  round_id: number | null
+  coef_set_id: number | null
+  session_room_code: string | null
+  session_total_koji_count: number | null
+}
+
+/**
+ * 工序会话更新参数
+ */
+export type StageSessionUpdateParams = {
+  session_room_code: string | null
+  session_total_koji_count: number | null
+  session_total_points_units: PointsUnits | null
+  status: SessionStatus
+  published_at: Timestamp | null
+}
+
+// ============================================
+// 发酵仓明细类型
+// ============================================
+
+/**
+ * 发酵仓明细实体
+ */
+export type StageBin = {
+  id: number
+  uuid: string
+  stage_session_id: number
+  bin_id: number
+  koji_count: number
+  total_points_units: PointsUnits
+  created_at: Timestamp
+  updated_at: Timestamp
+  version: number
+  sync_status: SyncStatus
+}
+
+/**
+ * 发酵仓明细创建参数
+ */
+export type StageBinCreateParams = {
+  stage_session_id: number
+  bin_id: number
+  koji_count: number
+  total_points_units: PointsUnits
+}
+
+/**
+ * 发酵仓明细（带发酵仓信息）
+ */
+export type StageBinWithInfo = {
+  stage_bin: StageBin
+  bin_code: string  // 格式化的仓号（如 "3-3-1"）
+  class_no: number
+  floor_no: number
+  seq_no: number
+}
+
+// ============================================
+// 环节配置类型
+// ============================================
+
+/**
+ * 环节类型配置
+ */
+export type ProcessStageType = {
+  stage_code: StageCode
+  stage_name: string
+  default_bin_count: number
+  min_bin_count: number
+  max_bin_count: number | null
+  coef: number
+  is_active: number
+}
+
+/**
+ * 岗位类型配置
+ */
+export type ProcessRoleType = {
+  role_code: string
+  role_name: string
+  scope: string
+  requires_position_index: number
+  is_active: number
+}
+
+/**
+ * 环节-岗位默认配置
+ */
+export type ProcessStageRoleDefault = {
+  stage_code: StageCode
+  role_code: string
+  default_count: number
+  min_count: number
+  max_count: number | null
+  is_required: number
+  sort_no: number
+}
+
+// ============================================
+// 系数配置类型
+// ============================================
+
+/**
+ * 系数版本集
+ */
+export type CoefSet = {
+  id: number
+  uuid: string
+  name: string
+  effective_from: Timestamp
+  effective_to: Timestamp | null
+  is_active: number
+  created_at: Timestamp
+  updated_at: Timestamp
+  version: number
+  sync_status: SyncStatus
+}
+
+/**
+ * 系数明细
+ */
+export type CoefItem = {
+  id: number
+  set_id: number
+  stage_code: StageCode
+  coef: number
+}
+
+// ============================================
+// 工具函数
+// ============================================
+
+/**
+ * 获取环节中文名称
+ * @param stageCode 环节代码
+ * @returns 中文名称
+ */
+export function getStageName(stageCode: StageCode): string {
+  if (stageCode == 'AN_QU') {
+    return '安曲'
+  } else if (stageCode == 'YI_FAN') {
+    return '一次翻曲'
+  } else if (stageCode == 'ER_FAN') {
+    return '二次翻曲'
+  } else if (stageCode == 'CHAI_QU') {
+    return '拆曲'
+  } else if (stageCode == 'DUI_QU') {
+    return '堆曲'
+  }
+  return '未知环节'
+}
+
+/**
+ * 判断环节是否需要发酵仓
+ * @param stageCode 环节代码
+ * @returns 是否需要发酵仓
+ */
+export function stageRequiresBin(stageCode: StageCode): boolean {
+  return stageCode != 'DUI_QU'
+}
+
+/**
+ * 判断是否为会话级计分环节
+ * @param stageCode 环节代码
+ * @returns 是否为会话级计分
+ */
+export function isSessionScoringStage(stageCode: StageCode): boolean {
+  return stageCode == 'DUI_QU'
+}

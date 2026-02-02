@@ -1,0 +1,148 @@
+/**
+ * 基础类型定义
+ * ProPoints 工分管理系统
+ */
+
+// ============================================
+// 枚举类型（使用字符串字面量联合类型）
+// ============================================
+
+/**
+ * 工序环节代码
+ */
+export type StageCode = 'AN_QU' | 'YI_FAN' | 'ER_FAN' | 'CHAI_QU' | 'DUI_QU'
+
+/**
+ * 岗位作用域
+ * - BIN: 发酵仓内岗位
+ * - CROSS_BIN: 跨仓岗位（如拉车、打杂）
+ * - SESSION: 会话级岗位（如晾堂、堆曲组）
+ */
+export type Scope = 'BIN' | 'CROSS_BIN' | 'SESSION'
+
+/**
+ * 岗位代码
+ */
+export type RoleCode =
+  | 'BIN_WORKER'      // 仓内工人
+  | 'CART_PULLER'     // 拉车
+  | 'HELPER'          // 打杂
+  | 'WHEAT_MATERIAL'  // 麦料
+  | 'MACHINE_GUARD'   // 守机
+  | 'KOJI_UNLOADER'   // 下曲
+  | 'MICRO_OPERATOR'  // 微机
+  | 'STACKING_WORKER' // 堆曲工人
+
+/**
+ * 同步状态
+ */
+export type SyncStatus = 'local' | 'pending' | 'synced'
+
+/**
+ * 录入单状态
+ */
+export type SessionStatus = 'draft' | 'submitted'
+
+// ============================================
+// 工分单位类型
+// ============================================
+
+/**
+ * 工分单位（整数，1单位 = 0.1分）
+ * 例如：123单位 = 12.3分
+ */
+export type PointsUnits = number
+
+// ============================================
+// 时间戳类型
+// ============================================
+
+/**
+ * Unix 时间戳（毫秒）
+ */
+export type Timestamp = number
+
+/**
+ * 日期字符串（YYYY-MM-DD 格式）
+ */
+export type DateString = string
+
+// ============================================
+// 基础实体字段
+// ============================================
+
+/**
+ * 可同步实体的基础字段
+ * 预留字段用于二期云端同步与冲突检测
+ */
+export type SyncableEntity = {
+  uuid: string
+  created_at: Timestamp
+  updated_at: Timestamp
+  deleted_at: Timestamp | null  // 软删除时间戳，null 表示未删除
+  version: number
+  sync_status: SyncStatus
+  device_id: string | null      // 创建/修改设备标识，用于冲突检测
+}
+
+// ============================================
+// 工具函数类型
+// ============================================
+
+/**
+ * 将工分单位转换为显示分数
+ * @param units 工分单位（整数）
+ * @returns 显示分数（保留1位小数）
+ */
+export function unitsToPoints(units: PointsUnits): number {
+  return units / 10
+}
+
+/**
+ * 将显示分数转换为工分单位
+ * @param points 显示分数
+ * @returns 工分单位（整数）
+ */
+export function pointsToUnits(points: number): PointsUnits {
+  return Math.floor(points * 10)
+}
+
+/**
+ * 向下取1位小数
+ * @param value 原始值
+ * @returns 向下取整后的值
+ */
+export function floor1(value: number): number {
+  return Math.floor(value * 10) / 10
+}
+
+/**
+ * 生成 UUID
+ * @returns UUID 字符串
+ */
+export function generateUUID(): string {
+  const timestamp = Date.now().toString(16)
+  const random = Math.random().toString(16).substring(2, 10)
+  const random2 = Math.random().toString(16).substring(2, 10)
+  return `${timestamp}-${random}-${random2}`
+}
+
+/**
+ * 获取当前时间戳
+ * @returns Unix 时间戳（毫秒）
+ */
+export function getCurrentTimestamp(): Timestamp {
+  return Date.now()
+}
+
+/**
+ * 获取今日日期字符串
+ * @returns YYYY-MM-DD 格式的日期字符串
+ */
+export function getTodayDateString(): DateString {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = (now.getMonth() + 1).toString().padStart(2, '0')
+  const day = now.getDate().toString().padStart(2, '0')
+  return `${year}-${month}-${day}`
+}

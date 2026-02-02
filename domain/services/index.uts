@@ -1,0 +1,7 @@
+/**
+ * 服务层导出索引
+ */
+
+export * from './ScoreCalculator.uts'
+export * from './ScoreAllocator.uts'
+export * from './Validator.uts'

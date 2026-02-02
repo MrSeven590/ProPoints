@@ -1,0 +1,144 @@
+/**
+ * Storage 初始化
+ * 初始化默认配置数据
+ * ProPoints 工分管理系统
+ */
+
+import {
+  loadRoleTypes,
+  saveRoleTypes,
+  loadStageTypes,
+  saveStageTypes,
+  loadStageRoleDefaults,
+  saveStageRoleDefaults,
+  loadCoefConfig,
+  saveCoefConfig
+} from './storage-repository.uts'
+
+/**
+ * 初始化存储数据
+ * 在应用启动时调用，确保基础配置数据存在
+ */
+export function initStorage(): void {
+  initRoleTypes()
+  initStageTypes()
+  initStageRoleDefaults()
+  initCoefConfig()
+  console.log('Storage 初始化完成')
+}
+
+/**
+ * 初始化岗位类型
+ */
+function initRoleTypes(): void {
+  const existing = loadRoleTypes()
+  if (existing.length > 0) {
+    return // 已有数据，跳过
+  }
+
+  const roleTypes: UTSJSONObject[] = [
+    { roleCode: 'BIN_WORKER', roleName: '仓内工人', scope: 'BIN', requiresPositionIndex: true, isActive: true } as UTSJSONObject,
+    { roleCode: 'CART_PULLER', roleName: '拉车', scope: 'CROSS_BIN', requiresPositionIndex: false, isActive: true } as UTSJSONObject,
+    { roleCode: 'HELPER', roleName: '打杂', scope: 'CROSS_BIN', requiresPositionIndex: false, isActive: true } as UTSJSONObject,
+    { roleCode: 'WHEAT_MATERIAL', roleName: '麦料', scope: 'SESSION', requiresPositionIndex: false, isActive: true } as UTSJSONObject,
+    { roleCode: 'MACHINE_GUARD', roleName: '守机', scope: 'SESSION', requiresPositionIndex: false, isActive: true } as UTSJSONObject,
+    { roleCode: 'KOJI_UNLOADER', roleName: '下曲', scope: 'SESSION', requiresPositionIndex: false, isActive: true } as UTSJSONObject,
+    { roleCode: 'MICRO_OPERATOR', roleName: '微机', scope: 'SESSION', requiresPositionIndex: false, isActive: true } as UTSJSONObject,
+    { roleCode: 'STACKING_WORKER', roleName: '堆曲工人', scope: 'SESSION', requiresPositionIndex: false, isActive: true } as UTSJSONObject
+  ]
+
+  saveRoleTypes(roleTypes)
+}
+
+/**
+ * 初始化环节类型
+ */
+function initStageTypes(): void {
+  const existing = loadStageTypes()
+  if (existing.length > 0) {
+    return
+  }
+
+  const stageTypes: UTSJSONObject[] = [
+    { stageCode: 'AN_QU', stageName: '安曲', defaultBinCount: 2, minBinCount: 1, maxBinCount: null, coef: 1.1, isActive: true } as UTSJSONObject,
+    { stageCode: 'YI_FAN', stageName: '一次翻曲', defaultBinCount: 2, minBinCount: 1, maxBinCount: null, coef: 1.25, isActive: true } as UTSJSONObject,
+    { stageCode: 'ER_FAN', stageName: '二次翻曲', defaultBinCount: 2, minBinCount: 1, maxBinCount: null, coef: 0.9, isActive: true } as UTSJSONObject,
+    { stageCode: 'CHAI_QU', stageName: '拆曲', defaultBinCount: 2, minBinCount: 1, maxBinCount: null, coef: 1.12, isActive: true } as UTSJSONObject,
+    { stageCode: 'DUI_QU', stageName: '堆曲', defaultBinCount: 0, minBinCount: 0, maxBinCount: 0, coef: 0.29, isActive: true } as UTSJSONObject
+  ]
+
+  saveStageTypes(stageTypes)
+}
+
+/**
+ * 初始化环节-岗位默认配置
+ */
+function initStageRoleDefaults(): void {
+  const existing = loadStageRoleDefaults()
+  if (existing.length > 0) {
+    return
+  }
+
+  const defaults: UTSJSONObject[] = [
+    // 安曲
+    { stageCode: 'AN_QU', roleCode: 'BIN_WORKER', defaultCount: 4, minCount: 1, maxCount: null, isRequired: true, sortNo: 1 } as UTSJSONObject,
+    { stageCode: 'AN_QU', roleCode: 'CART_PULLER', defaultCount: 1, minCount: 0, maxCount: null, isRequired: false, sortNo: 2 } as UTSJSONObject,
+    { stageCode: 'AN_QU', roleCode: 'WHEAT_MATERIAL', defaultCount: 1, minCount: 0, maxCount: 1, isRequired: false, sortNo: 3 } as UTSJSONObject,
+    { stageCode: 'AN_QU', roleCode: 'MACHINE_GUARD', defaultCount: 1, minCount: 0, maxCount: 1, isRequired: false, sortNo: 4 } as UTSJSONObject,
+    { stageCode: 'AN_QU', roleCode: 'KOJI_UNLOADER', defaultCount: 1, minCount: 0, maxCount: 1, isRequired: false, sortNo: 5 } as UTSJSONObject,
+    { stageCode: 'AN_QU', roleCode: 'MICRO_OPERATOR', defaultCount: 1, minCount: 0, maxCount: 1, isRequired: false, sortNo: 6 } as UTSJSONObject,
+    // 一次翻曲
+    { stageCode: 'YI_FAN', roleCode: 'BIN_WORKER', defaultCount: 5, minCount: 1, maxCount: null, isRequired: true, sortNo: 1 } as UTSJSONObject,
+    { stageCode: 'YI_FAN', roleCode: 'HELPER', defaultCount: 1, minCount: 0, maxCount: null, isRequired: false, sortNo: 2 } as UTSJSONObject,
+    // 二次翻曲
+    { stageCode: 'ER_FAN', roleCode: 'BIN_WORKER', defaultCount: 4, minCount: 1, maxCount: null, isRequired: true, sortNo: 1 } as UTSJSONObject,
+    // 拆曲
+    { stageCode: 'CHAI_QU', roleCode: 'BIN_WORKER', defaultCount: 5, minCount: 1, maxCount: null, isRequired: true, sortNo: 1 } as UTSJSONObject,
+    { stageCode: 'CHAI_QU', roleCode: 'CART_PULLER', defaultCount: 1, minCount: 0, maxCount: null, isRequired: false, sortNo: 2 } as UTSJSONObject,
+    // 堆曲
+    { stageCode: 'DUI_QU', roleCode: 'STACKING_WORKER', defaultCount: 3, minCount: 2, maxCount: 4, isRequired: true, sortNo: 1 } as UTSJSONObject
+  ]
+
+  saveStageRoleDefaults(defaults)
+}
+
+/**
+ * 初始化系数配置
+ */
+function initCoefConfig(): void {
+  const existing = loadCoefConfig()
+  if (existing != null) {
+    return
+  }
+
+  const coefConfig = {
+    version: 1,
+    name: '默认系数版本',
+    effectiveFrom: 0,
+    effectiveTo: null,
+    stages: {
+      AN_QU: 1.1,
+      YI_FAN: 1.25,
+      ER_FAN: 0.9,
+      CHAI_QU: 1.12,
+      DUI_QU: 0.29
+    } as UTSJSONObject,
+    liangTang: {
+      WHEAT_MATERIAL: 0.85,
+      MACHINE_GUARD: 0.8,
+      KOJI_UNLOADER: 0.8,
+      MICRO_OPERATOR: 0.7
+    } as UTSJSONObject
+  } as UTSJSONObject
+
+  saveCoefConfig(coefConfig)
+}
+
+/**
+ * 重置所有存储数据（谨慎使用）
+ */
+export function resetAllStorage(): void {
+  uni.clearStorageSync()
+  initStorage()
+  console.log('Storage 已重置')
+}

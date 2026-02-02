@@ -1,0 +1,609 @@
+/**
+ * Storage Repository
+ * uni.*Storage 读写封装（文档化存储）
+ * ProPoints 工分管理系统
+ */
+
+import {
+  getSessionKey,
+  getDateIndexKey,
+  getPersonIndexKey,
+  getBinIndexKey,
+  getPersonsKey,
+  getBinsKey,
+  getRoundsKey,
+  getRoleTypesKey,
+  getStageTypesKey,
+  getStageRoleDefaultsKey,
+  getSkillCoeffsKey,
+  getClassConfigKey,
+  getCoefConfigKey,
+  getRoundConfigKey,
+  getDuiQuRoomKey,
+  getLiangTangDefaultKey,
+  getManagerNameKey,
+  getOplogKey,
+  isSessionKey,
+  parseSessionKey
+} from './storage-keys.uts'
+
+// ============ 通用读写方法 ============
+
+/**
+ * 保存数据到 Storage
+ * @param key 存储键
+ * @param data 数据对象
+ */
+export function saveData(key: string, data: UTSJSONObject): void {
+  uni.setStorageSync(key, data)
+}
+
+/**
+ * 从 Storage 读取数据
+ * @param key 存储键
+ * @returns 数据对象，不存在时返回 null
+ */
+export function loadData(key: string): UTSJSONObject | null {
+  const result = uni.getStorageSync(key)
+  if (result == '' || result == null) {
+    return null
+  }
+  // getStorageSync 返回 any，需要转换
+  return result as UTSJSONObject
+}
+
+/**
+ * 删除 Storage 中的数据
+ * @param key 存储键
+ */
+export function removeData(key: string): void {
+  uni.removeStorageSync(key)
+}
+
+/**
+ * 检查 key 是否存在
+ * @param key 存储键
+ * @returns 是否存在
+ */
+export function hasKey(key: string): boolean {
+  const result = uni.getStorageSync(key)
+  return result != '' && result != null
+}
+
+// ============ 索引管理 ============
+
+/**
+ * 添加到索引列表
+ * @param indexKey 索引 key
+ * @param value 要添加的值
+ */
+export function addToIndex(indexKey: string, value: string): void {
+  const existing = loadData(indexKey)
+  let list: string[] = []
+  if (existing != null) {
+    const items = existing['items']
+    if (items != null) {
+      list = items as string[]
+    }
+  }
+  // 避免重复
+  if (list.indexOf(value) == -1) {
+    list.push(value)
+    const data = { items: list } as UTSJSONObject
+    saveData(indexKey, data)
+  }
+}
+
+/**
+ * 从索引列表移除
+ * @param indexKey 索引 key
+ * @param value 要移除的值
+ */
+export function removeFromIndex(indexKey: string, value: string): void {
+  const existing = loadData(indexKey)
+  if (existing == null) {
+    return
+  }
+  const items = existing['items']
+  if (items == null) {
+    return
+  }
+  const list = items as string[]
+  const index = list.indexOf(value)
+  if (index != -1) {
+    list.splice(index, 1)
+    const data = { items: list } as UTSJSONObject
+    saveData(indexKey, data)
+  }
+}
+
+/**
+ * 获取索引列表
+ * @param indexKey 索引 key
+ * @returns 值列表
+ */
+export function getIndexList(indexKey: string): string[] {
+  const existing = loadData(indexKey)
+  if (existing == null) {
+    return []
+  }
+  const items = existing['items']
+  if (items == null) {
+    return []
+  }
+  return items as string[]
+}
+
+// ============ 会话数据操作 ============
+
+/**
+ * 保存会话数据
+ * @param date 日期 YYYY-MM-DD
+ * @param stageCode 环节代码
+ * @param roundId 轮次ID
+ * @param sessionData 会话数据
+ */
+export function saveSession(
+  date: string,
+  stageCode: string,
+  roundId: number | null,
+  sessionData: UTSJSONObject
+): void {
+  const key = getSessionKey(date, stageCode, roundId)
+  saveData(key, sessionData)
+  // 更新日期索引
+  addToIndex(getDateIndexKey(date), key)
+}
+
+/**
+ * 加载会话数据
+ * @param date 日期 YYYY-MM-DD
+ * @param stageCode 环节代码
+ * @param roundId 轮次ID
+ * @returns 会话数据
+ */
+export function loadSession(
+  date: string,
+  stageCode: string,
+  roundId: number | null
+): UTSJSONObject | null {
+  const key = getSessionKey(date, stageCode, roundId)
+  return loadData(key)
+}
+
+/**
+ * 删除会话数据
+ * @param date 日期 YYYY-MM-DD
+ * @param stageCode 环节代码
+ * @param roundId 轮次ID
+ */
+export function deleteSession(
+  date: string,
+  stageCode: string,
+  roundId: number | null
+): void {
+  const key = getSessionKey(date, stageCode, roundId)
+  removeData(key)
+  // 从日期索引移除
+  removeFromIndex(getDateIndexKey(date), key)
+}
+
+/**
+ * 获取某日期的所有会话
+ * @param date 日期 YYYY-MM-DD
+ * @returns 会话数据列表
+ */
+export function getSessionsByDate(date: string): UTSJSONObject[] {
+  const keys = getIndexList(getDateIndexKey(date))
+  const sessions: UTSJSONObject[] = []
+  for (let i = 0; i < keys.length; i++) {
+    const data = loadData(keys[i])
+    if (data != null) {
+      sessions.push(data)
+    }
+  }
+  return sessions
+}
+
+/**
+ * 获取某日期某环节的会话
+ * @param date 日期 YYYY-MM-DD
+ * @param stageCode 环节代码
+ * @returns 会话数据列表
+ */
+export function getSessionsByDateAndStage(date: string, stageCode: string): UTSJSONObject[] {
+  const keys = getIndexList(getDateIndexKey(date))
+  const sessions: UTSJSONObject[] = []
+  for (let i = 0; i < keys.length; i++) {
+    const parsed = parseSessionKey(keys[i])
+    if (parsed != null && parsed.stageCode == stageCode) {
+      const data = loadData(keys[i])
+      if (data != null) {
+        sessions.push(data)
+      }
+    }
+  }
+  return sessions
+}
+
+// ============ 配置数据操作 ============
+
+/**
+ * 保存班级配置
+ */
+export function saveClassConfig(config: UTSJSONObject): void {
+  saveData(getClassConfigKey(), config)
+}
+
+/**
+ * 加载班级配置
+ */
+export function loadClassConfig(): UTSJSONObject | null {
+  return loadData(getClassConfigKey())
+}
+
+/**
+ * 保存系数配置
+ */
+export function saveCoefConfig(config: UTSJSONObject): void {
+  saveData(getCoefConfigKey(), config)
+}
+
+/**
+ * 加载系数配置
+ */
+export function loadCoefConfig(): UTSJSONObject | null {
+  return loadData(getCoefConfigKey())
+}
+
+/**
+ * 保存轮次配置
+ */
+export function saveRoundConfig(config: UTSJSONObject): void {
+  saveData(getRoundConfigKey(), config)
+}
+
+/**
+ * 加载轮次配置
+ */
+export function loadRoundConfig(): UTSJSONObject | null {
+  return loadData(getRoundConfigKey())
+}
+
+/**
+ * 保存堆曲仓号默认值
+ */
+export function saveDuiQuRoom(roomCode: string): void {
+  const data = { roomCode: roomCode } as UTSJSONObject
+  saveData(getDuiQuRoomKey(), data)
+}
+
+/**
+ * 加载堆曲仓号默认值
+ */
+export function loadDuiQuRoom(): string | null {
+  const data = loadData(getDuiQuRoomKey())
+  if (data == null) {
+    return null
+  }
+  const roomCode = data['roomCode']
+  if (roomCode == null) {
+    return null
+  }
+  return roomCode as string
+}
+
+/**
+ * 保存安曲晾堂默认人员
+ */
+export function saveLiangTangDefault(defaults: UTSJSONObject): void {
+  saveData(getLiangTangDefaultKey(), defaults)
+}
+
+/**
+ * 加载安曲晾堂默认人员
+ */
+export function loadLiangTangDefault(): UTSJSONObject | null {
+  return loadData(getLiangTangDefaultKey())
+}
+
+/**
+ * 保存管理员姓名
+ */
+export function saveManagerName(name: string): void {
+  const data = { name: name } as UTSJSONObject
+  saveData(getManagerNameKey(), data)
+}
+
+/**
+ * 加载管理员姓名
+ */
+export function loadManagerName(): string | null {
+  const data = loadData(getManagerNameKey())
+  if (data == null) {
+    return null
+  }
+  const name = data['name']
+  if (name == null) {
+    return null
+  }
+  return name as string
+}
+
+// ============ 基础数据操作 ============
+
+/**
+ * 保存人员列表
+ */
+export function savePersons(persons: UTSJSONObject[]): void {
+  const data = { items: persons } as UTSJSONObject
+  saveData(getPersonsKey(), data)
+}
+
+/**
+ * 加载人员列表
+ */
+export function loadPersons(): UTSJSONObject[] {
+  const data = loadData(getPersonsKey())
+  if (data == null) {
+    return []
+  }
+  const items = data['items']
+  if (items == null) {
+    return []
+  }
+  return items as UTSJSONObject[]
+}
+
+/**
+ * 保存发酵仓列表
+ */
+export function saveBins(bins: UTSJSONObject[]): void {
+  const data = { items: bins } as UTSJSONObject
+  saveData(getBinsKey(), data)
+}
+
+/**
+ * 加载发酵仓列表
+ */
+export function loadBins(): UTSJSONObject[] {
+  const data = loadData(getBinsKey())
+  if (data == null) {
+    return []
+  }
+  const items = data['items']
+  if (items == null) {
+    return []
+  }
+  return items as UTSJSONObject[]
+}
+
+/**
+ * 保存轮次历史
+ */
+export function saveRounds(rounds: UTSJSONObject[]): void {
+  const data = { items: rounds } as UTSJSONObject
+  saveData(getRoundsKey(), data)
+}
+
+/**
+ * 加载轮次历史
+ */
+export function loadRounds(): UTSJSONObject[] {
+  const data = loadData(getRoundsKey())
+  if (data == null) {
+    return []
+  }
+  const items = data['items']
+  if (items == null) {
+    return []
+  }
+  return items as UTSJSONObject[]
+}
+
+/**
+ * 保存岗位类型
+ */
+export function saveRoleTypes(roleTypes: UTSJSONObject[]): void {
+  const data = { items: roleTypes } as UTSJSONObject
+  saveData(getRoleTypesKey(), data)
+}
+
+/**
+ * 加载岗位类型
+ */
+export function loadRoleTypes(): UTSJSONObject[] {
+  const data = loadData(getRoleTypesKey())
+  if (data == null) {
+    return []
+  }
+  const items = data['items']
+  if (items == null) {
+    return []
+  }
+  return items as UTSJSONObject[]
+}
+
+/**
+ * 保存环节类型
+ */
+export function saveStageTypes(stageTypes: UTSJSONObject[]): void {
+  const data = { items: stageTypes } as UTSJSONObject
+  saveData(getStageTypesKey(), data)
+}
+
+/**
+ * 加载环节类型
+ */
+export function loadStageTypes(): UTSJSONObject[] {
+  const data = loadData(getStageTypesKey())
+  if (data == null) {
+    return []
+  }
+  const items = data['items']
+  if (items == null) {
+    return []
+  }
+  return items as UTSJSONObject[]
+}
+
+/**
+ * 保存环节-岗位默认配置
+ */
+export function saveStageRoleDefaults(defaults: UTSJSONObject[]): void {
+  const data = { items: defaults } as UTSJSONObject
+  saveData(getStageRoleDefaultsKey(), data)
+}
+
+/**
+ * 加载环节-岗位默认配置
+ */
+export function loadStageRoleDefaults(): UTSJSONObject[] {
+  const data = loadData(getStageRoleDefaultsKey())
+  if (data == null) {
+    return []
+  }
+  const items = data['items']
+  if (items == null) {
+    return []
+  }
+  return items as UTSJSONObject[]
+}
+
+/**
+ * 保存技能系数
+ */
+export function saveSkillCoeffs(coeffs: UTSJSONObject[]): void {
+  const data = { items: coeffs } as UTSJSONObject
+  saveData(getSkillCoeffsKey(), data)
+}
+
+/**
+ * 加载技能系数
+ */
+export function loadSkillCoeffs(): UTSJSONObject[] {
+  const data = loadData(getSkillCoeffsKey())
+  if (data == null) {
+    return []
+  }
+  const items = data['items']
+  if (items == null) {
+    return []
+  }
+  return items as UTSJSONObject[]
+}
+
+// ============ 操作日志（二期同步预留）============
+
+/**
+ * 操作类型
+ */
+export type OpType = 'create' | 'update' | 'delete'
+
+/**
+ * 添加操作日志
+ * @param opType 操作类型
+ * @param entityType 实体类型
+ * @param entityId 实体ID
+ * @param data 数据快照
+ */
+export function addOplog(
+  opType: OpType,
+  entityType: string,
+  entityId: string,
+  data: UTSJSONObject | null
+): void {
+  const oplogData = loadData(getOplogKey())
+  let logs: UTSJSONObject[] = []
+  if (oplogData != null) {
+    const items = oplogData['items']
+    if (items != null) {
+      logs = items as UTSJSONObject[]
+    }
+  }
+
+  const logEntry = {
+    opType: opType,
+    entityType: entityType,
+    entityId: entityId,
+    data: data,
+    timestamp: Date.now(),
+    synced: false
+  } as UTSJSONObject
+
+  logs.push(logEntry)
+
+  const newData = { items: logs } as UTSJSONObject
+  saveData(getOplogKey(), newData)
+}
+
+/**
+ * 获取未同步的操作日志
+ */
+export function getUnsyncedOplogs(): UTSJSONObject[] {
+  const oplogData = loadData(getOplogKey())
+  if (oplogData == null) {
+    return []
+  }
+  const items = oplogData['items']
+  if (items == null) {
+    return []
+  }
+  const logs = items as UTSJSONObject[]
+  const unsynced: UTSJSONObject[] = []
+  for (let i = 0; i < logs.length; i++) {
+    const synced = logs[i]['synced']
+    if (synced == false) {
+      unsynced.push(logs[i])
+    }
+  }
+  return unsynced
+}
+
+/**
+ * 标记操作日志为已同步
+ * @param timestamp 日志时间戳
+ */
+export function markOplogSynced(timestamp: number): void {
+  const oplogData = loadData(getOplogKey())
+  if (oplogData == null) {
+    return
+  }
+  const items = oplogData['items']
+  if (items == null) {
+    return
+  }
+  const logs = items as UTSJSONObject[]
+  for (let i = 0; i < logs.length; i++) {
+    const ts = logs[i]['timestamp'] as number
+    if (ts == timestamp) {
+      logs[i]['synced'] = true
+    }
+  }
+  const newData = { items: logs } as UTSJSONObject
+  saveData(getOplogKey(), newData)
+}
+
+/**
+ * 清理已同步的操作日志
+ */
+export function clearSyncedOplogs(): void {
+  const oplogData = loadData(getOplogKey())
+  if (oplogData == null) {
+    return
+  }
+  const items = oplogData['items']
+  if (items == null) {
+    return
+  }
+  const logs = items as UTSJSONObject[]
+  const unsynced: UTSJSONObject[] = []
+  for (let i = 0; i < logs.length; i++) {
+    const synced = logs[i]['synced']
+    if (synced == false) {
+      unsynced.push(logs[i])
+    }
+  }
+  const newData = { items: unsynced } as UTSJSONObject
+  saveData(getOplogKey(), newData)
+}

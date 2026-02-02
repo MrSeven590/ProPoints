@@ -1,0 +1,216 @@
+<template>
+  <view class="page-container">
+    <view class="section">
+      <text class="section-title">导入方式</text>
+      <view class="import-options">
+        <view class="import-option" @click="importFromOCR">
+          <text class="option-icon">图</text>
+          <text class="option-name">OCR 识别</text>
+          <text class="option-desc">拍照或选择图片识别</text>
+        </view>
+        <view class="import-option" @click="importFromPaste">
+          <text class="option-icon">粘</text>
+          <text class="option-name">粘贴导入</text>
+          <text class="option-desc">从 Excel 复制姓名粘贴</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="section">
+      <text class="section-title">当前花名册</text>
+      <view class="roster-stats">
+        <text class="stats-text">共 {{ personCount }} 人</text>
+      </view>
+      <view class="btn btn-secondary" @click="viewRoster">
+        <text class="btn-text">查看花名册</text>
+      </view>
+    </view>
+
+    <view class="section">
+      <text class="section-title">手动添加</text>
+      <view class="add-form">
+        <input
+          class="add-input"
+          type="text"
+          placeholder="输入姓名"
+          :value="newPersonName"
+          @input="onNameInput"
+        />
+        <view class="btn btn-primary btn-small" @click="addPerson">
+          <text class="btn-text">添加</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+  export default {
+    data() {
+      return {
+        personCount: 0,
+        newPersonName: ''
+      }
+    },
+    onShow() {
+      this.loadPersonCount()
+    },
+    methods: {
+      loadPersonCount() {
+        // TODO: 从数据库加载人员数量
+      },
+      onNameInput(e: UniInputEvent) {
+        this.newPersonName = e.detail.value
+      },
+      importFromOCR() {
+        uni.showToast({
+          title: 'OCR 功能待实现',
+          icon: 'none'
+        })
+      },
+      importFromPaste() {
+        uni.showToast({
+          title: '粘贴导入功能待实现',
+          icon: 'none'
+        })
+      },
+      viewRoster() {
+        uni.showToast({
+          title: '花名册查看功能待实现',
+          icon: 'none'
+        })
+      },
+      addPerson() {
+        if (this.newPersonName.length == 0) {
+          uni.showToast({
+            title: '请输入姓名',
+            icon: 'none'
+          })
+          return
+        }
+        // TODO: 添加人员到数据库
+        uni.showToast({
+          title: '添加成功',
+          icon: 'success'
+        })
+        this.newPersonName = ''
+      }
+    }
+  }
+</script>
+
+<style>
+  .page-container {
+    flex: 1;
+    background-color: #f5f5f5;
+  }
+
+  .section {
+    margin: 12px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  .section-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333333;
+    margin-bottom: 12px;
+  }
+
+  .import-options {
+    flex-direction: row;
+    justify-content: space-around;
+  }
+
+  .import-option {
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+    width: 140px;
+  }
+
+  .option-icon {
+    width: 50px;
+    height: 50px;
+    background-color: #007aff;
+    border-radius: 25px;
+    color: #ffffff;
+    font-size: 20px;
+    font-weight: bold;
+    text-align: center;
+    line-height: 50px;
+  }
+
+  .option-name {
+    font-size: 14px;
+    font-weight: bold;
+    color: #333333;
+    margin-top: 8px;
+  }
+
+  .option-desc {
+    font-size: 12px;
+    color: #999999;
+    margin-top: 4px;
+    text-align: center;
+  }
+
+  .roster-stats {
+    padding: 12px 0;
+  }
+
+  .stats-text {
+    font-size: 14px;
+    color: #666666;
+  }
+
+  .add-form {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .add-input {
+    flex: 1;
+    height: 40px;
+    background-color: #f5f5f5;
+    border-radius: 8px;
+    padding: 0 12px;
+    font-size: 14px;
+    margin-right: 12px;
+  }
+
+  .btn {
+    height: 44px;
+    border-radius: 8px;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .btn-small {
+    height: 40px;
+    padding: 0 16px;
+  }
+
+  .btn-primary {
+    background-color: #007aff;
+  }
+
+  .btn-secondary {
+    background-color: #f0f0f0;
+  }
+
+  .btn-text {
+    font-size: 14px;
+    font-weight: bold;
+  }
+
+  .btn-primary .btn-text {
+    color: #ffffff;
+  }
+
+  .btn-secondary .btn-text {
+    color: #666666;
+  }
+</style>

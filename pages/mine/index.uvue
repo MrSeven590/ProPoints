@@ -1,0 +1,133 @@
+<template>
+  <view class="page-container">
+    <view class="header">
+      <text class="header-title">我的</text>
+    </view>
+
+    <view class="section">
+      <view class="menu-item" @click="goToSettings">
+        <text class="menu-icon">设</text>
+        <text class="menu-text">通用设置</text>
+        <text class="menu-arrow">></text>
+      </view>
+      <view class="menu-item" @click="goToClassConfig">
+        <text class="menu-icon">班</text>
+        <text class="menu-text">班级配置</text>
+        <text class="menu-arrow">></text>
+      </view>
+      <view class="menu-item" @click="goToRosterImport">
+        <text class="menu-icon">名</text>
+        <text class="menu-text">花名册导入</text>
+        <text class="menu-arrow">></text>
+      </view>
+    </view>
+
+    <view class="section">
+      <view class="menu-item" @click="showAbout">
+        <text class="menu-icon">关</text>
+        <text class="menu-text">关于</text>
+        <text class="menu-arrow">></text>
+      </view>
+    </view>
+
+    <view class="version-info">
+      <text class="version-text">版本 1.0.0</text>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+  export default {
+    methods: {
+      goToSettings() {
+        uni.navigateTo({
+          url: '/pages/mine/settings'
+        })
+      },
+      goToClassConfig() {
+        uni.navigateTo({
+          url: '/pages/mine/class-config'
+        })
+      },
+      goToRosterImport() {
+        uni.navigateTo({
+          url: '/pages/mine/roster-import'
+        })
+      },
+      showAbout() {
+        uni.showModal({
+          title: '关于',
+          content: '工分管理系统 v1.0.0\n\n用于制曲车间工分记录与管理',
+          showCancel: false
+        })
+      }
+    }
+  }
+</script>
+
+<style>
+  .page-container {
+    flex: 1;
+    background-color: #f5f5f5;
+  }
+
+  .header {
+    background-color: #007aff;
+    padding: 20px 16px;
+  }
+
+  .header-title {
+    font-size: 24px;
+    font-weight: bold;
+    color: #ffffff;
+  }
+
+  .section {
+    margin: 12px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .menu-item {
+    flex-direction: row;
+    align-items: center;
+    padding: 16px;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .menu-icon {
+    width: 32px;
+    height: 32px;
+    background-color: #007aff;
+    border-radius: 6px;
+    color: #ffffff;
+    font-size: 14px;
+    text-align: center;
+    line-height: 32px;
+    margin-right: 12px;
+  }
+
+  .menu-text {
+    flex: 1;
+    font-size: 16px;
+    color: #333333;
+  }
+
+  .menu-arrow {
+    font-size: 16px;
+    color: #cccccc;
+  }
+
+  .version-info {
+    padding: 20px;
+    align-items: center;
+  }
+
+  .version-text {
+    font-size: 12px;
+    color: #999999;
+  }
+</style>

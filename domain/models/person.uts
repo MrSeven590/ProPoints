@@ -1,0 +1,97 @@
+/**
+ * 人员相关类型定义
+ */
+
+import {
+  SyncStatus,
+  Timestamp
+} from './types.uts'
+
+// ============================================
+// 人员类型
+// ============================================
+
+/**
+ * 人员实体
+ */
+export type Person = {
+  id: number
+  uuid: string
+  name: string
+  name_pinyin_full: string      // 全拼（如 "zhangsan"）
+  name_pinyin_initials: string  // 首字母（如 "zs"）
+  team_id: number | null
+  is_active: number
+  created_at: Timestamp
+  updated_at: Timestamp
+  version: number
+  sync_status: SyncStatus
+}
+
+/**
+ * 人员创建参数
+ */
+export type PersonCreateParams = {
+  name: string
+  name_pinyin_full: string
+  name_pinyin_initials: string
+  team_id: number | null
+}
+
+/**
+ * 人员搜索结果
+ */
+export type PersonSearchResult = {
+  person: Person
+  match_type: string  // 'name' | 'pinyin_full' | 'pinyin_initials'
+}
+
+/**
+ * 人员简要信息（用于选择器）
+ */
+export type PersonBrief = {
+  id: number
+  name: string
+  pinyin_initials: string
+}
+
+// ============================================
+// 技能系数类型
+// ============================================
+
+/**
+ * 技能系数版本集
+ */
+export type SkillCoeffSet = {
+  id: number
+  uuid: string
+  team_id: number | null
+  name: string
+  effective_from: Timestamp
+  effective_to: Timestamp | null
+  remark: string | null
+  is_active: number
+  created_at: Timestamp
+  updated_at: Timestamp
+  version: number
+  sync_status: SyncStatus
+}
+
+/**
+ * 技能系数明细
+ */
+export type SkillCoeffItem = {
+  id: number
+  set_id: number
+  person_id: number
+  coeff: number
+}
+
+/**
+ * 人员技能系数（带人员信息）
+ */
+export type PersonSkillCoeff = {
+  person_id: number
+  person_name: string
+  coeff: number
+}

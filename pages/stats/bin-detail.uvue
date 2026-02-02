@@ -1,0 +1,90 @@
+<template>
+  <view class="page-container">
+    <view class="section">
+      <text class="section-title">选择发酵仓</text>
+      <view class="bin-selector">
+        <view class="selector-row">
+          <text class="selector-label">楼层</text>
+          <text class="selector-value">{{ floorNo }}</text>
+        </view>
+        <view class="selector-row">
+          <text class="selector-label">序号</text>
+          <text class="selector-value">{{ seqNo }}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="section">
+      <text class="section-title">历史记录</text>
+      <text class="placeholder-text">选择发酵仓后显示历史记录</text>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+  export default {
+    data() {
+      return {
+        classNo: 3,
+        floorNo: 3,
+        seqNo: 1
+      }
+    },
+    methods: {
+      selectBin() {
+        // TODO: 实现发酵仓选择
+      }
+    }
+  }
+</script>
+
+<style>
+  .page-container {
+    flex: 1;
+    background-color: #f5f5f5;
+  }
+
+  .section {
+    margin: 12px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  .section-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333333;
+    margin-bottom: 12px;
+  }
+
+  .bin-selector {
+    padding: 8px 0;
+  }
+
+  .selector-row {
+    flex-direction: row;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .selector-label {
+    font-size: 14px;
+    color: #666666;
+  }
+
+  .selector-value {
+    font-size: 14px;
+    color: #333333;
+  }
+
+  .placeholder-text {
+    font-size: 14px;
+    color: #999999;
+    text-align: center;
+    padding: 40px 0;
+  }
+</style>

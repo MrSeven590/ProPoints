@@ -1,0 +1,166 @@
+/**
+ * 数据校验器
+ * 负责校验工分分配的平衡性等
+ */
+
+import { PointsUnits } from '../models/types.uts'
+
+/**
+ * 校验结果
+ */
+export type ValidationResult = {
+  isValid: boolean
+  errors: string[]
+}
+
+/**
+ * 发酵仓平衡校验数据
+ */
+export type BinBalanceData = {
+  bin_id: number
+  bin_code: string
+  total_points_units: PointsUnits
+  assigned_points_units: PointsUnits
+  cross_bin_deducted_units: PointsUnits
+}
+
+/**
+ * 校验发酵仓工分平衡
+ * 规则：bin.total_points_units = sum(BIN分配原始工分) + sum(从该仓抽取的工分)
+ *
+ * @param data 发酵仓平衡数据
+ * @returns 校验结果
+ */
+export function validateBinBalance(data: BinBalanceData): ValidationResult {
+  const errors: string[] = []
+
+  const expected = data.total_points_units
+  const actual = data.assigned_points_units + data.cross_bin_deducted_units
+
+  if (expected != actual) {
+    const diff = expected - actual
+    const diffPoints = diff / 10
+    errors.push(`发酵仓 ${data.bin_code} 工分不平衡：总分 ${expected / 10}，已分配 ${actual / 10}，差额 ${diffPoints}`)
+  }
+
+  return {
+    isValid: errors.length == 0,
+    errors: errors
+  } as ValidationResult
+}
+
+/**
+ * 校验跨仓来源完整性
+ * 规则：Assignment.points_units = sum(AssignmentSource.source_points_units)
+ *
+ * @param assignmentUnits 分配行工分
+ * @param sourceUnitsSum 来源工分合计
+ * @returns 校验结果
+ */
+export function validateCrossBinSource(
+  assignmentUnits: PointsUnits,
+  sourceUnitsSum: PointsUnits
+): ValidationResult {
+  const errors: string[] = []
+
+  if (assignmentUnits != sourceUnitsSum) {
+    errors.push(`跨仓工分来源不完整：分配 ${assignmentUnits / 10}，来源合计 ${sourceUnitsSum / 10}`)
+  }
+
+  return {
+    isValid: errors.length == 0,
+    errors: errors
+  } as ValidationResult
+}
+
+/**
+ * 校验会话池子平衡
+ * 规则：session_total_points_units = sum(SESSION分配原始工分)
+ *
+ * @param sessionTotalUnits 会话总工分
+ * @param assignedUnitsSum 已分配工分合计
+ * @returns 校验结果
+ */
+export function validateSessionPoolBalance(
+  sessionTotalUnits: PointsUnits,
+  assignedUnitsSum: PointsUnits
+): ValidationResult {
+  const errors: string[] = []
+
+  if (sessionTotalUnits != assignedUnitsSum) {
+    const diff = sessionTotalUnits - assignedUnitsSum
+    errors.push(`会话池子不平衡：总分 ${sessionTotalUnits / 10}，已分配 ${assignedUnitsSum / 10}，差额 ${diff / 10}`)
+  }
+
+  return {
+    isValid: errors.length == 0,
+    errors: errors
+  } as ValidationResult
+}
+
+/**
+ * 校验站位完整性
+ * 规则：仓内人员必须填 position_index，且同仓不重复
+ *
+ * @param positions 站位数组
+ * @param expectedCount 预期人数
+ * @returns 校验结果
+ */
+export function validatePositions(
+  positions: number[],
+  expectedCount: number
+): ValidationResult {
+  const errors: string[] = []
+
+  // 检查数量
+  if (positions.length != expectedCount) {
+    errors.push(`站位数量不匹配：预期 ${expectedCount}，实际 ${positions.length}`)
+  }
+
+  // 检查重复
+  const seen = new Set<number>()
+  for (let i = 0; i < positions.length; i++) {
+    const pos = positions[i]
+    if (seen.has(pos)) {
+      errors.push(`站位 ${pos} 重复`)
+    }
+    seen.add(pos)
+  }
+
+  // 检查连续性（1 到 N）
+  for (let i = 1; i <= expectedCount; i++) {
+    if (!seen.has(i)) {
+      errors.push(`缺少站位 ${i}`)
+    }
+  }
+
+  return {
+    isValid: errors.length == 0,
+    errors: errors
+  } as ValidationResult
+}
+
+/**
+ * 合并多个校验结果
+ * @param results 校验结果数组
+ * @returns 合并后的校验结果
+ */
+export function mergeValidationResults(results: ValidationResult[]): ValidationResult {
+  const allErrors: string[] = []
+  let allValid = true
+
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i]
+    if (!result.isValid) {
+      allValid = false
+      for (let j = 0; j < result.errors.length; j++) {
+        allErrors.push(result.errors[j])
+      }
+    }
+  }
+
+  return {
+    isValid: allValid,
+    errors: allErrors
+  } as ValidationResult
+}

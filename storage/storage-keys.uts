@@ -1,0 +1,250 @@
+/**
+ * Storage Key 约定
+ * ProPoints 工分管理系统
+ *
+ * Key 设计原则：
+ * 1. 按"日期/环节/轮次"拆分，避免单个 key 过大
+ * 2. 便于小程序端兼容（单 key 1MB、总量 10MB 限制）
+ * 3. 支持快速查询和索引
+ */
+
+// Key 前缀
+const KEY_PREFIX = 'pp'
+
+/**
+ * 会话数据 Key
+ * 格式: pp:session:{YYYY-MM-DD}:{stage}:{roundId}
+ * 存储: StageSession 完整数据（含 bins/assignments/penalties）
+ */
+export function getSessionKey(date: string, stageCode: string, roundId: number | null): string {
+  const roundPart = roundId != null ? roundId.toString() : '0'
+  return `${KEY_PREFIX}:session:${date}:${stageCode}:${roundPart}`
+}
+
+/**
+ * 解析会话 Key
+ */
+export type ParsedSessionKey = {
+  date: string
+  stageCode: string
+  roundId: number | null
+}
+
+export function parseSessionKey(key: string): ParsedSessionKey | null {
+  const parts = key.split(':')
+  if (parts.length != 5 || parts[0] != KEY_PREFIX || parts[1] != 'session') {
+    return null
+  }
+  const roundId = parseInt(parts[4])
+  return {
+    date: parts[2],
+    stageCode: parts[3],
+    roundId: roundId == 0 ? null : roundId
+  }
+}
+
+/**
+ * 日期索引 Key
+ * 格式: pp:idx:date:{YYYY-MM-DD}
+ * 存储: 当日所有会话 key 列表
+ */
+export function getDateIndexKey(date: string): string {
+  return `${KEY_PREFIX}:idx:date:${date}`
+}
+
+/**
+ * 人员索引 Key
+ * 格式: pp:idx:person:{personId}
+ * 存储: 该人员参与的所有会话 key 列表
+ */
+export function getPersonIndexKey(personId: number): string {
+  return `${KEY_PREFIX}:idx:person:${personId}`
+}
+
+/**
+ * 发酵仓索引 Key
+ * 格式: pp:idx:bin:{classNo}-{floorNo}-{seqNo}
+ * 存储: 该发酵仓参与的所有会话 key 列表
+ */
+export function getBinIndexKey(classNo: number, floorNo: number, seqNo: number): string {
+  return `${KEY_PREFIX}:idx:bin:${classNo}-${floorNo}-${seqNo}`
+}
+
+// ============ 配置类 Key ============
+
+/**
+ * 班级配置 Key
+ * 格式: pp:cfg:class
+ * 存储: 班级基础配置（班级号、楼层数等）
+ */
+export function getClassConfigKey(): string {
+  return `${KEY_PREFIX}:cfg:class`
+}
+
+/**
+ * 系数版本 Key
+ * 格式: pp:cfg:coef
+ * 存储: 当前生效的系数版本
+ */
+export function getCoefConfigKey(): string {
+  return `${KEY_PREFIX}:cfg:coef`
+}
+
+/**
+ * 轮次配置 Key
+ * 格式: pp:cfg:round
+ * 存储: 当前轮次信息（round_no, micro_enabled）
+ */
+export function getRoundConfigKey(): string {
+  return `${KEY_PREFIX}:cfg:round`
+}
+
+/**
+ * 堆曲仓号默认值 Key
+ * 格式: pp:cfg:duiqu-room
+ * 存储: 上次使用的堆曲仓号
+ */
+export function getDuiQuRoomKey(): string {
+  return `${KEY_PREFIX}:cfg:duiqu-room`
+}
+
+/**
+ * 安曲晾堂默认人员 Key
+ * 格式: pp:cfg:liangtang-default
+ * 存储: 安曲晾堂各岗位默认人员
+ */
+export function getLiangTangDefaultKey(): string {
+  return `${KEY_PREFIX}:cfg:liangtang-default`
+}
+
+/**
+ * 管理员姓名 Key
+ * 格式: pp:cfg:manager
+ * 存储: 管理员姓名（用于考核记录）
+ */
+export function getManagerNameKey(): string {
+  return `${KEY_PREFIX}:cfg:manager`
+}
+
+// ============ 基础数据 Key ============
+
+/**
+ * 人员花名册 Key
+ * 格式: pp:data:persons
+ * 存储: 所有人员列表
+ */
+export function getPersonsKey(): string {
+  return `${KEY_PREFIX}:data:persons`
+}
+
+/**
+ * 发酵仓列表 Key
+ * 格式: pp:data:bins
+ * 存储: 所有发酵仓列表
+ */
+export function getBinsKey(): string {
+  return `${KEY_PREFIX}:data:bins`
+}
+
+/**
+ * 轮次历史 Key
+ * 格式: pp:data:rounds
+ * 存储: 所有轮次历史记录
+ */
+export function getRoundsKey(): string {
+  return `${KEY_PREFIX}:data:rounds`
+}
+
+/**
+ * 岗位类型 Key
+ * 格式: pp:data:role-types
+ * 存储: 岗位类型配置
+ */
+export function getRoleTypesKey(): string {
+  return `${KEY_PREFIX}:data:role-types`
+}
+
+/**
+ * 环节类型 Key
+ * 格式: pp:data:stage-types
+ * 存储: 环节类型配置
+ */
+export function getStageTypesKey(): string {
+  return `${KEY_PREFIX}:data:stage-types`
+}
+
+/**
+ * 环节-岗位默认配置 Key
+ * 格式: pp:data:stage-role-defaults
+ * 存储: 各环节的岗位默认配置
+ */
+export function getStageRoleDefaultsKey(): string {
+  return `${KEY_PREFIX}:data:stage-role-defaults`
+}
+
+/**
+ * 技能系数 Key
+ * 格式: pp:data:skill-coeffs
+ * 存储: 人员技能系数
+ */
+export function getSkillCoeffsKey(): string {
+  return `${KEY_PREFIX}:data:skill-coeffs`
+}
+
+// ============ 操作日志 Key（二期同步预留）============
+
+/**
+ * 操作日志 Key
+ * 格式: pp:oplog
+ * 存储: 变更队列（新增/修改/删除操作记录）
+ */
+export function getOplogKey(): string {
+  return `${KEY_PREFIX}:oplog`
+}
+
+/**
+ * 同步状态 Key
+ * 格式: pp:sync:status
+ * 存储: 最后同步时间、同步状态等
+ */
+export function getSyncStatusKey(): string {
+  return `${KEY_PREFIX}:sync:status`
+}
+
+// ============ 辅助函数 ============
+
+/**
+ * 获取所有会话 Key 的模式
+ * 用于遍历查询
+ */
+export function getSessionKeyPattern(): string {
+  return `${KEY_PREFIX}:session:`
+}
+
+/**
+ * 判断是否为会话 Key
+ */
+export function isSessionKey(key: string): boolean {
+  return key.startsWith(`${KEY_PREFIX}:session:`)
+}
+
+/**
+ * 判断是否为索引 Key
+ */
+export function isIndexKey(key: string): boolean {
+  return key.startsWith(`${KEY_PREFIX}:idx:`)
+}
+
+/**
+ * 判断是否为配置 Key
+ */
+export function isConfigKey(key: string): boolean {
+  return key.startsWith(`${KEY_PREFIX}:cfg:`)
+}
+
+/**
+ * 判断是否为数据 Key
+ */
+export function isDataKey(key: string): boolean {
+  return key.startsWith(`${KEY_PREFIX}:data:`)
+}

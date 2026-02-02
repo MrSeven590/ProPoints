@@ -1,0 +1,129 @@
+/**
+ * 应用状态管理
+ * 使用 EventBus + Storage 实现跨页面状态共享
+ */
+
+import {
+  loadClassConfig,
+  saveClassConfig,
+  loadManagerName as loadManagerNameFromStorage,
+  saveManagerName as saveManagerNameToStorage,
+  loadDuiQuRoom,
+  saveDuiQuRoom
+} from '../../storage/storage-repository.uts'
+
+// ============================================
+// 事件名称常量
+// ============================================
+
+export const EVENT_PERSON_ADDED = 'person:added'
+export const EVENT_PERSON_UPDATED = 'person:updated'
+export const EVENT_SESSION_SAVED = 'session:saved'
+export const EVENT_SESSION_SUBMITTED = 'session:submitted'
+export const EVENT_ROUND_CHANGED = 'round:changed'
+
+// ============================================
+// 应用配置
+// ============================================
+
+/**
+ * 获取当前班级编号
+ * @returns 班级编号，默认为 3
+ */
+export function getCurrentClassNo(): number {
+  const config = loadClassConfig()
+  if (config != null) {
+    const classNo = config['classNo']
+    if (classNo != null) {
+      return classNo as number
+    }
+  }
+  return 3 // 默认班级
+}
+
+/**
+ * 设置当前班级编号
+ * @param classNo 班级编号
+ */
+export function setCurrentClassNo(classNo: number): void {
+  const existingConfig = loadClassConfig()
+  const config: UTSJSONObject = existingConfig != null ? existingConfig : {} as UTSJSONObject
+  config['classNo'] = classNo
+  saveClassConfig(config)
+}
+
+/**
+ * 获取管理员姓名
+ * @returns 管理员姓名
+ */
+export function getManagerName(): string {
+  const name = loadManagerNameFromStorage()
+  if (name != null) {
+    return name
+  }
+  return ''
+}
+
+/**
+ * 设置管理员姓名
+ * @param name 管理员姓名
+ */
+export function setManagerName(name: string): void {
+  saveManagerNameToStorage(name)
+}
+
+/**
+ * 获取上次堆曲仓号
+ * @returns 堆曲仓号
+ */
+export function getLastDuiQuRoom(): string {
+  const roomCode = loadDuiQuRoom()
+  if (roomCode != null) {
+    return roomCode
+  }
+  return ''
+}
+
+/**
+ * 设置上次堆曲仓号
+ * @param roomCode 堆曲仓号
+ */
+export function setLastDuiQuRoom(roomCode: string): void {
+  saveDuiQuRoom(roomCode)
+}
+
+// ============================================
+// 事件发布
+// ============================================
+
+/**
+ * 发布人员添加事件
+ * @param personId 人员 ID
+ */
+export function emitPersonAdded(personId: number): void {
+  uni.$emit(EVENT_PERSON_ADDED, { personId: personId } as UTSJSONObject)
+}
+
+/**
+ * 发布会话保存事件
+ * @param sessionId 会话 ID
+ */
+export function emitSessionSaved(sessionId: string): void {
+  uni.$emit(EVENT_SESSION_SAVED, { sessionId: sessionId } as UTSJSONObject)
+}
+
+/**
+ * 发布会话提交事件
+ * @param sessionId 会话 ID
+ */
+export function emitSessionSubmitted(sessionId: string): void {
+  uni.$emit(EVENT_SESSION_SUBMITTED, { sessionId: sessionId } as UTSJSONObject)
+}
+
+/**
+ * 发布轮次变更事件
+ * @param roundNo 轮次编号
+ */
+export function emitRoundChanged(roundNo: number): void {
+  uni.$emit(EVENT_ROUND_CHANGED, { roundNo: roundNo } as UTSJSONObject)
+}

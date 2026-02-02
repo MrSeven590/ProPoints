@@ -1,0 +1,164 @@
+<template>
+  <view class="page-container">
+    <view class="header">
+      <text class="header-title">数据统计</text>
+    </view>
+
+    <view class="section">
+      <text class="section-title">快捷查询</text>
+      <view class="query-grid">
+        <view class="query-item" @click="goToDateDetail">
+          <text class="query-icon">日</text>
+          <text class="query-name">按日期查询</text>
+        </view>
+        <view class="query-item" @click="goToPersonDetail">
+          <text class="query-icon">人</text>
+          <text class="query-name">按人员查询</text>
+        </view>
+        <view class="query-item" @click="goToBinDetail">
+          <text class="query-icon">仓</text>
+          <text class="query-name">按发酵仓查询</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="section">
+      <text class="section-title">本月概览</text>
+      <view class="stats-row">
+        <view class="stats-item">
+          <text class="stats-value">0</text>
+          <text class="stats-label">录入次数</text>
+        </view>
+        <view class="stats-item">
+          <text class="stats-value">0</text>
+          <text class="stats-label">总工分</text>
+        </view>
+        <view class="stats-item">
+          <text class="stats-value">0</text>
+          <text class="stats-label">参与人数</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+  export default {
+    data() {
+      return {
+        monthStats: {
+          entryCount: 0,
+          totalPoints: 0,
+          personCount: 0
+        }
+      }
+    },
+    onShow() {
+      this.loadStats()
+    },
+    methods: {
+      loadStats() {
+        // TODO: 从数据库加载统计数据
+      },
+      goToDateDetail() {
+        uni.navigateTo({
+          url: '/pages/stats/date-detail'
+        })
+      },
+      goToPersonDetail() {
+        uni.navigateTo({
+          url: '/pages/stats/person-detail'
+        })
+      },
+      goToBinDetail() {
+        uni.navigateTo({
+          url: '/pages/stats/bin-detail'
+        })
+      }
+    }
+  }
+</script>
+
+<style>
+  .page-container {
+    flex: 1;
+    background-color: #f5f5f5;
+  }
+
+  .header {
+    background-color: #007aff;
+    padding: 20px 16px;
+  }
+
+  .header-title {
+    font-size: 24px;
+    font-weight: bold;
+    color: #ffffff;
+  }
+
+  .section {
+    margin: 12px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  .section-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333333;
+    margin-bottom: 12px;
+  }
+
+  .query-grid {
+    flex-direction: row;
+    justify-content: space-around;
+  }
+
+  .query-item {
+    flex-direction: column;
+    align-items: center;
+    padding: 12px;
+  }
+
+  .query-icon {
+    width: 50px;
+    height: 50px;
+    background-color: #007aff;
+    border-radius: 25px;
+    color: #ffffff;
+    font-size: 20px;
+    font-weight: bold;
+    text-align: center;
+    line-height: 50px;
+  }
+
+  .query-name {
+    font-size: 12px;
+    color: #666666;
+    margin-top: 8px;
+  }
+
+  .stats-row {
+    flex-direction: row;
+    justify-content: space-around;
+  }
+
+  .stats-item {
+    flex-direction: column;
+    align-items: center;
+    padding: 12px;
+  }
+
+  .stats-value {
+    font-size: 28px;
+    font-weight: bold;
+    color: #007aff;
+  }
+
+  .stats-label {
+    font-size: 12px;
+    color: #999999;
+    margin-top: 4px;
+  }
+</style>

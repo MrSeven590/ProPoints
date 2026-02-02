@@ -1,0 +1,156 @@
+<template>
+  <view class="page-container">
+    <view class="section">
+      <text class="section-title">管理员信息</text>
+      <view class="form-item">
+        <text class="form-label">管理员姓名</text>
+        <input
+          class="form-input"
+          type="text"
+          placeholder="请输入管理员姓名"
+          :value="managerName"
+          @input="onManagerNameInput"
+        />
+      </view>
+    </view>
+
+    <view class="section">
+      <text class="section-title">导出设置</text>
+      <view class="form-item">
+        <text class="form-label">Excel 模板</text>
+        <text class="form-value">{{ templateName }}</text>
+      </view>
+      <view class="btn btn-secondary" @click="selectTemplate">
+        <text class="btn-text">选择模板文件</text>
+      </view>
+    </view>
+
+    <view class="footer">
+      <view class="btn btn-primary" @click="saveSettings">
+        <text class="btn-text">保存设置</text>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+  export default {
+    data() {
+      return {
+        managerName: '',
+        templateName: '未选择'
+      }
+    },
+    onLoad() {
+      this.loadSettings()
+    },
+    methods: {
+      loadSettings() {
+        const name = uni.getStorageSync('managerName') as string | null
+        if (name != null) {
+          this.managerName = name
+        }
+      },
+      onManagerNameInput(e: UniInputEvent) {
+        this.managerName = e.detail.value
+      },
+      selectTemplate() {
+        uni.showToast({
+          title: '模板选择功能待实现',
+          icon: 'none'
+        })
+      },
+      saveSettings() {
+        uni.setStorageSync('managerName', this.managerName)
+        uni.showToast({
+          title: '设置已保存',
+          icon: 'success'
+        })
+      }
+    }
+  }
+</script>
+
+<style>
+  .page-container {
+    flex: 1;
+    flex-direction: column;
+    background-color: #f5f5f5;
+  }
+
+  .section {
+    margin: 12px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  .section-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333333;
+    margin-bottom: 12px;
+  }
+
+  .form-item {
+    flex-direction: row;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .form-label {
+    width: 100px;
+    font-size: 14px;
+    color: #666666;
+  }
+
+  .form-input {
+    flex: 1;
+    font-size: 14px;
+    text-align: right;
+  }
+
+  .form-value {
+    flex: 1;
+    font-size: 14px;
+    color: #333333;
+    text-align: right;
+  }
+
+  .btn {
+    height: 44px;
+    border-radius: 8px;
+    justify-content: center;
+    align-items: center;
+    margin-top: 12px;
+  }
+
+  .btn-primary {
+    background-color: #007aff;
+  }
+
+  .btn-secondary {
+    background-color: #f0f0f0;
+  }
+
+  .btn-text {
+    font-size: 16px;
+    font-weight: bold;
+  }
+
+  .btn-primary .btn-text {
+    color: #ffffff;
+  }
+
+  .btn-secondary .btn-text {
+    color: #666666;
+  }
+
+  .footer {
+    padding: 12px 16px;
+    background-color: #ffffff;
+  }
+</style>

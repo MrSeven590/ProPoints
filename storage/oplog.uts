@@ -1,0 +1,89 @@
+/**
+ * 操作日志（变更队列）
+ * 为二期云同步预留
+ * ProPoints 工分管理系统
+ */
+
+import {
+  addOplog,
+  getUnsyncedOplogs,
+  markOplogSynced,
+  clearSyncedOplogs
+} from './storage-repository.uts'
+
+export type { OpType } from './storage-repository.uts'
+
+/**
+ * 实体类型常量
+ */
+export const ENTITY_SESSION = 'session'
+export const ENTITY_PERSON = 'person'
+export const ENTITY_BIN = 'bin'
+export const ENTITY_ROUND = 'round'
+export const ENTITY_CONFIG = 'config'
+
+/**
+ * 记录创建操作
+ */
+export function logCreate(entityType: string, entityId: string, data: UTSJSONObject): void {
+  addOplog('create', entityType, entityId, data)
+}
+
+/**
+ * 记录更新操作
+ */
+export function logUpdate(entityType: string, entityId: string, data: UTSJSONObject): void {
+  addOplog('update', entityType, entityId, data)
+}
+
+/**
+ * 记录删除操作
+ */
+export function logDelete(entityType: string, entityId: string): void {
+  addOplog('delete', entityType, entityId, null)
+}
+
+/**
+ * 获取待同步的操作数量
+ */
+export function getPendingSyncCount(): number {
+  return getUnsyncedOplogs().length
+}
+
+/**
+ * 同步操作日志到云端（二期实现）
+ * @returns 是否成功
+ */
+export function syncToCloud(): boolean {
+  const unsynced = getUnsyncedOplogs()
+  if (unsynced.length == 0) {
+    return true
+  }
+
+  // TODO: 二期实现云端同步
+  // 1. 将 unsynced 批量发送到云端
+  // 2. 云端返回成功后，标记为已同步
+  // 3. 云端返回增量数据，合并到本地
+
+  console.log(`待同步操作数: ${unsynced.length}`)
+
+  // 暂时返回 false，表示未实现
+  return false
+}
+
+/**
+ * 从云端拉取增量数据（二期实现）
+ * @returns 是否成功
+ */
+export function pullFromCloud(): boolean {
+  // TODO: 二期实现
+  // 1. 获取本地最后同步时间
+  // 2. 请求云端该时间之后的增量数据
+  // 3. 合并到本地存储
+  // 4. 处理冲突（version/updated_at 比较）
+
+  return false
+}
+
+// 导出辅助函数
+export { markOplogSynced, clearSyncedOplogs }

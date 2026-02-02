@@ -1,0 +1,121 @@
+/**
+ * 发酵仓和轮次相关类型定义
+ */
+
+import {
+  SyncStatus,
+  Timestamp,
+  SyncableEntity
+} from './types.uts'
+
+// ============================================
+// 发酵仓类型
+// ============================================
+
+/**
+ * 发酵仓编号（结构化）
+ */
+export type BinCode = {
+  class_no: number   // 班级
+  floor_no: number   // 楼层
+  seq_no: number     // 序号
+}
+
+/**
+ * 发酵仓实体
+ */
+export type FermentBin = {
+  id: number
+  uuid: string
+  class_no: number
+  floor_no: number
+  seq_no: number
+  is_active: number
+  created_at: Timestamp
+  updated_at: Timestamp
+  version: number
+  sync_status: SyncStatus
+}
+
+/**
+ * 发酵仓创建参数
+ */
+export type FermentBinCreateParams = {
+  class_no: number
+  floor_no: number
+  seq_no: number
+}
+
+/**
+ * 发酵仓显示格式
+ * @param bin 发酵仓实体或编号
+ * @returns 格式化字符串（如 "3-3-1"）
+ */
+export function formatBinCode(bin: BinCode): string {
+  return `${bin.class_no}-${bin.floor_no}-${bin.seq_no}`
+}
+
+/**
+ * 解析发酵仓编号字符串
+ * @param code 编号字符串（如 "3-3-1"）
+ * @returns 发酵仓编号对象，解析失败返回 null
+ */
+export function parseBinCode(code: string): BinCode | null {
+  const parts = code.split('-')
+  if (parts.length != 3) {
+    return null
+  }
+  const class_no = parseInt(parts[0])
+  const floor_no = parseInt(parts[1])
+  const seq_no = parseInt(parts[2])
+  if (isNaN(class_no) || isNaN(floor_no) || isNaN(seq_no)) {
+    return null
+  }
+  if (class_no <= 0 || floor_no <= 0 || seq_no <= 0) {
+    return null
+  }
+  return {
+    class_no: class_no,
+    floor_no: floor_no,
+    seq_no: seq_no
+  } as BinCode
+}
+
+// ============================================
+// 轮次类型
+// ============================================
+
+/**
+ * 轮次实体
+ */
+export type FermentRound = {
+  id: number
+  uuid: string
+  class_no: number
+  round_no: number
+  micro_enabled: number  // 0 或 1
+  started_at: Timestamp
+  ended_at: Timestamp | null
+  created_at: Timestamp
+  updated_at: Timestamp
+  version: number
+  sync_status: SyncStatus
+}
+
+/**
+ * 轮次创建参数
+ */
+export type FermentRoundCreateParams = {
+  class_no: number
+  round_no: number
+  micro_enabled: number
+}
+
+/**
+ * 判断轮次是否启用微机计分
+ * @param round 轮次实体
+ * @returns 是否启用
+ */
+export function isMicroEnabled(round: FermentRound): boolean {
+  return round.micro_enabled == 1
+}

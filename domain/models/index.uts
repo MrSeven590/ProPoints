@@ -1,0 +1,9 @@
+/**
+ * 模型导出索引
+ */
+
+export * from './types.uts'
+export * from './ferment.uts'
+export * from './person.uts'
+export * from './stage-session.uts'
+export * from './assignment.uts'

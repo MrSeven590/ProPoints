@@ -1,0 +1,98 @@
+<template>
+  <view class="page-container">
+    <view class="section">
+      <text class="section-title">班级信息</text>
+      <view class="form-item">
+        <text class="form-label">班级编号</text>
+        <text class="form-value">{{ classNo }}</text>
+      </view>
+    </view>
+
+    <view class="section">
+      <text class="section-title">发酵仓配置</text>
+      <view class="form-item">
+        <text class="form-label">楼层数量</text>
+        <text class="form-value">{{ floorCount }} 层</text>
+      </view>
+      <view class="form-item">
+        <text class="form-label">每层默认仓数</text>
+        <text class="form-value">{{ defaultSeqMax }} 间</text>
+      </view>
+    </view>
+
+    <view class="section">
+      <text class="section-title">轮次管理</text>
+      <view class="form-item">
+        <text class="form-label">当前轮次</text>
+        <text class="form-value">第 {{ currentRound }} 轮</text>
+      </view>
+      <view class="form-item">
+        <text class="form-label">微机计分权</text>
+        <text class="form-value">{{ microEnabled ? '有' : '无' }}</text>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+  export default {
+    data() {
+      return {
+        classNo: 3,
+        floorCount: 4,
+        defaultSeqMax: 24,
+        currentRound: 1,
+        microEnabled: true
+      }
+    },
+    onLoad() {
+      this.loadConfig()
+    },
+    methods: {
+      loadConfig() {
+        // TODO: 从数据库加载配置
+      }
+    }
+  }
+</script>
+
+<style>
+  .page-container {
+    flex: 1;
+    background-color: #f5f5f5;
+  }
+
+  .section {
+    margin: 12px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  .section-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333333;
+    margin-bottom: 12px;
+  }
+
+  .form-item {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .form-label {
+    font-size: 14px;
+    color: #666666;
+  }
+
+  .form-value {
+    font-size: 14px;
+    color: #333333;
+  }
+</style>

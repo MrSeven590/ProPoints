@@ -1,0 +1,213 @@
+/**
+ * 工分分配相关类型定义
+ */
+
+import {
+  Scope,
+  RoleCode,
+  SyncStatus,
+  Timestamp,
+  PointsUnits
+} from './types.uts'
+
+// ============================================
+// 工分分配类型
+// ============================================
+
+/**
+ * 工分分配行实体
+ */
+export type Assignment = {
+  id: number
+  uuid: string
+  stage_session_id: number
+  stage_bin_id: number | null  // BIN 类型必填，CROSS_BIN/SESSION 为空
+  person_id: number
+  person_name_snapshot: string
+  role_code: RoleCode
+  scope: Scope
+  position_index: number | null  // 站位顺序（仓内人员必填）
+  points_units: PointsUnits      // 原始工分（整数单位）
+  created_at: Timestamp
+  updated_at: Timestamp
+  version: number
+  sync_status: SyncStatus
+}
+
+/**
+ * 工分分配创建参数
+ */
+export type AssignmentCreateParams = {
+  stage_session_id: number
+  stage_bin_id: number | null
+  person_id: number
+  person_name_snapshot: string
+  role_code: RoleCode
+  scope: Scope
+  position_index: number | null
+  points_units: PointsUnits
+}
+
+/**
+ * 工分分配更新参数
+ */
+export type AssignmentUpdateParams = {
+  person_id: number
+  person_name_snapshot: string
+  position_index: number | null
+  points_units: PointsUnits
+}
+
+// ============================================
+// 工分来源类型
+// ============================================
+
+/**
+ * 工分来源实体（跨仓抽取）
+ */
+export type AssignmentSource = {
+  assignment_id: number
+  stage_bin_id: number
+  source_points_units: PointsUnits
+}
+
+/**
+ * 工分来源创建参数
+ */
+export type AssignmentSourceCreateParams = {
+  assignment_id: number
+  stage_bin_id: number
+  source_points_units: PointsUnits
+}
+
+// ============================================
+// 考核扣分类型
+// ============================================
+
+/**
+ * 考核扣分记录实体
+ */
+export type PenaltyRecord = {
+  id: number
+  uuid: string
+  stage_session_id: number
+  assignment_id: number
+  target_person_id: number
+  manager_name: string
+  reason: string
+  deducted_points_units: PointsUnits
+  created_at: Timestamp
+  updated_at: Timestamp
+  version: number
+  sync_status: SyncStatus
+}
+
+/**
+ * 考核扣分创建参数
+ */
+export type PenaltyRecordCreateParams = {
+  stage_session_id: number
+  assignment_id: number
+  target_person_id: number
+  manager_name: string
+  reason: string
+  deducted_points_units: PointsUnits
+}
+
+// ============================================
+// 分配汇总类型
+// ============================================
+
+/**
+ * 分配行（带扣分汇总）
+ */
+export type AssignmentWithPenalty = {
+  assignment: Assignment
+  total_deducted_units: PointsUnits  // 扣分合计
+  final_points_units: PointsUnits    // 最终工分 = 原始 - 扣分
+  penalties: PenaltyRecord[]         // 扣分明细
+}
+
+/**
+ * 人员工分汇总（按日期）
+ */
+export type PersonDailyPoints = {
+  person_id: number
+  person_name: string
+  date: string
+  original_points_units: PointsUnits  // 原始工分合计
+  deducted_points_units: PointsUnits  // 扣分合计
+  final_points_units: PointsUnits     // 最终工分
+}
+
+/**
+ * 发酵仓工分分配汇总
+ */
+export type BinAssignmentSummary = {
+  bin_id: number
+  bin_code: string
+  total_points_units: PointsUnits     // 仓总工分
+  assigned_points_units: PointsUnits  // 已分配工分
+  cross_bin_deducted_units: PointsUnits  // 跨仓抽取工分
+  remaining_units: PointsUnits        // 剩余工分（应为0）
+}
+
+// ============================================
+// 工具函数
+// ============================================
+
+/**
+ * 获取岗位中文名称
+ * @param roleCode 岗位代码
+ * @returns 中文名称
+ */
+export function getRoleName(roleCode: RoleCode): string {
+  if (roleCode == 'BIN_WORKER') {
+    return '仓内工人'
+  } else if (roleCode == 'CART_PULLER') {
+    return '拉车'
+  } else if (roleCode == 'HELPER') {
+    return '打杂'
+  } else if (roleCode == 'WHEAT_MATERIAL') {
+    return '麦料'
+  } else if (roleCode == 'MACHINE_GUARD') {
+    return '守机'
+  } else if (roleCode == 'KOJI_UNLOADER') {
+    return '下曲'
+  } else if (roleCode == 'MICRO_OPERATOR') {
+    return '微机'
+  } else if (roleCode == 'STACKING_WORKER') {
+    return '堆曲工人'
+  }
+  return '未知岗位'
+}
+
+/**
+ * 获取作用域中文名称
+ * @param scope 作用域
+ * @returns 中文名称
+ */
+export function getScopeName(scope: Scope): string {
+  if (scope == 'BIN') {
+    return '仓内'
+  } else if (scope == 'CROSS_BIN') {
+    return '跨仓'
+  } else if (scope == 'SESSION') {
+    return '会话'
+  }
+  return '未知'
+}
+
+/**
+ * 计算最终工分
+ * @param originalUnits 原始工分
+ * @param deductedUnits 扣分合计
+ * @returns 最终工分
+ */
+export function calcFinalPoints(originalUnits: PointsUnits, deductedUnits: PointsUnits): PointsUnits {
+  const result = originalUnits - deductedUnits
+  if (result < 0) {
+    return 0
+  }
+  return result
+}
