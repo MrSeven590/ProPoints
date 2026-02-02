@@ -1,12 +1,19 @@
 # Frontend Development Guidelines
 
-> Best practices for frontend development in this project.
+> uni-app X 前端开发规范
 
 ---
 
 ## Overview
 
-This directory contains guidelines for frontend development. Fill in each file with your project's specific conventions.
+本项目基于 uni-app X 框架，使用 UTS 语言和 Vue 3 组合式 API 开发。
+
+**技术栈：**
+- 框架：uni-app X
+- 语言：UTS (UniScript)
+- 视图：Vue 3 组合式 API
+- 样式：ucss (CSS 子集)
+- 目标平台：Android
 
 ---
 
@@ -14,26 +21,36 @@ This directory contains guidelines for frontend development. Fill in each file w
 
 | Guide | Description | Status |
 |-------|-------------|--------|
-| [Directory Structure](./directory-structure.md) | Module organization and file layout | To fill |
-| [Component Guidelines](./component-guidelines.md) | Component patterns, props, composition | To fill |
-| [Hook Guidelines](./hook-guidelines.md) | Custom hooks, data fetching patterns | To fill |
-| [State Management](./state-management.md) | Local state, global state, server state | To fill |
-| [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
-| [Type Safety](./type-safety.md) | Type patterns, validation | To fill |
+| [Directory Structure](./directory-structure.md) | 目录结构与文件组织 | ✅ Done |
+| [Component Guidelines](./component-guidelines.md) | 组件开发规范 | ✅ Done |
+| [Hook Guidelines](./hook-guidelines.md) | 组合式函数规范 | ✅ Done |
+| [State Management](./state-management.md) | 状态管理方案 | ✅ Done |
+| [Quality Guidelines](./quality-guidelines.md) | 代码质量标准 | ✅ Done |
+| [Type Safety](./type-safety.md) | UTS 类型安全规范 | ✅ Done |
+| [Error Handling](./error-handling.md) | 错误处理规范 | ✅ Done |
 
 ---
 
-## How to Fill These Guidelines
+## Quick Reference
 
-For each guideline file:
+### 关键约束
 
-1. Document your project's **actual conventions** (not ideals)
-2. Include **code examples** from your codebase
-3. List **forbidden patterns** and why
-4. Add **common mistakes** your team has made
+- 使用 `type` 而非 `interface` 定义对象类型
+- 使用 `null` 而非 `undefined`
+- 条件语句必须使用布尔值
+- 样式仅支持 flex 布局和类选择器
+- 不支持 pinia/vuex，使用 EventBus
 
-The goal is to help AI assistants and new team members understand how YOUR project works.
+### 文件后缀
+
+| 类型 | 后缀 |
+|------|------|
+| 页面/组件 | `.uvue` |
+| 逻辑文件 | `.uts` |
 
 ---
 
-**Language**: All documentation should be written in **English**.
+## References
+
+- [uni-app X 官方文档](https://doc.dcloud.net.cn/uni-app-x/)
+- [UTS 语言指南](https://doc.dcloud.net.cn/uni-app-x/uts/)

@@ -1,51 +1,87 @@
 # Hook Guidelines
 
-> How hooks are used in this project.
+> uni-app X 中的组合式函数规范
 
 ---
 
 ## Overview
 
-<!--
-Document your project's hook conventions here.
+uni-app X 使用 Vue 3 组合式 API，但不支持传统 React Hooks。本文档描述如何在 uni-app X 中复用有状态逻辑。
 
-Questions to answer:
-- What custom hooks do you have?
-- How do you handle data fetching?
-- What are the naming conventions?
-- How do you share stateful logic?
--->
-
-(To be filled by the team)
+**注意：** uni-app X 不支持 pinia、vuex 等 Vue 插件。
 
 ---
 
 ## Custom Hook Patterns
 
-<!-- How to create and structure custom hooks -->
+### 组合式函数命名
 
-(To be filled by the team)
+使用 `use` 前缀命名组合式函数：
+
+```typescript
+// utils/useCounter.uts
+export function useCounter(initial: number = 0) {
+  const count = ref<number>(initial)
+
+  const increment = () => { count.value++ }
+  const decrement = () => { count.value-- }
+
+  return { count, increment, decrement }
+}
+```
 
 ---
 
 ## Data Fetching
 
-<!-- How data fetching is handled (React Query, SWR, etc.) -->
+### 使用 uni.request
 
-(To be filled by the team)
+```typescript
+// utils/useRequest.uts
+type RequestResult<T> = {
+  data: Ref<T | null>
+  loading: Ref<boolean>
+  error: Ref<string | null>
+}
+
+export function useRequest<T>(url: string): RequestResult<T> {
+  const data = ref<T | null>(null)
+  const loading = ref<boolean>(true)
+  const error = ref<string | null>(null)
+
+  uni.request({
+    url: url,
+    success: (res) => {
+      data.value = res.data as T
+    },
+    fail: (err) => {
+      error.value = err.errMsg
+    },
+    complete: () => {
+      loading.value = false
+    }
+  })
+
+  return { data, loading, error }
+}
+```
 
 ---
 
 ## Naming Conventions
 
-<!-- Hook naming rules (use*, etc.) -->
-
-(To be filled by the team)
+| 类型 | 命名规则 | 示例 |
+|------|----------|------|
+| 组合式函数 | `use` + PascalCase | `useCounter`, `useRequest` |
+| 返回的响应式变量 | camelCase | `count`, `isLoading` |
+| 返回的方法 | camelCase 动词 | `increment`, `fetchData` |
 
 ---
 
 ## Common Mistakes
 
-<!-- Hook-related mistakes your team has made -->
-
-(To be filled by the team)
+| 错误 | 说明 |
+|------|------|
+| 使用 React Hooks 语法 | uni-app X 是 Vue，不是 React |
+| 在组合式函数中使用 pinia | uni-app X 不支持 pinia |
+| 忘记导出函数 | 组合式函数需要 export |
