@@ -68,3 +68,121 @@
 ### Next Steps
 
 - None - task complete
+
+## Session 2: 实现纯 UTS 拼音匹配服务
+
+**Date**: 2026-02-04
+**Task**: 实现纯 UTS 拼音匹配服务
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 完成内容
+
+| 功能 | 说明 |
+|------|------|
+| PinyinMatchService | 纯 UTS 实现的拼音匹配服务，解决 uni-app-x 无法使用 npm 库问题 |
+| PersonSearchService | 人员搜索服务，支持中文/全拼/首字母匹配 |
+| 花名册导入页面 | roster-import.uvue 集成拼音搜索 |
+
+## 技术要点
+
+- **问题**: uni-app-x App 端编译为原生 Kotlin/Swift，无法使用 npm 的 pinyin-match 库
+- **方案**: 参考 pinyin-match 源码，用纯 UTS 重新实现
+- **实现**: 内置完整简体中文拼音字典（840行），支持全拼和首字母匹配
+
+## 新增文件
+
+- `domain/services/PinyinMatchService.uts` - 拼音匹配核心服务
+- `domain/services/PersonSearchService.uts` - 人员搜索服务
+
+## API
+
+```typescript
+// 拼音匹配（支持中文、全拼、首字母）
+pinyinMatch(input: string, keyword: string): boolean
+
+// 获取拼音首字母
+getInitials(cn: string): string
+```
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7fbdd0b` | (see git log) |
+| `8341d78` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+## Session 3: 实现纯 UTS 拼音匹配服务
+
+**Date**: 2026-02-04
+**Task**: 实现纯 UTS 拼音匹配服务
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 本次完成
+
+| 功能 | 说明 |
+|------|------|
+| PinyinMatchService | 纯 UTS 实现的拼音匹配服务，解决 uni-app-x 无法使用 npm 库问题 |
+| PersonSearchService | 人员搜索服务，支持中文/全拼/首字母匹配 |
+| 花名册导入 | 集成拼音匹配的花名册导入功能 |
+
+## 关键发现
+
+- **uni-app-x App 端不支持普通 npm 库**（编译为原生 Kotlin/Swift）
+- `pinyin-match` 是 npm 库，无法在 App 端使用
+- 解决方案：参考 pinyin-match 源码，用纯 UTS 重新实现
+
+## 新增文件
+
+- `domain/services/PinyinMatchService.uts` - 840行，内置完整拼音字典
+- `domain/services/PersonSearchService.uts` - 人员搜索服务
+
+## API
+
+\`\`\`typescript
+// 拼音匹配（支持中文、全拼、首字母）
+pinyinMatch(input: string, keyword: string): boolean
+
+// 获取拼音首字母
+getInitials(cn: string): string
+\`\`\`
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7fbdd0b` | (see git log) |
+| `8341d78` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
