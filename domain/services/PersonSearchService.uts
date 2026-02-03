@@ -1,0 +1,123 @@
+/**
+ * 人员搜索服务
+ * 使用纯 UTS 的拼音匹配服务实现拼音快速搜索
+ */
+
+import { getInitials, pinyinMatch } from './PinyinMatchService.uts'
+
+/**
+ * 人员数据类型（简化版，用于搜索）
+ */
+export type SearchablePerson = {
+  id: number
+  name: string
+  is_active: number
+}
+
+/**
+ * 搜索人员
+ * 支持：中文、全拼、首字母匹配
+ * @param keyword 搜索关键词
+ * @param persons 人员列表
+ * @returns 匹配的人员列表
+ */
+export function searchPersons(keyword: string, persons: SearchablePerson[]): SearchablePerson[] {
+  if (keyword.length == 0) {
+    return persons
+  }
+
+  const result: SearchablePerson[] = []
+  const lowerKeyword = keyword.toLowerCase()
+
+  for (let i = 0; i < persons.length; i++) {
+    const person = persons[i]
+    if (pinyinMatch(person.name, lowerKeyword)) {
+      result.push(person)
+    }
+  }
+
+  return result
+}
+
+/**
+ * 过滤可用人员（排除已占用的）
+ * @param keyword 搜索关键词
+ * @param allPersons 所有人员
+ * @param occupiedIds 已占用的人员ID列表
+ * @returns 可用且匹配的人员列表
+ */
+export function filterAvailablePersons(
+  keyword: string,
+  allPersons: SearchablePerson[],
+  occupiedIds: number[]
+): SearchablePerson[] {
+  // 先过滤掉已占用的
+  const available: SearchablePerson[] = []
+  for (let i = 0; i < allPersons.length; i++) {
+    const person = allPersons[i]
+    if (occupiedIds.indexOf(person.id) == -1) {
+      available.push(person)
+    }
+  }
+
+  // 再进行搜索
+  return searchPersons(keyword, available)
+}
+
+/**
+ * 按拼音首字母分组
+ * @param persons 人员列表
+ * @returns 分组后的人员（key 为首字母 A-Z，# 为其他）
+ */
+export function groupByPinyinInitial(persons: SearchablePerson[]): Map<string, SearchablePerson[]> {
+  const groups = new Map<string, SearchablePerson[]>()
+
+  // 初始化 A-Z 和 # 分组
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+  for (let i = 0; i < letters.length; i++) {
+    groups.set(letters.charAt(i), [])
+  }
+  groups.set('#', [])
+
+  for (let i = 0; i < persons.length; i++) {
+    const person = persons[i]
+    // 获取姓名首字的拼音首字母
+    const firstChar = person.name.charAt(0)
+
+    let initial = '#'
+    const firstInitials = getInitials(firstChar)
+    if (firstInitials.length > 0) {
+      const first = firstInitials.charAt(0).toUpperCase()
+      if (letters.indexOf(first) != -1) {
+        initial = first
+      }
+    }
+
+    const group = groups.get(initial)
+    if (group != null) {
+      group.push(person)
+    }
+  }
+
+  return groups
+}
+
+/**
+ * 获取非空分组的字母列表
+ * @param groups 分组数据
+ * @returns 有数据的字母列表
+ */
+export function getNonEmptyGroupKeys(groups: Map<string, SearchablePerson[]>): string[] {
+  const keys: string[] = []
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ#'
+
+  for (let i = 0; i < letters.length; i++) {
+    const letter = letters.charAt(i)
+    const group = groups.get(letter)
+    if (group != null && group.length > 0) {
+      keys.push(letter)
+    }
+  }
+
+  return keys
+}
