@@ -1,0 +1,25 @@
+/**
+ * Public API typings for the MrSeven590-pinyin-match UTS plugin.
+ *
+ * This file is used by HBuilderX for better type hints when importing the plugin:
+ * `import { pinyinMatch, getInitials } from '@/uni_modules/MrSeven590-pinyin-match'`
+ */
+
+/**
+ * Check whether `input` matches `keyword`.
+ *
+ * Supported:
+ * - Direct substring match
+ * - Full pinyin match (e.g. "zhang" matches "张")
+ * - Initials match (e.g. "zs" matches "张三")
+ */
+export type PinyinMatch = (input: string, keyword: string) => boolean
+
+/**
+ * Get pinyin initials for a Chinese string.
+ *
+ * Example:
+ * - "张三" -> "zs"
+ */
+export type GetInitials = (cn: string) => string
+

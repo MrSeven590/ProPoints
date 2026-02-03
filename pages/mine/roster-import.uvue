@@ -1,43 +1,169 @@
 <template>
   <view class="page-container">
-    <view class="section">
-      <text class="section-title">导入方式</text>
-      <view class="import-options">
-        <view class="import-option" @click="importFromOCR">
-          <text class="option-icon">图</text>
-          <text class="option-name">OCR 识别</text>
-          <text class="option-desc">拍照或选择图片识别</text>
+    <!-- 主页面 -->
+    <view v-if="viewMode == 'main'" class="main-view">
+      <view class="section">
+        <text class="section-title">导入方式</text>
+        <view class="import-options">
+          <view class="import-option" @click="showPasteImport">
+            <text class="option-icon">粘</text>
+            <text class="option-name">粘贴导入</text>
+            <text class="option-desc">从 Excel 复制姓名粘贴</text>
+          </view>
         </view>
-        <view class="import-option" @click="importFromPaste">
-          <text class="option-icon">粘</text>
-          <text class="option-name">粘贴导入</text>
-          <text class="option-desc">从 Excel 复制姓名粘贴</text>
+      </view>
+
+      <view class="section">
+        <text class="section-title">当前花名册</text>
+        <view class="roster-stats">
+          <text class="stats-text">共 {{ personCount }} 人（在职 {{ activeCount }} 人）</text>
+        </view>
+        <view class="btn btn-secondary" @click="showRosterList">
+          <text class="btn-text">查看花名册</text>
+        </view>
+      </view>
+
+      <view class="section">
+        <text class="section-title">手动添加</text>
+        <view class="add-form">
+          <input
+            class="add-input"
+            type="text"
+            placeholder="输入姓名"
+            :value="newPersonName"
+            @input="onNameInput"
+          />
+          <view class="btn btn-primary btn-small" @click="addSinglePerson">
+            <text class="btn-text">添加</text>
+          </view>
         </view>
       </view>
     </view>
 
-    <view class="section">
-      <text class="section-title">当前花名册</text>
-      <view class="roster-stats">
-        <text class="stats-text">共 {{ personCount }} 人</text>
-      </view>
-      <view class="btn btn-secondary" @click="viewRoster">
-        <text class="btn-text">查看花名册</text>
-      </view>
-    </view>
-
-    <view class="section">
-      <text class="section-title">手动添加</text>
-      <view class="add-form">
-        <input
-          class="add-input"
-          type="text"
-          placeholder="输入姓名"
-          :value="newPersonName"
-          @input="onNameInput"
+    <!-- 粘贴导入页面 -->
+    <view v-if="viewMode == 'paste'" class="paste-view">
+      <view class="section">
+        <text class="section-title">粘贴姓名</text>
+        <text class="section-desc">支持换行符、空格、逗号分隔</text>
+        <textarea
+          class="paste-textarea"
+          placeholder="从 Excel 复制姓名后粘贴到这里..."
+          :value="pasteContent"
+          @input="onPasteInput"
         />
-        <view class="btn btn-primary btn-small" @click="addPerson">
-          <text class="btn-text">添加</text>
+      </view>
+      <view class="footer-btns">
+        <view class="btn btn-secondary" @click="cancelPaste">
+          <text class="btn-text">取消</text>
+        </view>
+        <view class="btn btn-primary" @click="parsePasteContent">
+          <text class="btn-text">解析</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 校对列表页面 -->
+    <view v-if="viewMode == 'review'" class="review-view">
+      <view class="section">
+        <text class="section-title">校对列表</text>
+        <text class="section-desc">共解析 {{ parsedNames.length }} 个姓名，请检查并确认</text>
+      </view>
+
+      <view class="review-actions">
+        <view class="btn btn-small btn-secondary" @click="removeDuplicates">
+          <text class="btn-text">去重</text>
+        </view>
+        <view class="btn btn-small btn-secondary" @click="removeExisting">
+          <text class="btn-text">排除已有</text>
+        </view>
+      </view>
+
+      <scroll-view class="review-list" scroll-y="true">
+        <view v-for="(item, index) in parsedNames" :key="index" class="review-item">
+          <view class="review-item-content">
+            <input
+              v-if="editingIndex == index"
+              class="review-input"
+              type="text"
+              :value="item.name"
+              @input="onEditInput($event as UniInputEvent, index)"
+              @blur="finishEdit"
+            />
+            <text v-else class="review-name" :class="{ 'name-duplicate': item.isDuplicate, 'name-exists': item.exists }">
+              {{ item.name }}
+            </text>
+            <text v-if="item.isDuplicate" class="review-tag tag-duplicate">重复</text>
+            <text v-if="item.exists" class="review-tag tag-exists">已有</text>
+          </view>
+          <view class="review-item-actions">
+            <text class="action-btn" @click="startEdit(index)">编辑</text>
+            <text class="action-btn action-delete" @click="removeItem(index)">删除</text>
+          </view>
+        </view>
+      </scroll-view>
+
+      <view class="footer-btns">
+        <view class="btn btn-secondary" @click="backToMain">
+          <text class="btn-text">取消</text>
+        </view>
+        <view class="btn btn-primary" @click="confirmImport">
+          <text class="btn-text">确认导入 ({{ getValidCount() }})</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 花名册列表页面 -->
+    <view v-if="viewMode == 'list'" class="list-view">
+      <view class="search-bar">
+        <input
+          class="search-input"
+          type="text"
+          placeholder="搜索姓名/拼音"
+          :value="searchKeyword"
+          @input="onSearchInput"
+        />
+      </view>
+
+      <scroll-view class="roster-list" scroll-y="true">
+        <view v-for="letter in groupKeys" :key="letter" class="group-section">
+          <text class="group-letter">{{ letter }}</text>
+          <view v-for="person in getGroupPersons(letter)" :key="person.id" class="person-item">
+            <view v-if="editingPersonId == person.id" class="person-edit-row">
+              <input
+                class="person-edit-input"
+                type="text"
+                :value="editingPersonName"
+                @input="onPersonEditInput"
+              />
+              <text class="action-btn" @click="savePersonEdit(person)">保存</text>
+              <text class="action-btn action-delete" @click="cancelPersonEdit">取消</text>
+            </view>
+            <view v-else class="person-info-row">
+              <text class="person-name" :class="{ 'person-inactive': person.is_active == 0 }">
+                {{ person.name }}
+              </text>
+              <view class="person-actions">
+                <text class="action-btn" @click="startPersonEdit(person)">编辑</text>
+                <text
+                  class="action-btn"
+                  :class="{ 'action-danger': person.is_active == 1 }"
+                  @click="togglePersonStatus(person)"
+                >
+                  {{ person.is_active == 1 ? '停用' : '启用' }}
+                </text>
+                <text class="action-btn action-delete" @click="deletePerson(person)">删除</text>
+              </view>
+            </view>
+          </view>
+        </view>
+        <view v-if="filteredPersons.length == 0" class="empty-tip">
+          <text class="empty-text">{{ searchKeyword.length > 0 ? '无匹配结果' : '暂无人员' }}</text>
+        </view>
+      </scroll-view>
+
+      <view class="footer-btns">
+        <view class="btn btn-secondary" @click="backToMain">
+          <text class="btn-text">返回</text>
         </view>
       </view>
     </view>
@@ -45,55 +171,455 @@
 </template>
 
 <script lang="uts">
+  import { loadPersons, savePersons } from '@/storage/storage-repository.uts'
+  import { searchPersons, groupByPinyinInitial, getNonEmptyGroupKeys } from '@/domain/services/PersonSearchService.uts'
+  import type { SearchablePerson } from '@/domain/services/PersonSearchService.uts'
+
+  // 解析后的姓名项
+  type ParsedNameItem = {
+    name: string
+    isDuplicate: boolean
+    exists: boolean
+  }
+
   export default {
     data() {
       return {
-        personCount: 0,
-        newPersonName: ''
+        viewMode: 'main' as string,
+        // 主页面
+        personCount: 0 as number,
+        activeCount: 0 as number,
+        newPersonName: '' as string,
+        // 粘贴导入
+        pasteContent: '' as string,
+        // 校对列表
+        parsedNames: [] as ParsedNameItem[],
+        editingIndex: -1 as number,
+        // 花名册列表
+        allPersons: [] as SearchablePerson[],
+        filteredPersons: [] as SearchablePerson[],
+        searchKeyword: '' as string,
+        groupKeys: [] as string[],
+        personGroups: null as Map<string, SearchablePerson[]> | null,
+        // 编辑人员
+        editingPersonId: -1 as number,
+        editingPersonName: '' as string,
+        // 现有人员姓名列表（用于校对）
+        existingNames: [] as string[]
       }
     },
     onShow() {
       this.loadPersonCount()
     },
     methods: {
+      // ============ 数据加载 ============
       loadPersonCount() {
-        // TODO: 从数据库加载人员数量
+        const persons = loadPersons()
+        this.personCount = persons.length
+        let active = 0
+        for (let i = 0; i < persons.length; i++) {
+          const isActive = persons[i]['is_active'] as number | null
+          if (isActive == 1) {
+            active++
+          }
+        }
+        this.activeCount = active
       },
+
+      loadAllPersons() {
+        const persons = loadPersons()
+        const result: SearchablePerson[] = []
+        for (let i = 0; i < persons.length; i++) {
+          const p = persons[i]
+          result.push({
+            id: p['id'] as number,
+            name: p['name'] as string,
+            is_active: (p['is_active'] as number | null) ?? 1
+          } as SearchablePerson)
+        }
+        this.allPersons = result
+        this.applySearch()
+      },
+
+      // ============ 主页面 ============
       onNameInput(e: UniInputEvent) {
         this.newPersonName = e.detail.value
       },
-      importFromOCR() {
-        uni.showToast({
-          title: 'OCR 功能待实现',
-          icon: 'none'
-        })
-      },
-      importFromPaste() {
-        uni.showToast({
-          title: '粘贴导入功能待实现',
-          icon: 'none'
-        })
-      },
-      viewRoster() {
-        uni.showToast({
-          title: '花名册查看功能待实现',
-          icon: 'none'
-        })
-      },
-      addPerson() {
-        if (this.newPersonName.length == 0) {
-          uni.showToast({
-            title: '请输入姓名',
-            icon: 'none'
-          })
+
+      addSinglePerson() {
+        const name = this.newPersonName.trim()
+        if (name.length == 0) {
+          uni.showToast({ title: '请输入姓名', icon: 'none' })
           return
         }
-        // TODO: 添加人员到数据库
+
+        // 检查是否已存在
+        const persons = loadPersons()
+        for (let i = 0; i < persons.length; i++) {
+          if ((persons[i]['name'] as string) == name) {
+            uni.showToast({ title: '该姓名已存在', icon: 'none' })
+            return
+          }
+        }
+
+        // 添加新人员（扫描最大ID避免冲突）
+        const newId = this.getNextPersonId(persons)
+        const now = Date.now()
+        const newPerson = {
+          id: newId,
+          uuid: this.generateUUID(),
+          name: name,
+          name_pinyin_full: '',
+          name_pinyin_initials: '',
+          team_id: null,
+          is_active: 1,
+          created_at: now,
+          updated_at: now,
+          version: 1,
+          sync_status: 'pending'
+        } as UTSJSONObject
+
+        persons.push(newPerson)
+        savePersons(persons)
+
+        this.newPersonName = ''
+        this.loadPersonCount()
+        uni.showToast({ title: '添加成功', icon: 'success' })
+      },
+
+      getNextPersonId(persons: UTSJSONObject[]): number {
+        let maxId = 0
+        for (let i = 0; i < persons.length; i++) {
+          const id = persons[i]['id'] as number
+          if (id > maxId) {
+            maxId = id
+          }
+        }
+        return maxId + 1
+      },
+
+      // ============ 粘贴导入 ============
+      showPasteImport() {
+        this.pasteContent = ''
+        this.viewMode = 'paste'
+      },
+
+      cancelPaste() {
+        this.viewMode = 'main'
+      },
+
+      onPasteInput(e: UniInputEvent) {
+        this.pasteContent = e.detail.value
+      },
+
+      parsePasteContent() {
+        const content = this.pasteContent.trim()
+        if (content.length == 0) {
+          uni.showToast({ title: '请粘贴姓名内容', icon: 'none' })
+          return
+        }
+
+        // 解析姓名：支持换行符、空格、逗号、制表符分隔
+        const separators = /[\n\r\t,，、\s]+/
+        const parts = content.split(separators)
+        const names: string[] = []
+
+        for (let i = 0; i < parts.length; i++) {
+          const name = parts[i].trim()
+          if (name.length > 0) {
+            names.push(name)
+          }
+        }
+
+        if (names.length == 0) {
+          uni.showToast({ title: '未解析到有效姓名', icon: 'none' })
+          return
+        }
+
+        // 加载现有人员用于对比
+        const existingPersons = loadPersons()
+        this.existingNames = []
+        for (let i = 0; i < existingPersons.length; i++) {
+          this.existingNames.push(existingPersons[i]['name'] as string)
+        }
+
+        // 构建解析结果
+        const parsed: ParsedNameItem[] = []
+        const seenNames: string[] = []
+
+        for (let i = 0; i < names.length; i++) {
+          const name = names[i]
+          const isDuplicate = seenNames.indexOf(name) != -1
+          const exists = this.existingNames.indexOf(name) != -1
+          parsed.push({
+            name: name,
+            isDuplicate: isDuplicate,
+            exists: exists
+          } as ParsedNameItem)
+          seenNames.push(name)
+        }
+
+        this.parsedNames = parsed
+        this.viewMode = 'review'
+      },
+
+      // ============ 校对列表 ============
+      startEdit(index: number) {
+        this.editingIndex = index
+      },
+
+      onEditInput(e: UniInputEvent, index: number) {
+        if (index >= 0 && index < this.parsedNames.length) {
+          this.parsedNames[index].name = e.detail.value
+        }
+      },
+
+      finishEdit() {
+        this.editingIndex = -1
+        this.recheckAll()
+      },
+
+      removeItem(index: number) {
+        if (index >= 0 && index < this.parsedNames.length) {
+          this.parsedNames.splice(index, 1)
+          this.recheckAll()
+        }
+      },
+
+      removeDuplicates() {
+        const unique: ParsedNameItem[] = []
+        const seen: string[] = []
+        for (let i = 0; i < this.parsedNames.length; i++) {
+          const item = this.parsedNames[i]
+          const trimmedName = item.name.trim()
+          if (seen.indexOf(trimmedName) == -1) {
+            item.isDuplicate = false
+            unique.push(item)
+            seen.push(trimmedName)
+          }
+        }
+        this.parsedNames = unique
+        uni.showToast({ title: '已去重', icon: 'success' })
+      },
+
+      removeExisting() {
+        const filtered: ParsedNameItem[] = []
+        for (let i = 0; i < this.parsedNames.length; i++) {
+          if (!this.parsedNames[i].exists) {
+            filtered.push(this.parsedNames[i])
+          }
+        }
+        this.parsedNames = filtered
+        this.recheckAll()
+        uni.showToast({ title: '已排除已有人员', icon: 'success' })
+      },
+
+      recheckAll() {
+        // 重新检查重复和已存在状态
+        const seen: string[] = []
+        for (let i = 0; i < this.parsedNames.length; i++) {
+          const name = this.parsedNames[i].name.trim()
+          this.parsedNames[i].isDuplicate = seen.indexOf(name) != -1
+          this.parsedNames[i].exists = this.existingNames.indexOf(name) != -1
+          seen.push(name)
+        }
+      },
+
+      getValidCount(): number {
+        let count = 0
+        for (let i = 0; i < this.parsedNames.length; i++) {
+          const item = this.parsedNames[i]
+          if (!item.isDuplicate && !item.exists && item.name.trim().length > 0) {
+            count++
+          }
+        }
+        return count
+      },
+
+      confirmImport() {
+        const validNames: string[] = []
+        const seen: string[] = []
+
+        for (let i = 0; i < this.parsedNames.length; i++) {
+          const item = this.parsedNames[i]
+          const name = item.name.trim()
+          if (name.length > 0 && !item.exists && seen.indexOf(name) == -1) {
+            validNames.push(name)
+            seen.push(name)
+          }
+        }
+
+        if (validNames.length == 0) {
+          uni.showToast({ title: '没有可导入的姓名', icon: 'none' })
+          return
+        }
+
+        // 批量添加（扫描最大ID避免冲突）
+        const persons = loadPersons()
+        let nextId = this.getNextPersonId(persons)
+        const now = Date.now()
+
+        for (let i = 0; i < validNames.length; i++) {
+          const newPerson = {
+            id: nextId,
+            uuid: this.generateUUID(),
+            name: validNames[i],
+            name_pinyin_full: '',
+            name_pinyin_initials: '',
+            team_id: null,
+            is_active: 1,
+            created_at: now,
+            updated_at: now,
+            version: 1,
+            sync_status: 'pending'
+          } as UTSJSONObject
+          persons.push(newPerson)
+          nextId++
+        }
+
+        savePersons(persons)
+        this.loadPersonCount()
+        this.viewMode = 'main'
+        uni.showToast({ title: `成功导入 ${validNames.length} 人`, icon: 'success' })
+      },
+
+      // ============ 花名册列表 ============
+      showRosterList() {
+        this.searchKeyword = ''
+        this.loadAllPersons()
+        this.viewMode = 'list'
+      },
+
+      onSearchInput(e: UniInputEvent) {
+        this.searchKeyword = e.detail.value
+        this.applySearch()
+      },
+
+      applySearch() {
+        if (this.searchKeyword.length == 0) {
+          this.filteredPersons = this.allPersons
+        } else {
+          this.filteredPersons = searchPersons(this.searchKeyword, this.allPersons)
+        }
+        // 分组
+        this.personGroups = groupByPinyinInitial(this.filteredPersons)
+        this.groupKeys = getNonEmptyGroupKeys(this.personGroups)
+      },
+
+      getGroupPersons(letter: string): SearchablePerson[] {
+        if (this.personGroups == null) {
+          return []
+        }
+        const group = this.personGroups.get(letter)
+        return group != null ? group : []
+      },
+
+      togglePersonStatus(person: SearchablePerson) {
+        const persons = loadPersons()
+        for (let i = 0; i < persons.length; i++) {
+          if ((persons[i]['id'] as number) == person.id) {
+            const currentStatus = (persons[i]['is_active'] as number | null) ?? 1
+            persons[i]['is_active'] = currentStatus == 1 ? 0 : 1
+            persons[i]['updated_at'] = Date.now()
+            break
+          }
+        }
+        savePersons(persons)
+        this.loadAllPersons()
+        this.loadPersonCount()
         uni.showToast({
-          title: '添加成功',
+          title: person.is_active == 1 ? '已停用' : '已启用',
           icon: 'success'
         })
-        this.newPersonName = ''
+      },
+
+      deletePerson(person: SearchablePerson) {
+        uni.showModal({
+          title: '确认删除',
+          content: `确定要删除「${person.name}」吗？此操作不可恢复。`,
+          success: (res) => {
+            if (res.confirm) {
+              const persons = loadPersons()
+              const newPersons: UTSJSONObject[] = []
+              for (let i = 0; i < persons.length; i++) {
+                if ((persons[i]['id'] as number) != person.id) {
+                  newPersons.push(persons[i])
+                }
+              }
+              savePersons(newPersons)
+              this.loadAllPersons()
+              this.loadPersonCount()
+              uni.showToast({ title: '已删除', icon: 'success' })
+            }
+          }
+        })
+      },
+
+      // ============ 人员编辑 ============
+      startPersonEdit(person: SearchablePerson) {
+        this.editingPersonId = person.id
+        this.editingPersonName = person.name
+      },
+
+      onPersonEditInput(e: UniInputEvent) {
+        this.editingPersonName = e.detail.value
+      },
+
+      cancelPersonEdit() {
+        this.editingPersonId = -1
+        this.editingPersonName = ''
+      },
+
+      savePersonEdit(person: SearchablePerson) {
+        const newName = this.editingPersonName.trim()
+        if (newName.length == 0) {
+          uni.showToast({ title: '姓名不能为空', icon: 'none' })
+          return
+        }
+
+        // 检查是否与其他人重名
+        const persons = loadPersons()
+        for (let i = 0; i < persons.length; i++) {
+          const id = persons[i]['id'] as number
+          const name = persons[i]['name'] as string
+          if (id != person.id && name == newName) {
+            uni.showToast({ title: '该姓名已存在', icon: 'none' })
+            return
+          }
+        }
+
+        // 更新姓名
+        for (let i = 0; i < persons.length; i++) {
+          if ((persons[i]['id'] as number) == person.id) {
+            persons[i]['name'] = newName
+            persons[i]['updated_at'] = Date.now()
+            break
+          }
+        }
+
+        savePersons(persons)
+        this.editingPersonId = -1
+        this.editingPersonName = ''
+        this.loadAllPersons()
+        uni.showToast({ title: '修改成功', icon: 'success' })
+      },
+
+      // ============ 通用 ============
+      backToMain() {
+        this.viewMode = 'main'
+      },
+
+      generateUUID(): string {
+        const chars = '0123456789abcdef'
+        let uuid = ''
+        for (let i = 0; i < 32; i++) {
+          if (i == 8 || i == 12 || i == 16 || i == 20) {
+            uuid += '-'
+          }
+          const randomIndex = Math.floor(Math.random() * 16)
+          uuid += chars[randomIndex]
+        }
+        return uuid
       }
     }
   }
@@ -102,7 +628,14 @@
 <style>
   .page-container {
     flex: 1;
+    flex-direction: column;
     background-color: #f5f5f5;
+  }
+
+  /* 主页面 */
+  .main-view {
+    flex: 1;
+    flex-direction: column;
   }
 
   .section {
@@ -116,12 +649,18 @@
     font-size: 16px;
     font-weight: bold;
     color: #333333;
+    margin-bottom: 8px;
+  }
+
+  .section-desc {
+    font-size: 12px;
+    color: #999999;
     margin-bottom: 12px;
   }
 
   .import-options {
     flex-direction: row;
-    justify-content: space-around;
+    justify-content: center;
   }
 
   .import-option {
@@ -158,7 +697,7 @@
   }
 
   .roster-stats {
-    padding: 12px 0;
+    padding: 8px 0;
   }
 
   .stats-text {
@@ -181,6 +720,7 @@
     margin-right: 12px;
   }
 
+  /* 按钮样式 */
   .btn {
     height: 44px;
     border-radius: 8px;
@@ -189,7 +729,7 @@
   }
 
   .btn-small {
-    height: 40px;
+    height: 36px;
     padding: 0 16px;
   }
 
@@ -212,5 +752,216 @@
 
   .btn-secondary .btn-text {
     color: #666666;
+  }
+
+  /* 粘贴导入页面 */
+  .paste-view {
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .paste-textarea {
+    width: 100%;
+    height: 200px;
+    background-color: #f5f5f5;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 14px;
+  }
+
+  .footer-btns {
+    flex-direction: row;
+    padding: 12px 16px;
+    background-color: #ffffff;
+  }
+
+  .footer-btns .btn {
+    flex: 1;
+    margin: 0 6px;
+  }
+
+  /* 校对列表页面 */
+  .review-view {
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .review-actions {
+    flex-direction: row;
+    padding: 0 12px 12px 12px;
+  }
+
+  .review-actions .btn {
+    margin-right: 12px;
+  }
+
+  .review-list {
+    flex: 1;
+    background-color: #ffffff;
+    margin: 0 12px;
+    border-radius: 8px;
+  }
+
+  .review-item {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .review-item-content {
+    flex: 1;
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .review-name {
+    font-size: 14px;
+    color: #333333;
+  }
+
+  .review-input {
+    flex: 1;
+    height: 32px;
+    font-size: 14px;
+    background-color: #f5f5f5;
+    border-radius: 4px;
+    padding: 0 8px;
+  }
+
+  .name-duplicate {
+    color: #ff9500;
+  }
+
+  .name-exists {
+    color: #999999;
+  }
+
+  .review-tag {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 8px;
+  }
+
+  .tag-duplicate {
+    background-color: #fff3e0;
+    color: #ff9500;
+  }
+
+  .tag-exists {
+    background-color: #f0f0f0;
+    color: #999999;
+  }
+
+  .review-item-actions {
+    flex-direction: row;
+  }
+
+  .action-btn {
+    font-size: 12px;
+    color: #007aff;
+    padding: 4px 8px;
+  }
+
+  .action-delete {
+    color: #ff3b30;
+  }
+
+  .action-danger {
+    color: #ff3b30;
+  }
+
+  /* 花名册列表页面 */
+  .list-view {
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .search-bar {
+    padding: 12px;
+    background-color: #ffffff;
+  }
+
+  .search-input {
+    height: 36px;
+    background-color: #f5f5f5;
+    border-radius: 18px;
+    padding: 0 16px;
+    font-size: 14px;
+  }
+
+  .roster-list {
+    flex: 1;
+    background-color: #ffffff;
+    margin: 12px;
+    border-radius: 8px;
+  }
+
+  .group-section {
+    flex-direction: column;
+  }
+
+  .group-letter {
+    font-size: 12px;
+    font-weight: bold;
+    color: #999999;
+    padding: 8px 16px;
+    background-color: #f5f5f5;
+  }
+
+  .person-item {
+    flex-direction: column;
+    padding: 12px 16px;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .person-info-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .person-edit-row {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .person-edit-input {
+    flex: 1;
+    height: 32px;
+    font-size: 14px;
+    background-color: #f5f5f5;
+    border-radius: 4px;
+    padding: 0 8px;
+    margin-right: 8px;
+  }
+
+  .person-name {
+    font-size: 14px;
+    color: #333333;
+  }
+
+  .person-inactive {
+    color: #999999;
+  }
+
+  .person-actions {
+    flex-direction: row;
+  }
+
+  .empty-tip {
+    padding: 40px;
+    align-items: center;
+  }
+
+  .empty-text {
+    font-size: 14px;
+    color: #999999;
   }
 </style>

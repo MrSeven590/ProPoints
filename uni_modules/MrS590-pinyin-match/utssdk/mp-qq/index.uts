@@ -1,0 +1,17 @@
+/**
+ * MrSeven590-pinyin-match (mp-qq)
+ *
+ * 纯 UTS 实现（编译为 JavaScript），用于 QQ 小程序平台。
+ */
+
+import { GetInitials, PinyinMatch } from '../interface.uts'
+import { getInitials as _getInitials, pinyinMatch as _pinyinMatch } from '../pinyin-match.uts'
+
+export const pinyinMatch: PinyinMatch = function (input: string, keyword: string): boolean {
+  return _pinyinMatch(input, keyword)
+}
+
+export const getInitials: GetInitials = function (cn: string): string {
+  return _getInitials(cn)
+}
+

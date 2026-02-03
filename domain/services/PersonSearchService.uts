@@ -3,7 +3,7 @@
  * 使用纯 UTS 的拼音匹配服务实现拼音快速搜索
  */
 
-import { getInitials, pinyinMatch } from './PinyinMatchService.uts'
+import { getInitials, pinyinMatch } from '@/uni_modules/MrS590-pinyin-match'
 
 /**
  * 人员数据类型（简化版，用于搜索）
