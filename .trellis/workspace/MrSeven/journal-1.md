@@ -245,3 +245,57 @@ getInitials(cn: string): string
 ### Next Steps
 
 - None - task complete
+
+## Session 5: 性能优化与发酵仓选择器组件
+
+**Date**: 2026-02-06
+**Task**: 性能优化与发酵仓选择器组件
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 本次会话完成内容
+
+### 新增组件
+| 组件 | 说明 |
+|------|------|
+| `biz-bin-selector` | 发酵仓选择器，支持楼层切换、网格选择、长按范围选 |
+| `BinService` | 仓位服务，智能推断下一批仓位 |
+
+### 性能优化
+| 模块 | 优化点 | 效果 |
+|------|--------|------|
+| 花名册导入 | Map 替代 indexOf | O(n²) → O(n) |
+| 花名册导入 | validCount 缓存 | 避免重复计算 |
+| 花名册导入 | 搜索防抖 120ms | 减少渲染 |
+| 发酵仓选择器 | selectedSeqLookup | O(n) → O(1) |
+
+### Bug 修复
+- v-for 浮点数警告：seqMax 添加 Math.floor()
+
+### 变更文件
+- `components/biz-bin-selector/biz-bin-selector.uvue` (新增)
+- `domain/services/BinService.uts` (新增)
+- `pages/mine/roster-import.uvue` (优化)
+- `pages/work/entry.uvue` (接入选择器)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7282265` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
