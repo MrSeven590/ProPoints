@@ -186,3 +186,62 @@ getInitials(cn: string): string
 ### Next Steps
 
 - None - task complete
+
+## Session 4: 轮次管理与管理员追溯功能
+
+**Date**: 2026-02-05
+**Task**: 轮次管理与管理员追溯功能
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 完成内容
+
+| 功能 | 描述 |
+|------|------|
+| 轮次管理服务 | 新增 RoundService.uts，支持首次初始化、修正、冲突检测 |
+| 首次初始化弹窗 | 用户首次使用时选择年度/轮次/计分权（默认26年1轮次） |
+| 修正功能 | 原地更新当前轮次状态，不创建新记录 |
+| 管理员追溯 | StageSession/Assignment 添加 created_by_manager/updated_by_manager |
+| 存储架构统一 | settings.uvue 改用 AppStore，更新 storage-keys 注释 |
+| 文档同步 | 方案总结.md 与代码一致性（Codex 审查） |
+
+## 关键文件
+
+**新增**:
+- `domain/services/RoundService.uts` - 轮次管理服务
+
+**修改**:
+- `domain/models/ferment.uts` - FermentRound 添加 year 字段
+- `domain/models/assignment.uts` - 添加管理员追溯字段
+- `domain/models/stage-session.uts` - 添加管理员追溯字段
+- `pages/mine/class-config.uvue` - 初始化/修正弹窗 UI
+- `pages/mine/settings.uvue` - 改用 AppStore
+- `.claude/方案总结.md` - 数据模型同步更新
+
+## Codex 审查要点
+
+1. ferment_round 唯一约束改为 `UNIQUE(class_no, year, round_no)`
+2. 所有实体明确列出 created_at 字段
+3. 移除 jsonToRound() 旧数据兼容代码
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6d9daeb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

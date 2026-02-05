@@ -1,0 +1,41 @@
+{
+  "id": "bin-config-round",
+  "name": "bin-config-round",
+  "title": "实现 Phase 2 发酵仓配置和轮次管理功能：1) 发酵仓配置 - ferment_bin 数据模型、楼层默认仓数配置(3/4/5楼)、班级配置页UI；2) 轮次管理 - ferment_round 数据模型、轮次CRUD服务、micro_enabled计分权推断逻辑、轮次切换交互",
+  "description": "",
+  "status": "completed",
+  "dev_type": "fullstack",
+  "scope": "ferment",
+  "priority": "P2",
+  "creator": "MrSeven",
+  "assignee": "MrSeven",
+  "createdAt": "2026-02-04",
+  "completedAt": "2026-02-05",
+  "branch": "feature/bin-config-round",
+  "base_branch": "main",
+  "worktree_path": "/home/zhang/HBbuilderProjects/trellis-worktrees/feature/bin-config-round",
+  "current_phase": 2,
+  "next_action": [
+    {
+      "phase": 1,
+      "action": "implement"
+    },
+    {
+      "phase": 2,
+      "action": "check"
+    },
+    {
+      "phase": 3,
+      "action": "finish"
+    },
+    {
+      "phase": 4,
+      "action": "create-pr"
+    }
+  ],
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "relatedFiles": [],
+  "notes": ""
+}

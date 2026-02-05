@@ -1,0 +1,4 @@
+{"file": ".claude/commands/trellis/check-backend.md", "reason": "Backend check spec"}
+{"file": ".claude/commands/trellis/check-frontend.md", "reason": "Frontend check spec"}
+{"file": "pages/mine/settings.uvue", "reason": "UI 交互模式参考"}
+{"file": "domain/services/ScoreCalculator.uts", "reason": "服务层代码模式参考"}

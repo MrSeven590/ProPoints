@@ -1,0 +1,9 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend development guide"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": "domain/models/ferment.uts", "reason": "已有 FermentBin/FermentRound 类型，需扩展楼层配置类型"}
+{"file": "storage/storage-keys.uts", "reason": "需添加 getBinSeqMaxByFloorKey 等新 key"}
+{"file": "storage/storage-repository.uts", "reason": "需添加楼层仓数配置和轮次配置的 CRUD 方法"}
+{"file": "domain/stores/AppStore.uts", "reason": "添加轮次变更事件和配置读写方法"}
+{"file": "pages/mine/class-config.uvue", "reason": "扩展班级配置页 UI（楼层仓数、轮次管理）"}
+{"file": "白酒制曲车间工分管理系统PRD.md", "reason": "业务规则参考（2.1.1-2.1.3 节）"}
