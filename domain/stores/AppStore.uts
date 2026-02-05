@@ -9,7 +9,9 @@ import {
   loadManagerName as loadManagerNameFromStorage,
   saveManagerName as saveManagerNameToStorage,
   loadDuiQuRoom,
-  saveDuiQuRoom
+  saveDuiQuRoom,
+  getBinSeqMaxForFloor,
+  setBinSeqMaxForFloor as setBinSeqMaxForFloorInStorage
 } from '../../storage/storage-repository.uts'
 
 // ============================================
@@ -90,6 +92,28 @@ export function getLastDuiQuRoom(): string {
  */
 export function setLastDuiQuRoom(roomCode: string): void {
   saveDuiQuRoom(roomCode)
+}
+
+// ============================================
+// 发酵仓楼层配置
+// ============================================
+
+/**
+ * 获取指定楼层的默认仓数
+ * @param floorNo 楼层号（3/4/5）
+ * @returns 默认仓数，未配置时返回 24
+ */
+export function getBinSeqMaxByFloor(floorNo: number): number {
+  return getBinSeqMaxForFloor(floorNo)
+}
+
+/**
+ * 设置指定楼层的默认仓数
+ * @param floorNo 楼层号（3/4/5）
+ * @param seqMax 默认仓数
+ */
+export function setBinSeqMaxByFloor(floorNo: number, seqMax: number): void {
+  setBinSeqMaxForFloorInStorage(floorNo, seqMax)
 }
 
 // ============================================

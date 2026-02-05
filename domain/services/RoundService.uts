@@ -1,0 +1,819 @@
+/**
+ * 轮次管理服务
+ * 负责轮次的 CRUD 操作和计分权推断
+ */
+
+import {
+  FermentRound
+} from '../models/ferment.uts'
+
+import {
+  generateUUID,
+  getCurrentTimestamp,
+  SyncStatus
+} from '../models/types.uts'
+
+import {
+  loadRounds,
+  saveRounds,
+  loadRoundConfig,
+  saveRoundConfig
+} from '../../storage/storage-repository.uts'
+
+import {
+  emitRoundChanged
+} from '../stores/AppStore.uts'
+
+// ============================================
+// 轮次数据转换
+// ============================================
+
+/**
+ * 将 UTSJSONObject 转换为 FermentRound
+ */
+function jsonToRound(json: UTSJSONObject): FermentRound {
+  return {
+    id: json['id'] as number,
+    uuid: json['uuid'] as string,
+    class_no: json['class_no'] as number,
+    year: json['year'] as number,
+    round_no: json['round_no'] as number,
+    micro_enabled: json['micro_enabled'] as number,
+    started_at: json['started_at'] as number,
+    ended_at: json['ended_at'] != null ? json['ended_at'] as number : null,
+    created_at: json['created_at'] as number,
+    updated_at: json['updated_at'] as number,
+    version: json['version'] as number,
+    sync_status: json['sync_status'] as SyncStatus
+  } as FermentRound
+}
+
+/**
+ * 将 FermentRound 转换为 UTSJSONObject
+ */
+function roundToJson(round: FermentRound): UTSJSONObject {
+  return {
+    id: round.id,
+    uuid: round.uuid,
+    class_no: round.class_no,
+    year: round.year,
+    round_no: round.round_no,
+    micro_enabled: round.micro_enabled,
+    started_at: round.started_at,
+    ended_at: round.ended_at,
+    created_at: round.created_at,
+    updated_at: round.updated_at,
+    version: round.version,
+    sync_status: round.sync_status
+  } as UTSJSONObject
+}
+
+/**
+ * 获取当前年份（两位数，如 26 表示 2026）
+ */
+export function getCurrentYear(): number {
+  const date = new Date()
+  return date.getFullYear() % 100
+}
+
+// ============================================
+// 轮次查询
+// ============================================
+
+/**
+ * 获取指定班级的所有轮次
+ * @param classNo 班级编号
+ * @returns 轮次列表，按 id 降序排列（最新创建的在前）
+ */
+export function listRounds(classNo: number): FermentRound[] {
+  const jsonList = loadRounds()
+  const rounds: FermentRound[] = []
+
+  for (let i = 0; i < jsonList.length; i++) {
+    const json = jsonList[i]
+    const roundClassNo = json['class_no'] as number
+    if (roundClassNo == classNo) {
+      rounds.push(jsonToRound(json))
+    }
+  }
+
+  // 按 id 降序排列（最新创建的在前）
+  rounds.sort((a: FermentRound, b: FermentRound): number => {
+    return b.id - a.id
+  })
+
+  return rounds
+}
+
+/**
+ * 检查指定班级是否有任何轮次记录
+ * @param classNo 班级编号
+ * @returns 是否有轮次记录
+ */
+export function hasAnyRound(classNo: number): boolean {
+  const rounds = listRounds(classNo)
+  return rounds.length > 0
+}
+
+/**
+ * 获取指定班级的当前轮次（最新未结束的轮次）
+ * @param classNo 班级编号
+ * @returns 当前轮次，不存在时返回 null
+ */
+export function getCurrentRound(classNo: number): FermentRound | null {
+  const rounds = listRounds(classNo)
+
+  // 查找未结束的轮次（ended_at 为 null）
+  for (let i = 0; i < rounds.length; i++) {
+    if (rounds[i].ended_at == null) {
+      return rounds[i]
+    }
+  }
+
+  // 如果没有未结束的轮次，返回最新的轮次
+  if (rounds.length > 0) {
+    return rounds[0]
+  }
+
+  return null
+}
+
+/**
+ * 获取指定班级的最新轮次（无论是否结束）
+ * @param classNo 班级编号
+ * @returns 最新轮次，不存在时返回 null
+ */
+export function getLatestRound(classNo: number): FermentRound | null {
+  const rounds = listRounds(classNo)
+  if (rounds.length > 0) {
+    return rounds[0]
+  }
+  return null
+}
+
+// ============================================
+// 计分权推断
+// ============================================
+
+/**
+ * 推断新轮次的微机计分权
+ * 规则：与上一轮次相反（1→0, 0→1）
+ * @param classNo 班级编号
+ * @returns 推断的计分权值（0 或 1），无历史数据时返回 null 表示需要用户选择
+ */
+export function inferMicroEnabled(classNo: number): number | null {
+  const latestRound = getLatestRound(classNo)
+
+  if (latestRound == null) {
+    // 无历史数据，需要用户选择
+    return null
+  }
+
+  // 与上一轮次相反
+  if (latestRound.micro_enabled == 1) {
+    return 0
+  } else {
+    return 1
+  }
+}
+
+// ============================================
+// 轮次创建与更新
+// ============================================
+
+/**
+ * 生成新的轮次 ID
+ */
+function generateRoundId(): number {
+  const allRounds = loadRounds()
+  let maxId = 0
+  for (let i = 0; i < allRounds.length; i++) {
+    const id = allRounds[i]['id'] as number
+    if (id > maxId) {
+      maxId = id
+    }
+  }
+  return maxId + 1
+}
+
+/**
+ * 计算新轮次的轮次号
+ * 规则：1-7 循环，7 之后回到 1
+ */
+function getNextRoundNo(classNo: number): number {
+  const latestRound = getLatestRound(classNo)
+  if (latestRound == null) {
+    return 1
+  }
+  // 7 轮后回到 1
+  if (latestRound.round_no >= 7) {
+    return 1
+  }
+  return latestRound.round_no + 1
+}
+
+/**
+ * 创建新轮次
+ * @param classNo 班级编号
+ * @param microEnabled 微机计分权（0 或 1）
+ * @returns 新创建的轮次
+ */
+export function createNewRound(classNo: number, microEnabled: number): FermentRound {
+  const now = getCurrentTimestamp()
+  const roundNo = getNextRoundNo(classNo)
+  const year = getCurrentYear()
+
+  const newRound: FermentRound = {
+    id: generateRoundId(),
+    uuid: generateUUID(),
+    class_no: classNo,
+    year: year,
+    round_no: roundNo,
+    micro_enabled: microEnabled,
+    started_at: now,
+    ended_at: null,
+    created_at: now,
+    updated_at: now,
+    version: 1,
+    sync_status: 'local'
+  }
+
+  // 保存到存储
+  const allRounds = loadRounds()
+  allRounds.push(roundToJson(newRound))
+  saveRounds(allRounds)
+
+  // 更新当前轮次配置
+  updateCurrentRoundConfig(newRound)
+
+  // 发布轮次变更事件
+  emitRoundChanged(roundNo)
+
+  return newRound
+}
+
+/**
+ * 创建初始轮次（首次使用时）
+ * @param classNo 班级编号
+ * @param year 年份（两位数，1-99）
+ * @param roundNo 轮次号（1-7）
+ * @param microEnabled 微机计分权（0 或 1）
+ * @returns 新创建的轮次
+ */
+export function createInitialRound(classNo: number, year: number, roundNo: number, microEnabled: number): FermentRound {
+  // 参数验证
+  const validYear = year > 0 && year < 100 ? year : getCurrentYear()
+  const validRoundNo = roundNo >= 1 && roundNo <= 7 ? roundNo : 1
+  const validMicro = microEnabled == 1 ? 1 : 0
+
+  const now = getCurrentTimestamp()
+
+  // 先结束该班级的其他活跃轮次（安全措施）
+  const allRounds = loadRounds()
+  for (let i = 0; i < allRounds.length; i++) {
+    const roundClassNo = allRounds[i]['class_no'] as number
+    const endedAt = allRounds[i]['ended_at']
+    if (roundClassNo == classNo && endedAt == null) {
+      allRounds[i]['ended_at'] = now
+      allRounds[i]['updated_at'] = now
+      allRounds[i]['version'] = (allRounds[i]['version'] as number) + 1
+    }
+  }
+
+  const newRound: FermentRound = {
+    id: generateRoundId(),
+    uuid: generateUUID(),
+    class_no: classNo,
+    year: validYear,
+    round_no: validRoundNo,
+    micro_enabled: validMicro,
+    started_at: now,
+    ended_at: null,
+    created_at: now,
+    updated_at: now,
+    version: 1,
+    sync_status: 'local'
+  }
+
+  // 保存到存储
+  allRounds.push(roundToJson(newRound))
+  saveRounds(allRounds)
+
+  // 更新当前轮次配置
+  updateCurrentRoundConfig(newRound)
+
+  // 发布轮次变更事件
+  emitRoundChanged(validRoundNo)
+
+  return newRound
+}
+
+/**
+ * 修正当前轮次状态（原地更新，不创建新记录）
+ * @param classNo 班级编号
+ * @param year 年份
+ * @param roundNo 轮次号
+ * @param microEnabled 计分权
+ * @returns 是否成功
+ */
+export function correctCurrentRound(classNo: number, year: number, roundNo: number, microEnabled: number): boolean {
+  const currentRound = getCurrentRound(classNo)
+
+  if (currentRound == null) {
+    return false
+  }
+
+  // 原地更新当前记录
+  const now = getCurrentTimestamp()
+  const allRounds = loadRounds()
+
+  for (let i = 0; i < allRounds.length; i++) {
+    const id = allRounds[i]['id'] as number
+    if (id == currentRound.id) {
+      allRounds[i]['year'] = year
+      allRounds[i]['round_no'] = roundNo
+      allRounds[i]['micro_enabled'] = microEnabled
+      allRounds[i]['updated_at'] = now
+      allRounds[i]['version'] = (allRounds[i]['version'] as number) + 1
+      break
+    }
+  }
+
+  saveRounds(allRounds)
+
+  // 更新当前轮次配置
+  const updatedRound: FermentRound = {
+    id: currentRound.id,
+    uuid: currentRound.uuid,
+    class_no: currentRound.class_no,
+    year: year,
+    round_no: roundNo,
+    micro_enabled: microEnabled,
+    started_at: currentRound.started_at,
+    ended_at: currentRound.ended_at,
+    created_at: currentRound.created_at,
+    updated_at: now,
+    version: currentRound.version + 1,
+    sync_status: currentRound.sync_status
+  }
+  updateCurrentRoundConfig(updatedRound)
+
+  // 发布轮次变更事件
+  emitRoundChanged(roundNo)
+
+  return true
+}
+
+/**
+ * 检查是否存在历史冲突（同年同轮次的记录，包括活跃和已结束）
+ * @param classNo 班级编号
+ * @param year 年份
+ * @param roundNo 轮次号
+ * @param excludeId 排除的记录 ID（用于修正时排除当前记录）
+ * @returns 冲突的记录，不存在则返回 null
+ */
+export function findHistoryConflict(classNo: number, year: number, roundNo: number, excludeId: number = 0): FermentRound | null {
+  const rounds = listRounds(classNo)
+
+  for (let i = 0; i < rounds.length; i++) {
+    const round = rounds[i]
+    // 检查同年同轮次的记录（排除指定 ID）
+    if (round.id != excludeId && round.year == year && round.round_no == roundNo) {
+      return round
+    }
+  }
+
+  return null
+}
+
+/**
+ * 恢复历史轮次（将已结束的记录重新激活）
+ * @param roundId 轮次 ID
+ * @returns 是否成功
+ */
+export function resumeHistoryRound(roundId: number): boolean {
+  const allRounds = loadRounds()
+  let targetRound: FermentRound | null = null
+  let targetClassNo = 0
+
+  // 先找到目标轮次
+  for (let i = 0; i < allRounds.length; i++) {
+    const id = allRounds[i]['id'] as number
+    if (id == roundId) {
+      targetClassNo = allRounds[i]['class_no'] as number
+      break
+    }
+  }
+
+  if (targetClassNo == 0) {
+    return false
+  }
+
+  // 结束该班级的其他活跃轮次，并激活目标轮次
+  const now = getCurrentTimestamp()
+  for (let i = 0; i < allRounds.length; i++) {
+    const id = allRounds[i]['id'] as number
+    const classNo = allRounds[i]['class_no'] as number
+    const endedAt = allRounds[i]['ended_at']
+
+    if (classNo == targetClassNo) {
+      if (id == roundId) {
+        // 激活目标轮次
+        allRounds[i]['ended_at'] = null
+        allRounds[i]['updated_at'] = now
+        allRounds[i]['version'] = (allRounds[i]['version'] as number) + 1
+        targetRound = jsonToRound(allRounds[i])
+      } else if (endedAt == null) {
+        // 结束其他活跃轮次
+        allRounds[i]['ended_at'] = now
+        allRounds[i]['updated_at'] = now
+        allRounds[i]['version'] = (allRounds[i]['version'] as number) + 1
+      }
+    }
+  }
+
+  if (targetRound == null) {
+    return false
+  }
+
+  saveRounds(allRounds)
+
+  // 更新当前轮次配置
+  updateCurrentRoundConfig(targetRound)
+
+  // 发布轮次变更事件
+  emitRoundChanged(targetRound.round_no)
+
+  return true
+}
+
+/**
+ * 结束当前轮次
+ * @param classNo 班级编号
+ * @returns 是否成功结束
+ */
+export function endCurrentRound(classNo: number): boolean {
+  const currentRound = getCurrentRound(classNo)
+
+  if (currentRound == null) {
+    return false
+  }
+
+  if (currentRound.ended_at != null) {
+    // 已经结束
+    return false
+  }
+
+  // 更新结束时间
+  const now = getCurrentTimestamp()
+  const allRounds = loadRounds()
+
+  for (let i = 0; i < allRounds.length; i++) {
+    const id = allRounds[i]['id'] as number
+    if (id == currentRound.id) {
+      allRounds[i]['ended_at'] = now
+      allRounds[i]['updated_at'] = now
+      allRounds[i]['version'] = (allRounds[i]['version'] as number) + 1
+      break
+    }
+  }
+
+  saveRounds(allRounds)
+
+  return true
+}
+
+/**
+ * 结束当前轮次并创建新轮次
+ * @param classNo 班级编号
+ * @returns 新创建的轮次，失败时返回 null
+ */
+export function endAndCreateNewRound(classNo: number): FermentRound | null {
+  // 先结束当前轮次
+  endCurrentRound(classNo)
+
+  // 推断新轮次的计分权
+  const microEnabled = inferMicroEnabled(classNo)
+
+  if (microEnabled == null) {
+    // 这种情况不应该发生，因为已经有历史轮次
+    return null
+  }
+
+  // 创建新轮次
+  return createNewRound(classNo, microEnabled)
+}
+
+// ============================================
+// 当前轮次配置（快速访问）
+// ============================================
+
+/**
+ * 更新当前轮次配置（用于快速访问）
+ */
+function updateCurrentRoundConfig(round: FermentRound): void {
+  const config = {
+    id: round.id,
+    class_no: round.class_no,
+    year: round.year,
+    round_no: round.round_no,
+    micro_enabled: round.micro_enabled
+  } as UTSJSONObject
+  saveRoundConfig(config)
+}
+
+/**
+ * 获取当前轮次号（快速访问）
+ * @param classNo 班级编号
+ * @returns 当前轮次号，不存在时返回 0
+ */
+export function getCurrentRoundNo(classNo: number): number {
+  const config = loadRoundConfig()
+  if (config != null) {
+    const configClassNo = config['class_no'] as number
+    if (configClassNo == classNo) {
+      return config['round_no'] as number
+    }
+  }
+
+  // 从轮次列表获取
+  const currentRound = getCurrentRound(classNo)
+  if (currentRound != null) {
+    return currentRound.round_no
+  }
+
+  return 0
+}
+
+/**
+ * 获取当前轮次的年份（快速访问）
+ * @param classNo 班级编号
+ * @returns 年份，不存在时返回当前年份
+ */
+export function getCurrentRoundYear(classNo: number): number {
+  const config = loadRoundConfig()
+  if (config != null) {
+    const configClassNo = config['class_no'] as number
+    if (configClassNo == classNo && config['year'] != null) {
+      return config['year'] as number
+    }
+  }
+
+  // 从轮次列表获取
+  const currentRound = getCurrentRound(classNo)
+  if (currentRound != null) {
+    return currentRound.year
+  }
+
+  return getCurrentYear()
+}
+
+/**
+ * 获取当前轮次的 ID（快速访问）
+ * @param classNo 班级编号
+ * @returns 轮次 ID，不存在时返回 0
+ */
+export function getCurrentRoundId(classNo: number): number {
+  const config = loadRoundConfig()
+  if (config != null) {
+    const configClassNo = config['class_no'] as number
+    if (configClassNo == classNo && config['id'] != null) {
+      return config['id'] as number
+    }
+  }
+
+  // 从轮次列表获取
+  const currentRound = getCurrentRound(classNo)
+  if (currentRound != null) {
+    return currentRound.id
+  }
+
+  return 0
+}
+
+/**
+ * 获取当前轮次的微机计分权（快速访问）
+ * @param classNo 班级编号
+ * @returns 是否有计分权
+ */
+export function isMicroEnabledForCurrentRound(classNo: number): boolean {
+  const config = loadRoundConfig()
+  if (config != null) {
+    const configClassNo = config['class_no'] as number
+    if (configClassNo == classNo) {
+      const microEnabled = config['micro_enabled'] as number
+      return microEnabled == 1
+    }
+  }
+
+  // 从轮次列表获取
+  const currentRound = getCurrentRound(classNo)
+  if (currentRound != null) {
+    return currentRound.micro_enabled == 1
+  }
+
+  return false
+}
+
+// ============================================
+// 手动切换轮次
+// ============================================
+
+/**
+ * 手动切换到指定轮次
+ * @param classNo 班级编号
+ * @param roundNo 目标轮次号（1-7）
+ * @returns 切换后的轮次，失败时返回 null
+ * 注意：手动切换不会自动反转计分权，保持当前计分权状态
+ */
+export function switchToRound(classNo: number, roundNo: number): FermentRound | null {
+  // 验证轮次号范围
+  if (roundNo < 1 || roundNo > 7) {
+    return null
+  }
+
+  // 获取当前轮次的计分权状态（手动切换时保持不变）
+  const currentRound = getCurrentRound(classNo)
+  const currentMicro = currentRound != null ? currentRound.micro_enabled : 0
+
+  // 结束当前轮次
+  endCurrentRound(classNo)
+
+  const year = getCurrentYear()
+  const now = getCurrentTimestamp()
+
+  const newRound: FermentRound = {
+    id: generateRoundId(),
+    uuid: generateUUID(),
+    class_no: classNo,
+    year: year,
+    round_no: roundNo,
+    micro_enabled: currentMicro,  // 保持当前计分权不变
+    started_at: now,
+    ended_at: null,
+    created_at: now,
+    updated_at: now,
+    version: 1,
+    sync_status: 'local'
+  }
+
+  // 保存到存储
+  const allRounds = loadRounds()
+  allRounds.push(roundToJson(newRound))
+  saveRounds(allRounds)
+
+  // 更新当前轮次配置
+  updateCurrentRoundConfig(newRound)
+
+  // 发布轮次变更事件
+  emitRoundChanged(roundNo)
+
+  return newRound
+}
+
+/**
+ * 手动设置当前轮次的计分权
+ * @param classNo 班级编号
+ * @param microEnabled 计分权（0 或 1）
+ * @returns 是否成功
+ */
+export function setCurrentRoundMicroEnabled(classNo: number, microEnabled: number): boolean {
+  const currentRound = getCurrentRound(classNo)
+
+  if (currentRound == null) {
+    return false
+  }
+
+  // 更新计分权
+  const now = getCurrentTimestamp()
+  const allRounds = loadRounds()
+
+  for (let i = 0; i < allRounds.length; i++) {
+    const id = allRounds[i]['id'] as number
+    if (id == currentRound.id) {
+      allRounds[i]['micro_enabled'] = microEnabled
+      allRounds[i]['updated_at'] = now
+      allRounds[i]['version'] = (allRounds[i]['version'] as number) + 1
+      break
+    }
+  }
+
+  saveRounds(allRounds)
+
+  // 更新当前轮次配置
+  const updatedRound: FermentRound = {
+    id: currentRound.id,
+    uuid: currentRound.uuid,
+    class_no: currentRound.class_no,
+    year: currentRound.year,
+    round_no: currentRound.round_no,
+    micro_enabled: microEnabled,
+    started_at: currentRound.started_at,
+    ended_at: currentRound.ended_at,
+    created_at: currentRound.created_at,
+    updated_at: now,
+    version: currentRound.version + 1,
+    sync_status: currentRound.sync_status
+  }
+  updateCurrentRoundConfig(updatedRound)
+
+  // 发布轮次变更事件
+  emitRoundChanged(currentRound.round_no)
+
+  return true
+}
+
+/**
+ * 历史轮次记录类型
+ */
+export type RoundHistoryRecord = {
+  id: number
+  year: number
+  round: number
+  date: string
+  hasMicro: boolean
+}
+
+/**
+ * 获取轮次历史统计
+ * @param classNo 班级编号
+ * @returns 历史轮次统计信息
+ */
+export type RoundHistoryStats = {
+  totalRounds: number
+  currentCycle: number
+  roundsInCurrentCycle: number
+}
+
+export function getRoundHistoryStats(classNo: number): RoundHistoryStats {
+  const rounds = listRounds(classNo)
+  const totalRounds = rounds.length
+
+  // 计算当前周期（每7轮为一个周期）
+  const currentCycle = totalRounds > 0 ? Math.floor((totalRounds - 1) / 7) + 1 : 0
+  const roundsInCurrentCycle = totalRounds > 0 ? ((totalRounds - 1) % 7) + 1 : 0
+
+  return {
+    totalRounds: totalRounds,
+    currentCycle: currentCycle,
+    roundsInCurrentCycle: roundsInCurrentCycle
+  } as RoundHistoryStats
+}
+
+/**
+ * 获取历史轮次列表（用于 UI 展示）
+ * @param classNo 班级编号
+ * @param limit 最多返回条数
+ * @returns 历史轮次记录列表
+ */
+export function getHistoryRounds(classNo: number, limit: number): RoundHistoryRecord[] {
+  const rounds = listRounds(classNo)
+  const result: RoundHistoryRecord[] = []
+
+  // 跳过当前进行中的轮次，只返回已结束的
+  let count = 0
+  for (let i = 0; i < rounds.length && count < limit; i++) {
+    const round = rounds[i]
+    if (round.ended_at != null) {
+      const endDate = new Date(round.ended_at)
+      const dateStr = `${endDate.getFullYear()}/${endDate.getMonth() + 1}/${endDate.getDate()} 结束`
+      result.push({
+        id: round.id,
+        year: round.year,
+        round: round.round_no,
+        date: dateStr,
+        hasMicro: round.micro_enabled == 1
+      } as RoundHistoryRecord)
+      count++
+    }
+  }
+
+  return result
+}
+
+/**
+ * 删除历史轮次记录
+ * @param roundId 轮次 ID
+ * @returns 是否成功删除
+ */
+export function deleteHistoryRound(roundId: number): boolean {
+  const allRounds = loadRounds()
+  let found = false
+  const newRounds: UTSJSONObject[] = []
+
+  for (let i = 0; i < allRounds.length; i++) {
+    const id = allRounds[i]['id'] as number
+    if (id == roundId) {
+      found = true
+      // 跳过此记录（即删除）
+    } else {
+      newRounds.push(allRounds[i])
+    }
+  }
+
+  if (found == true) {
+    saveRounds(newRounds)
+  }
+
+  return found
+}

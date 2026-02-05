@@ -28,6 +28,8 @@ export type Assignment = {
   scope: Scope
   position_index: number | null  // 站位顺序（仓内人员必填）
   points_units: PointsUnits      // 原始工分（整数单位）
+  created_by_manager: string     // 创建者（管理员姓名快照）
+  updated_by_manager: string     // 最后编辑者
   created_at: Timestamp
   updated_at: Timestamp
   version: number
@@ -46,6 +48,7 @@ export type AssignmentCreateParams = {
   scope: Scope
   position_index: number | null
   points_units: PointsUnits
+  created_by_manager: string     // 创建者（管理员姓名）
 }
 
 /**
@@ -56,6 +59,7 @@ export type AssignmentUpdateParams = {
   person_name_snapshot: string
   position_index: number | null
   points_units: PointsUnits
+  updated_by_manager: string     // 编辑者（管理员姓名）
 }
 
 // ============================================

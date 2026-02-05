@@ -12,7 +12,9 @@ import {
   loadStageRoleDefaults,
   saveStageRoleDefaults,
   loadCoefConfig,
-  saveCoefConfig
+  saveCoefConfig,
+  loadBinSeqMaxByFloor,
+  saveBinSeqMaxByFloor
 } from './storage-repository.uts'
 
 /**
@@ -24,7 +26,7 @@ export function initStorage(): void {
   initStageTypes()
   initStageRoleDefaults()
   initCoefConfig()
-  console.log('Storage 初始化完成')
+  initBinSeqMaxByFloor()
 }
 
 /**
@@ -132,6 +134,25 @@ function initCoefConfig(): void {
   } as UTSJSONObject
 
   saveCoefConfig(coefConfig)
+}
+
+/**
+ * 初始化发酵仓楼层默认仓数配置
+ */
+function initBinSeqMaxByFloor(): void {
+  const existing = loadBinSeqMaxByFloor()
+  if (existing != null) {
+    return
+  }
+
+  // 默认配置：3/4/5楼各24仓
+  const config = {
+    '3': 24,
+    '4': 24,
+    '5': 24
+  } as UTSJSONObject
+
+  saveBinSeqMaxByFloor(config)
 }
 
 /**

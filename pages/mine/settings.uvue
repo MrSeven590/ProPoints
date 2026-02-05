@@ -34,6 +34,11 @@
 </template>
 
 <script lang="uts">
+  import {
+    getManagerName,
+    setManagerName
+  } from '../../domain/stores/AppStore.uts'
+
   export default {
     data() {
       return {
@@ -46,10 +51,7 @@
     },
     methods: {
       loadSettings() {
-        const name = uni.getStorageSync('managerName') as string | null
-        if (name != null) {
-          this.managerName = name
-        }
+        this.managerName = getManagerName()
       },
       onManagerNameInput(e: UniInputEvent) {
         this.managerName = e.detail.value
@@ -61,7 +63,7 @@
         })
       },
       saveSettings() {
-        uni.setStorageSync('managerName', this.managerName)
+        setManagerName(this.managerName)
         uni.showToast({
           title: '设置已保存',
           icon: 'success'

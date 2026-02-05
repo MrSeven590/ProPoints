@@ -22,6 +22,7 @@ import {
   getDuiQuRoomKey,
   getLiangTangDefaultKey,
   getManagerNameKey,
+  getBinSeqMaxByFloorKey,
   getOplogKey,
   isSessionKey,
   parseSessionKey
@@ -328,6 +329,55 @@ export function loadManagerName(): string | null {
     return null
   }
   return name as string
+}
+
+/**
+ * 保存发酵仓楼层默认仓数配置
+ * @param config 配置对象，格式如 {"3":24,"4":24,"5":24}
+ */
+export function saveBinSeqMaxByFloor(config: UTSJSONObject): void {
+  saveData(getBinSeqMaxByFloorKey(), config)
+}
+
+/**
+ * 加载发酵仓楼层默认仓数配置
+ * @returns 配置对象，格式如 {"3":24,"4":24,"5":24}
+ */
+export function loadBinSeqMaxByFloor(): UTSJSONObject | null {
+  return loadData(getBinSeqMaxByFloorKey())
+}
+
+/**
+ * 获取指定楼层的默认仓数
+ * @param floorNo 楼层号
+ * @returns 默认仓数，未配置时返回 24
+ */
+export function getBinSeqMaxForFloor(floorNo: number): number {
+  const config = loadBinSeqMaxByFloor()
+  if (config == null) {
+    return 24
+  }
+  const floorKey = floorNo.toString()
+  const seqMax = config[floorKey]
+  if (seqMax == null) {
+    return 24
+  }
+  return seqMax as number
+}
+
+/**
+ * 设置指定楼层的默认仓数
+ * @param floorNo 楼层号
+ * @param seqMax 默认仓数
+ */
+export function setBinSeqMaxForFloor(floorNo: number, seqMax: number): void {
+  let config = loadBinSeqMaxByFloor()
+  if (config == null) {
+    config = {} as UTSJSONObject
+  }
+  const floorKey = floorNo.toString()
+  config[floorKey] = seqMax
+  saveBinSeqMaxByFloor(config)
 }
 
 // ============ 基础数据操作 ============

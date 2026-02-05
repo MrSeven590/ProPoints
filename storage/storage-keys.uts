@@ -93,7 +93,7 @@ export function getCoefConfigKey(): string {
 /**
  * 轮次配置 Key
  * 格式: pp:cfg:round
- * 存储: 当前轮次信息（round_no, micro_enabled）
+ * 存储: 当前轮次信息（id, year, round_no, micro_enabled）
  */
 export function getRoundConfigKey(): string {
   return `${KEY_PREFIX}:cfg:round`
@@ -124,6 +124,15 @@ export function getLiangTangDefaultKey(): string {
  */
 export function getManagerNameKey(): string {
   return `${KEY_PREFIX}:cfg:manager`
+}
+
+/**
+ * 发酵仓楼层默认仓数配置 Key
+ * 格式: pp:cfg:binSeqMaxByFloor
+ * 存储: 各楼层默认仓数（如 {"3":24,"4":24,"5":24}）
+ */
+export function getBinSeqMaxByFloorKey(): string {
+  return `${KEY_PREFIX}:cfg:binSeqMaxByFloor`
 }
 
 // ============ 基础数据 Key ============

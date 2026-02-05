@@ -1,56 +1,664 @@
 <template>
+  <!-- #ifdef APP -->
+  <scroll-view class="page-container" scroll-y="true">
+  <!-- #endif -->
+  <!-- #ifndef APP -->
   <view class="page-container">
+  <!-- #endif -->
     <view class="section">
-      <text class="section-title">班级信息</text>
-      <view class="form-item">
+      <view class="form-item-no-border">
         <text class="form-label">班级编号</text>
-        <text class="form-value">{{ classNo }}</text>
+        <view class="input-wrapper">
+          <input
+            class="form-input"
+            type="number"
+            :value="classNo.toString()"
+            @blur="onClassNoChange"
+            placeholder="3"
+          />
+          <text class="input-unit">班</text>
+        </view>
       </view>
     </view>
 
     <view class="section">
-      <text class="section-title">发酵仓配置</text>
+      <text class="section-title">发酵仓楼层配置</text>
       <view class="form-item">
-        <text class="form-label">楼层数量</text>
-        <text class="form-value">{{ floorCount }} 层</text>
+        <text class="form-label">3楼默认仓数</text>
+        <view class="input-wrapper">
+          <input
+            class="form-input"
+            type="number"
+            :value="floor3SeqMax.toString()"
+            @blur="onFloor3Change"
+            placeholder="24"
+          />
+          <text class="input-unit">间</text>
+        </view>
       </view>
       <view class="form-item">
-        <text class="form-label">每层默认仓数</text>
-        <text class="form-value">{{ defaultSeqMax }} 间</text>
+        <text class="form-label">4楼默认仓数</text>
+        <view class="input-wrapper">
+          <input
+            class="form-input"
+            type="number"
+            :value="floor4SeqMax.toString()"
+            @blur="onFloor4Change"
+            placeholder="24"
+          />
+          <text class="input-unit">间</text>
+        </view>
+      </view>
+      <view class="form-item">
+        <text class="form-label">5楼默认仓数</text>
+        <view class="input-wrapper">
+          <input
+            class="form-input"
+            type="number"
+            :value="floor5SeqMax.toString()"
+            @blur="onFloor5Change"
+            placeholder="24"
+          />
+          <text class="input-unit">间</text>
+        </view>
       </view>
     </view>
 
-    <view class="section">
-      <text class="section-title">轮次管理</text>
-      <view class="form-item">
-        <text class="form-label">当前轮次</text>
-        <text class="form-value">第 {{ currentRound }} 轮</text>
+    <!-- 轮次管理卡片 -->
+    <view class="card">
+      <!-- 头部：年度徽章 -->
+      <view class="card-header">
+        <text class="card-label">轮次管理</text>
+        <view class="year-badge">
+          <text class="year-text">{{ currentYear }}年度</text>
+        </view>
       </view>
-      <view class="form-item">
-        <text class="form-label">微机计分权</text>
-        <text class="form-value">{{ microEnabled ? '有' : '无' }}</text>
+
+      <!-- 当前轮次大字展示 -->
+      <view v-if="currentRoundNo > 0" class="round-display">
+        <text class="big-round-text">第 {{ currentRoundNo }} 轮</text>
+        <text class="cycle-info">({{ currentYear }}年 - 共{{ totalRounds }}轮)</text>
+        <view class="correct-btn" @click="onOpenCorrectDialog">
+          <text class="correct-btn-text">修正</text>
+        </view>
+      </view>
+      <view v-else class="round-display">
+        <text class="big-round-text">未开始</text>
+        <text class="cycle-info">点击下方按钮开始第一轮</text>
+      </view>
+
+      <!-- 分割线 -->
+      <view class="divider"></view>
+
+      <!-- 微机计分权控制 -->
+      <view class="control-row">
+        <view class="control-info">
+          <text class="control-label">微机岗位计分权</text>
+          <text class="control-desc">当前状态: {{ microEnabled ? '有计分权' : '无计分权' }}</text>
+        </view>
+        <view v-if="currentRoundNo > 0" class="custom-switch" :class="microEnabled ? 'switch-on' : ''" @click="onToggleMicro">
+          <view class="switch-thumb" :class="microEnabled ? 'thumb-on' : ''"></view>
+        </view>
+        <text v-else class="control-desc">-</text>
+      </view>
+
+      <!-- 操作按钮 -->
+      <view class="action-area">
+        <view
+          v-if="currentRoundNo > 0"
+          class="btn-primary"
+          @click="onEndRound"
+        >
+          <text class="btn-text-white">结束本轮 (进入下一轮)</text>
+        </view>
+        <view
+          v-if="currentRoundNo == 0"
+          class="btn-primary"
+          @click="onStartFirstRound"
+        >
+          <text class="btn-text-white">开始第一轮</text>
+        </view>
       </view>
     </view>
+
+    <!-- 历史记录 -->
+    <view v-if="historyList.length > 0" class="history-section">
+      <text class="section-subtitle">历史轮次记录</text>
+      <view class="history-list">
+        <view v-for="(item, index) in historyList" :key="index" class="history-item" @longpress="onDeleteHistory(item)">
+          <view class="history-left">
+            <text class="history-round">{{ item.year }}年 第{{ item.round }}轮</text>
+            <text class="history-date">{{ item.date }}</text>
+          </view>
+          <view class="history-right">
+            <text class="history-tag" :class="item.hasMicro ? 'tag-green' : 'tag-gray'">
+              {{ item.hasMicro ? '微机有权' : '微机无权' }}
+            </text>
+          </view>
+        </view>
+      </view>
+      <text class="history-hint">长按记录可删除</text>
+    </view>
+
+    <!-- 首次创建轮次弹窗 -->
+    <view v-if="showMicroDialog" class="dialog-mask">
+      <view class="dialog-container">
+        <text class="dialog-title">设置微机计分权</text>
+        <text class="dialog-content">本轮次微机是否有计分权?</text>
+        <view class="dialog-actions">
+          <view class="dialog-btn" @click="onSelectMicroEnabled(false)">
+            <text class="dialog-btn-text">无计分权</text>
+          </view>
+          <view class="dialog-btn dialog-btn-primary" @click="onSelectMicroEnabled(true)">
+            <text class="dialog-btn-text-primary">有计分权</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 首次使用初始化弹窗 -->
+    <view v-if="showInitDialog" class="dialog-mask">
+      <view class="dialog-container dialog-wide">
+        <text class="dialog-title">初始化轮次配置</text>
+        <text class="dialog-content">首次使用，请设置当前年度和轮次</text>
+
+        <!-- 年度选择 -->
+        <view class="init-form-item">
+          <text class="init-label">年度</text>
+          <view class="init-input-wrapper">
+            <input
+              class="init-input"
+              type="number"
+              :value="initYear.toString()"
+              @blur="onInitYearChange"
+              placeholder="26"
+            />
+            <text class="init-unit">年</text>
+          </view>
+        </view>
+
+        <!-- 轮次选择 -->
+        <view class="init-form-item">
+          <text class="init-label">当前轮次</text>
+          <view class="init-round-selector">
+            <view
+              v-for="n in 7"
+              :key="n"
+              class="init-round-option"
+              :class="n == initRoundNo ? 'init-round-active' : ''"
+              @click="onInitRoundSelect(n)"
+            >
+              <text class="init-round-num" :class="n == initRoundNo ? 'init-round-text-active' : ''">{{ n }}</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 微机计分权选择 -->
+        <view class="init-form-item">
+          <text class="init-label">微机计分权</text>
+          <view class="init-micro-selector">
+            <view
+              class="init-micro-option"
+              :class="initMicroEnabled == false ? 'init-micro-active' : ''"
+              @click="onInitMicroSelect(false)"
+            >
+              <text class="init-micro-text" :class="initMicroEnabled == false ? 'init-micro-text-active' : ''">无</text>
+            </view>
+            <view
+              class="init-micro-option"
+              :class="initMicroEnabled == true ? 'init-micro-active' : ''"
+              @click="onInitMicroSelect(true)"
+            >
+              <text class="init-micro-text" :class="initMicroEnabled == true ? 'init-micro-text-active' : ''">有</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="dialog-actions">
+          <view class="dialog-btn dialog-btn-primary dialog-btn-full" @click="onConfirmInit">
+            <text class="dialog-btn-text-primary">确认开始</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 修正轮次弹窗 -->
+    <view v-if="showCorrectDialog" class="dialog-mask">
+      <view class="dialog-container dialog-wide">
+        <text class="dialog-title">修正轮次状态</text>
+        <text class="dialog-content">调整当前轮次的年度、轮次号或计分权</text>
+
+        <!-- 年度选择 -->
+        <view class="init-form-item">
+          <text class="init-label">年度</text>
+          <view class="init-input-wrapper">
+            <input
+              class="init-input"
+              type="number"
+              :value="correctYear.toString()"
+              @blur="onCorrectYearChange"
+              placeholder="26"
+            />
+            <text class="init-unit">年</text>
+          </view>
+        </view>
+
+        <!-- 轮次选择 -->
+        <view class="init-form-item">
+          <text class="init-label">轮次号</text>
+          <view class="init-round-selector">
+            <view
+              v-for="n in 7"
+              :key="n"
+              class="init-round-option"
+              :class="n == correctRoundNo ? 'init-round-active' : ''"
+              @click="onCorrectRoundSelect(n)"
+            >
+              <text class="init-round-num" :class="n == correctRoundNo ? 'init-round-text-active' : ''">{{ n }}</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 微机计分权选择 -->
+        <view class="init-form-item">
+          <text class="init-label">微机计分权</text>
+          <view class="init-micro-selector">
+            <view
+              class="init-micro-option"
+              :class="correctMicroEnabled == false ? 'init-micro-active' : ''"
+              @click="onCorrectMicroSelect(false)"
+            >
+              <text class="init-micro-text" :class="correctMicroEnabled == false ? 'init-micro-text-active' : ''">无</text>
+            </view>
+            <view
+              class="init-micro-option"
+              :class="correctMicroEnabled == true ? 'init-micro-active' : ''"
+              @click="onCorrectMicroSelect(true)"
+            >
+              <text class="init-micro-text" :class="correctMicroEnabled == true ? 'init-micro-text-active' : ''">有</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="dialog-actions-row">
+          <view class="dialog-btn" @click="onCancelCorrect">
+            <text class="dialog-btn-text">取消</text>
+          </view>
+          <view class="dialog-btn dialog-btn-primary" @click="onConfirmCorrect">
+            <text class="dialog-btn-text-primary">确认修正</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  <!-- #ifdef APP -->
+  </scroll-view>
+  <!-- #endif -->
+  <!-- #ifndef APP -->
   </view>
+  <!-- #endif -->
 </template>
 
 <script lang="uts">
+  import {
+    getCurrentClassNo,
+    setCurrentClassNo,
+    getBinSeqMaxByFloor,
+    setBinSeqMaxByFloor
+  } from '../../domain/stores/AppStore.uts'
+
+  import {
+    getCurrentRoundNo,
+    getCurrentRoundYear,
+    getCurrentRoundId,
+    isMicroEnabledForCurrentRound,
+    createNewRound,
+    createInitialRound,
+    correctCurrentRound,
+    findHistoryConflict,
+    resumeHistoryRound,
+    endAndCreateNewRound,
+    inferMicroEnabled,
+    switchToRound,
+    setCurrentRoundMicroEnabled,
+    getRoundHistoryStats,
+    getHistoryRounds,
+    deleteHistoryRound,
+    getCurrentYear,
+    hasAnyRound
+  } from '../../domain/services/RoundService.uts'
+
+  import type { RoundHistoryRecord } from '../../domain/services/RoundService.uts'
+
   export default {
     data() {
       return {
-        classNo: 3,
-        floorCount: 4,
-        defaultSeqMax: 24,
-        currentRound: 1,
-        microEnabled: true
+        classNo: 3 as number,
+        floor3SeqMax: 24 as number,
+        floor4SeqMax: 24 as number,
+        floor5SeqMax: 24 as number,
+        currentRoundNo: 0 as number,
+        currentYear: 26 as number,
+        microEnabled: false as boolean,
+        showMicroDialog: false as boolean,
+        showInitDialog: false as boolean,
+        showCorrectDialog: false as boolean,
+        totalRounds: 0 as number,
+        historyList: [] as RoundHistoryRecord[],
+        currentRoundId: 0 as number,
+        // 初始化弹窗状态
+        initYear: 26 as number,
+        initRoundNo: 1 as number,
+        initMicroEnabled: true as boolean,
+        // 修正弹窗状态
+        correctYear: 26 as number,
+        correctRoundNo: 1 as number,
+        correctMicroEnabled: true as boolean
       }
     },
     onLoad() {
       this.loadConfig()
     },
+    onShow() {
+      this.loadRoundInfo()
+    },
     methods: {
       loadConfig() {
-        // TODO: 从数据库加载配置
+        // 加载班级编号
+        this.classNo = getCurrentClassNo()
+
+        // 加载楼层默认仓数
+        this.floor3SeqMax = getBinSeqMaxByFloor(3)
+        this.floor4SeqMax = getBinSeqMaxByFloor(4)
+        this.floor5SeqMax = getBinSeqMaxByFloor(5)
+
+        // 加载轮次信息
+        this.loadRoundInfo()
+      },
+
+      loadRoundInfo() {
+        this.currentRoundNo = getCurrentRoundNo(this.classNo)
+        this.currentYear = getCurrentRoundYear(this.classNo)
+        this.currentRoundId = getCurrentRoundId(this.classNo)
+        this.microEnabled = isMicroEnabledForCurrentRound(this.classNo)
+        // 加载历史统计
+        const stats = getRoundHistoryStats(this.classNo)
+        this.totalRounds = stats.totalRounds
+        // 加载历史记录
+        this.historyList = getHistoryRounds(this.classNo, 5)
+      },
+
+      onSwitchRound(roundNo: number) {
+        if (roundNo == this.currentRoundNo) {
+          return
+        }
+        uni.showModal({
+          title: '切换轮次',
+          content: '确定切换到第 ' + roundNo + ' 轮吗?\n注意：手动切换不会自动反转计分权',
+          success: (res: UniShowModalResult) => {
+            if (res.confirm == true) {
+              const newRound = switchToRound(this.classNo, roundNo)
+              if (newRound != null) {
+                this.loadRoundInfo()
+                uni.showToast({
+                  title: '已切换',
+                  icon: 'success'
+                })
+              }
+            }
+          }
+        })
+      },
+
+      onToggleMicro() {
+        const newValue = this.microEnabled ? 0 : 1
+        const success = setCurrentRoundMicroEnabled(this.classNo, newValue)
+        if (success == true) {
+          this.microEnabled = newValue == 1
+          const status = this.microEnabled ? '已开启' : '已关闭'
+          uni.showToast({
+            title: '微机计分权 ' + status,
+            icon: 'none'
+          })
+        }
+      },
+
+      onClassNoChange(e: UniInputBlurEvent) {
+        const value = parseInt(e.detail.value)
+        if (isNaN(value) == false && value > 0) {
+          this.classNo = value
+          setCurrentClassNo(value)
+          // 重新加载轮次信息（因为班级变了）
+          this.loadRoundInfo()
+          uni.showToast({
+            title: '已保存',
+            icon: 'success'
+          })
+        }
+      },
+
+      onFloor3Change(e: UniInputBlurEvent) {
+        const value = parseInt(e.detail.value)
+        if (isNaN(value) == false && value > 0) {
+          this.floor3SeqMax = value
+          setBinSeqMaxByFloor(3, value)
+          uni.showToast({
+            title: '已保存',
+            icon: 'success'
+          })
+        }
+      },
+
+      onFloor4Change(e: UniInputBlurEvent) {
+        const value = parseInt(e.detail.value)
+        if (isNaN(value) == false && value > 0) {
+          this.floor4SeqMax = value
+          setBinSeqMaxByFloor(4, value)
+          uni.showToast({
+            title: '已保存',
+            icon: 'success'
+          })
+        }
+      },
+
+      onFloor5Change(e: UniInputBlurEvent) {
+        const value = parseInt(e.detail.value)
+        if (isNaN(value) == false && value > 0) {
+          this.floor5SeqMax = value
+          setBinSeqMaxByFloor(5, value)
+          uni.showToast({
+            title: '已保存',
+            icon: 'success'
+          })
+        }
+      },
+
+      onStartFirstRound() {
+        // 检查是否有任何历史轮次
+        const hasHistory = hasAnyRound(this.classNo)
+        if (hasHistory == false) {
+          // 首次使用，显示初始化弹窗
+          this.initYear = getCurrentYear()
+          this.initRoundNo = 1
+          this.initMicroEnabled = true
+          this.showInitDialog = true
+        } else {
+          // 有历史数据，检查是否需要用户选择计分权
+          const inferred = inferMicroEnabled(this.classNo)
+          if (inferred == null) {
+            // 无法推断，需要用户选择
+            this.showMicroDialog = true
+          } else {
+            // 有历史数据，自动推断
+            this.createRoundWithMicro(inferred == 1)
+          }
+        }
+      },
+
+      onSelectMicroEnabled(enabled: boolean) {
+        this.showMicroDialog = false
+        this.createRoundWithMicro(enabled)
+      },
+
+      createRoundWithMicro(enabled: boolean) {
+        const microValue = enabled ? 1 : 0
+        const newRound = createNewRound(this.classNo, microValue)
+        this.loadRoundInfo()
+        uni.showToast({
+          title: '轮次已创建',
+          icon: 'success'
+        })
+      },
+
+      onEndRound() {
+        uni.showModal({
+          title: '确认结束',
+          content: '确定结束 ' + this.currentYear + '年 第' + this.currentRoundNo + '轮 吗?\n下一轮将自动切换计分权。',
+          success: (res: UniShowModalResult) => {
+            if (res.confirm == true) {
+              const newRound = endAndCreateNewRound(this.classNo)
+              if (newRound != null) {
+                this.loadRoundInfo()
+                uni.showToast({
+                  title: '新轮次已开始',
+                  icon: 'success'
+                })
+              } else {
+                uni.showToast({
+                  title: '操作失败',
+                  icon: 'none'
+                })
+              }
+            }
+          }
+        })
+      },
+
+      onDeleteHistory(item: RoundHistoryRecord) {
+        uni.showModal({
+          title: '删除记录',
+          content: '确定删除 ' + item.year + '年 第' + item.round + '轮 的记录吗?',
+          success: (res: UniShowModalResult) => {
+            if (res.confirm == true) {
+              const success = deleteHistoryRound(item.id)
+              if (success == true) {
+                this.loadRoundInfo()
+                uni.showToast({
+                  title: '已删除',
+                  icon: 'success'
+                })
+              }
+            }
+          }
+        })
+      },
+
+      // 初始化弹窗相关方法
+      onInitYearChange(e: UniInputBlurEvent) {
+        const value = parseInt(e.detail.value)
+        if (isNaN(value) == false && value > 0 && value < 100) {
+          this.initYear = value
+        }
+      },
+
+      onInitRoundSelect(roundNo: number) {
+        this.initRoundNo = roundNo
+      },
+
+      onInitMicroSelect(enabled: boolean) {
+        this.initMicroEnabled = enabled
+      },
+
+      onConfirmInit() {
+        // 检查是否存在历史冲突
+        const conflict = findHistoryConflict(this.classNo, this.initYear, this.initRoundNo)
+        if (conflict != null) {
+          // 存在冲突，询问用户是否恢复
+          uni.showModal({
+            title: '发现历史记录',
+            content: '已存在 ' + this.initYear + '年 第' + this.initRoundNo + '轮 的历史记录，是否恢复该轮次？',
+            confirmText: '恢复',
+            cancelText: '取消',
+            success: (res: UniShowModalResult) => {
+              if (res.confirm == true) {
+                const success = resumeHistoryRound(conflict.id)
+                if (success == true) {
+                  this.showInitDialog = false
+                  this.loadRoundInfo()
+                  uni.showToast({
+                    title: '已恢复',
+                    icon: 'success'
+                  })
+                }
+              }
+            }
+          })
+        } else {
+          // 无冲突，创建新轮次
+          const microValue = this.initMicroEnabled ? 1 : 0
+          createInitialRound(this.classNo, this.initYear, this.initRoundNo, microValue)
+          this.showInitDialog = false
+          this.loadRoundInfo()
+          uni.showToast({
+            title: '轮次已创建',
+            icon: 'success'
+          })
+        }
+      },
+
+      // 修正弹窗相关方法
+      onOpenCorrectDialog() {
+        this.correctYear = this.currentYear
+        this.correctRoundNo = this.currentRoundNo
+        this.correctMicroEnabled = this.microEnabled
+        this.showCorrectDialog = true
+      },
+
+      onCorrectYearChange(e: UniInputBlurEvent) {
+        const value = parseInt(e.detail.value)
+        if (isNaN(value) == false && value > 0 && value < 100) {
+          this.correctYear = value
+        }
+      },
+
+      onCorrectRoundSelect(roundNo: number) {
+        this.correctRoundNo = roundNo
+      },
+
+      onCorrectMicroSelect(enabled: boolean) {
+        this.correctMicroEnabled = enabled
+      },
+
+      onCancelCorrect() {
+        this.showCorrectDialog = false
+      },
+
+      onConfirmCorrect() {
+        // 检查是否存在历史冲突（排除当前轮次本身）
+        const conflict = findHistoryConflict(this.classNo, this.correctYear, this.correctRoundNo, this.currentRoundId)
+        if (conflict != null) {
+          uni.showModal({
+            title: '冲突提示',
+            content: '已存在 ' + this.correctYear + '年 第' + this.correctRoundNo + '轮 的历史记录，无法修正为相同的年度和轮次。',
+            showCancel: false
+          })
+          return
+        }
+
+        const microValue = this.correctMicroEnabled ? 1 : 0
+        const success = correctCurrentRound(this.classNo, this.correctYear, this.correctRoundNo, microValue)
+        if (success == true) {
+          this.showCorrectDialog = false
+          this.loadRoundInfo()
+          uni.showToast({
+            title: '已修正',
+            icon: 'success'
+          })
+        } else {
+          uni.showToast({
+            title: '修正失败',
+            icon: 'none'
+          })
+        }
       }
     }
   }
@@ -59,7 +667,7 @@
 <style>
   .page-container {
     flex: 1;
-    background-color: #f5f5f5;
+    background-color: #f5f7fa;
   }
 
   .section {
@@ -86,13 +694,455 @@
     border-bottom-style: solid;
   }
 
+  .form-item-no-border {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+  }
+
   .form-label {
     font-size: 14px;
     color: #666666;
   }
 
-  .form-value {
+  .input-wrapper {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .form-input {
+    width: 80px;
+    height: 36px;
+    border-width: 1px;
+    border-color: #e0e0e0;
+    border-style: solid;
+    border-radius: 4px;
+    padding: 0 8px;
+    font-size: 14px;
+    text-align: right;
+  }
+
+  .input-unit {
+    font-size: 14px;
+    color: #666666;
+    margin-left: 8px;
+  }
+
+  /* 卡片样式 */
+  .card {
+    margin: 12px;
+    background-color: #ffffff;
+    border-radius: 12px;
+    padding: 16px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #ebebeb;
+  }
+
+  .card-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .card-label {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333333;
+  }
+
+  .year-badge {
+    background-color: #e6f0ff;
+    padding: 4px 12px;
+    border-radius: 50px;
+  }
+
+  .year-text {
+    color: #007aff;
+    font-size: 14px;
+    font-weight: bold;
+  }
+
+  /* 轮次大字展示 */
+  .round-display {
+    align-items: center;
+    margin-bottom: 20px;
+  }
+
+  .big-round-text {
+    font-size: 32px;
+    font-weight: bold;
+    color: #333333;
+    margin-bottom: 4px;
+  }
+
+  .cycle-info {
+    font-size: 13px;
+    color: #999999;
+  }
+
+  /* 轮次选择器 */
+  .round-selector {
+    flex-direction: row;
+    justify-content: space-between;
+    background-color: #f0f2f5;
+    border-radius: 8px;
+    padding: 4px;
+    margin-bottom: 20px;
+  }
+
+  .round-option {
+    width: 40px;
+    height: 40px;
+    justify-content: center;
+    align-items: center;
+    border-radius: 6px;
+  }
+
+  .round-option-active {
+    background-color: #007aff;
+  }
+
+  .round-num {
+    font-size: 16px;
+    color: #666666;
+    font-weight: bold;
+  }
+
+  .text-active {
+    color: #ffffff;
+  }
+
+  /* 分割线 */
+  .divider {
+    height: 1px;
+    background-color: #eeeeee;
+    margin-bottom: 16px;
+  }
+
+  /* 控制行 */
+  .control-row {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+
+  .control-info {
+    flex: 1;
+  }
+
+  .control-label {
+    font-size: 15px;
+    color: #333333;
+    font-weight: bold;
+    margin-bottom: 3px;
+  }
+
+  .control-desc {
+    font-size: 12px;
+    color: #999999;
+  }
+
+  /* 自定义 Switch */
+  .custom-switch {
+    flex-direction: row;
+    align-items: center;
+    width: 50px;
+    height: 28px;
+    background-color: #e0e0e0;
+    border-radius: 14px;
+    padding: 2px;
+  }
+
+  .switch-on {
+    background-color: #007aff;
+  }
+
+  .switch-thumb {
+    width: 24px;
+    height: 24px;
+    background-color: #ffffff;
+    border-radius: 12px;
+  }
+
+  .thumb-on {
+    margin-left: 22px;
+  }
+
+  /* 按钮 */
+  .action-area {
+    margin-top: 4px;
+  }
+
+  .btn-primary {
+    background-color: #007aff;
+    border-radius: 8px;
+    height: 44px;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .btn-text-white {
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: bold;
+  }
+
+  /* 历史记录 */
+  .history-section {
+    margin: 12px;
+  }
+
+  .section-subtitle {
+    font-size: 15px;
+    font-weight: bold;
+    color: #333333;
+    margin-bottom: 10px;
+    margin-left: 4px;
+  }
+
+  .history-list {
+    background-color: #ffffff;
+    border-radius: 12px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #ebebeb;
+  }
+
+  .history-item {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .history-left {
+    flex: 1;
+  }
+
+  .history-round {
+    font-size: 15px;
+    color: #333333;
+    font-weight: normal;
+    margin-bottom: 3px;
+  }
+
+  .history-date {
+    font-size: 12px;
+    color: #999999;
+  }
+
+  .history-tag {
+    font-size: 12px;
+    padding: 3px 8px;
+    border-radius: 4px;
+  }
+
+  .tag-green {
+    background-color: #e1fbc4;
+    color: #4dbf00;
+  }
+
+  .tag-gray {
+    background-color: #f0f2f5;
+    color: #999999;
+  }
+
+  .history-hint {
+    font-size: 11px;
+    color: #bbbbbb;
+    text-align: center;
+    margin-top: 8px;
+  }
+
+  /* Dialog styles */
+  .dialog-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    justify-content: center;
+    align-items: center;
+  }
+
+  .dialog-container {
+    width: 280px;
+    background-color: #ffffff;
+    border-radius: 12px;
+    padding: 24px;
+    align-items: center;
+  }
+
+  .dialog-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #333333;
+    margin-bottom: 12px;
+  }
+
+  .dialog-content {
+    font-size: 14px;
+    color: #666666;
+    margin-bottom: 24px;
+    text-align: center;
+  }
+
+  .dialog-actions {
+    flex-direction: row;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .dialog-btn {
+    flex: 1;
+    height: 40px;
+    border-radius: 20px;
+    justify-content: center;
+    align-items: center;
+    margin: 0 8px;
+    background-color: #f0f0f0;
+  }
+
+  .dialog-btn-primary {
+    background-color: #007aff;
+  }
+
+  .dialog-btn-text {
     font-size: 14px;
     color: #333333;
+  }
+
+  .dialog-btn-text-primary {
+    font-size: 14px;
+    color: #ffffff;
+  }
+
+  /* 修正按钮 */
+  .correct-btn {
+    margin-top: 8px;
+    padding: 4px 12px;
+    background-color: #f0f2f5;
+    border-radius: 12px;
+  }
+
+  .correct-btn-text {
+    font-size: 12px;
+    color: #666666;
+  }
+
+  /* 初始化弹窗样式 */
+  .dialog-wide {
+    width: 320px;
+  }
+
+  .init-form-item {
+    width: 100%;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .init-label {
+    font-size: 14px;
+    color: #333333;
+    font-weight: bold;
+  }
+
+  .init-input-wrapper {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .init-input {
+    width: 60px;
+    height: 36px;
+    border-width: 1px;
+    border-color: #e0e0e0;
+    border-style: solid;
+    border-radius: 4px;
+    padding: 0 8px;
+    font-size: 14px;
+    text-align: center;
+  }
+
+  .init-unit {
+    font-size: 14px;
+    color: #666666;
+    margin-left: 4px;
+  }
+
+  .init-round-selector {
+    flex-direction: row;
+  }
+
+  .init-round-option {
+    width: 32px;
+    height: 32px;
+    justify-content: center;
+    align-items: center;
+    border-radius: 4px;
+    margin-left: 4px;
+    background-color: #f0f2f5;
+  }
+
+  .init-round-active {
+    background-color: #007aff;
+  }
+
+  .init-round-num {
+    font-size: 14px;
+    color: #666666;
+    font-weight: bold;
+  }
+
+  .init-round-text-active {
+    color: #ffffff;
+  }
+
+  .init-micro-selector {
+    flex-direction: row;
+  }
+
+  .init-micro-option {
+    width: 48px;
+    height: 32px;
+    justify-content: center;
+    align-items: center;
+    border-radius: 4px;
+    margin-left: 8px;
+    background-color: #f0f2f5;
+  }
+
+  .init-micro-active {
+    background-color: #007aff;
+  }
+
+  .init-micro-text {
+    font-size: 14px;
+    color: #666666;
+  }
+
+  .init-micro-text-active {
+    color: #ffffff;
+  }
+
+  .dialog-btn-full {
+    flex: 1;
+    margin: 0;
+  }
+
+  .dialog-actions-row {
+    flex-direction: row;
+    justify-content: space-between;
+    width: 100%;
   }
 </style>

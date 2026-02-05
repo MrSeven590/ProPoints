@@ -92,6 +92,7 @@ export type FermentRound = {
   id: number
   uuid: string
   class_no: number
+  year: number           // 年份（如 25 表示 2025 年）
   round_no: number
   micro_enabled: number  // 0 或 1
   started_at: Timestamp
