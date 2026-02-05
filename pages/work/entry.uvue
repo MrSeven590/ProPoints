@@ -20,7 +20,11 @@
 
       <view class="section" v-if="showBinSection">
         <text class="section-title">发酵仓选择</text>
-        <text class="placeholder-text">发酵仓选择器（待实现）</text>
+        <biz-bin-selector
+          :selectedBins="selectedBins"
+          :stageCode="stageCode"
+          @change="onBinsChange"
+        />
       </view>
 
       <view class="section">
@@ -43,6 +47,7 @@
 <script lang="uts">
   import { getTodayDateString, StageCode } from '../../domain/models/types.uts'
   import { getStageName, stageRequiresBin } from '../../domain/models/stage-session.uts'
+  import type { BinCode } from '../../domain/models/ferment.uts'
 
   export default {
     data() {
@@ -50,7 +55,8 @@
         stageCode: 'AN_QU' as StageCode,
         stageName: '安曲',
         sessionDate: '',
-        showBinSection: true
+        showBinSection: true,
+        selectedBins: [] as BinCode[]
       }
     },
     onLoad(options: UTSJSONObject) {
@@ -64,6 +70,9 @@
       }
     },
     methods: {
+      onBinsChange(bins: BinCode[]) {
+        this.selectedBins = bins
+      },
       saveDraft() {
         uni.showToast({
           title: '草稿已保存',

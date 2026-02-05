@@ -1,0 +1,388 @@
+<template>
+  <view class="bin-selector">
+    <!-- 头部：班级只读展示 + 楼层切换 -->
+    <view class="selector-header">
+      <view class="class-display">
+        <text class="class-label">班级</text>
+        <view class="class-badge">
+          <text class="class-text">{{ classNo }}班</text>
+        </view>
+      </view>
+      <view class="floor-tabs">
+        <view
+          v-for="floor in floors"
+          :key="floor"
+          class="floor-tab"
+          :class="floor == currentFloor ? 'floor-tab-active' : ''"
+          @click="onFloorChange(floor)"
+        >
+          <text class="floor-tab-text" :class="floor == currentFloor ? 'floor-tab-text-active' : ''">{{ floor }}楼</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 已选数量提示 -->
+    <view class="selection-info">
+      <text class="selection-text">已选择 {{ selectedBins.length }} 个发酵仓</text>
+      <view v-if="selectedBins.length > 0" class="clear-btn" @click="onClearAll">
+        <text class="clear-btn-text">清空</text>
+      </view>
+    </view>
+
+    <!-- 发酵仓网格 -->
+    <view class="bin-grid">
+      <view
+        v-for="seq in seqMax"
+        :key="seq"
+        class="bin-cell"
+        :class="isBinSelected(seq) ? 'bin-cell-selected' : ''"
+        @click="onBinClick(seq)"
+        @longpress="onBinLongPress(seq)"
+      >
+        <text class="bin-code" :class="isBinSelected(seq) ? 'bin-code-selected' : ''">{{ formatBinCodeText(seq) }}</text>
+      </view>
+    </view>
+
+    <!-- 操作提示 -->
+    <view class="hint-area">
+      <text class="hint-text">点击选择/取消，长按可连续范围选择</text>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+  import {
+    getCurrentClassNo
+  } from '../../domain/stores/AppStore.uts'
+
+  import {
+    getSeqMaxForFloor,
+    inferNextBins
+  } from '../../domain/services/BinService.uts'
+
+  import type { BinCode } from '../../domain/models/ferment.uts'
+  import type { StageCode } from '../../domain/models/types.uts'
+
+  export default {
+    props: {
+      selectedBins: {
+        type: Array,
+        default: (): BinCode[] => {
+          return [] as BinCode[]
+        }
+      },
+      defaultFloor: {
+        type: Number,
+        default: 3
+      },
+      stageCode: {
+        type: String,
+        default: 'AN_QU'
+      },
+      autoInfer: {
+        type: Boolean,
+        default: true
+      }
+    },
+    emits: ['change', 'update:selectedBins'],
+	    data() {
+	      return {
+	        classNo: 3 as number,
+	        currentFloor: 3 as number,
+	        floors: [3, 4, 5] as number[],
+	        seqMax: 24 as number,
+	        lastSelectedSeq: 0 as number,
+	        hasInferred: false as boolean,
+	        selectedSeqLookup: new Map<number, boolean>()
+	      }
+	    },
+	    mounted() {
+	      this.initData()
+	    },
+	    methods: {
+	      rebuildSelectedSeqLookup(bins: BinCode[]) {
+	        const lookup = new Map<number, boolean>()
+	        for (let i = 0; i < bins.length; i++) {
+	          const bin = bins[i]
+	          if (bin.class_no == this.classNo && bin.floor_no == this.currentFloor) {
+	            lookup.set(bin.seq_no, true)
+	          }
+	        }
+	        this.selectedSeqLookup = lookup
+	      },
+
+	      initData() {
+	        this.classNo = getCurrentClassNo()
+	        this.currentFloor = this.defaultFloor
+	        const stage = this.stageCode as StageCode
+	        this.seqMax = Math.floor(getSeqMaxForFloor(this.classNo, this.currentFloor, stage))
+	        this.lastSelectedSeq = 0
+	        this.rebuildSelectedSeqLookup(this.selectedBins as BinCode[])
+
+	        // 智能推断预选
+	        if (this.autoInfer == true && this.hasInferred == false) {
+	          this.doAutoInfer()
+	        }
+      },
+
+	      doAutoInfer() {
+	        const bins = this.selectedBins as BinCode[]
+	        if (bins.length > 0) {
+	          // 已有选中，不自动推断
+	          this.hasInferred = true
+	          this.rebuildSelectedSeqLookup(bins)
+	          return
+	        }
+
+	        const stage = this.stageCode as StageCode
+	        const result = inferNextBins(this.classNo, stage, 2)
+	        if (result.bins.length > 0) {
+	          // 切换到推断结果的楼层
+	          const firstBin = result.bins[0]
+	          this.currentFloor = firstBin.floor_no
+	          this.seqMax = Math.floor(getSeqMaxForFloor(this.classNo, this.currentFloor, stage))
+	          this.rebuildSelectedSeqLookup(result.bins)
+	          // 设置预选
+	          this.emitChange(result.bins)
+	        }
+	        this.hasInferred = true
+	      },
+
+	      onFloorChange(floor: number) {
+	        if (floor == this.currentFloor) {
+	          return
+	        }
+	        this.currentFloor = floor
+	        const stage = this.stageCode as StageCode
+	        this.seqMax = Math.floor(getSeqMaxForFloor(this.classNo, floor, stage))
+	        this.lastSelectedSeq = 0
+	        this.rebuildSelectedSeqLookup(this.selectedBins as BinCode[])
+	      },
+
+      formatBinCodeText(seq: number): string {
+        return `${this.classNo}-${this.currentFloor}-${seq}`
+      },
+
+	      isBinSelected(seq: number): boolean {
+	        return this.selectedSeqLookup.has(seq)
+	      },
+
+      findBinIndex(seq: number): number {
+        const bins = this.selectedBins as BinCode[]
+        for (let i = 0; i < bins.length; i++) {
+          const bin = bins[i]
+          if (bin.class_no == this.classNo && bin.floor_no == this.currentFloor && bin.seq_no == seq) {
+            return i
+          }
+        }
+        return -1
+      },
+
+      onBinClick(seq: number) {
+        const newBins = [...(this.selectedBins as BinCode[])]
+        const index = this.findBinIndex(seq)
+
+        if (index >= 0) {
+          // 已选中，取消选择
+          newBins.splice(index, 1)
+        } else {
+          // 未选中，添加选择
+          const newBin: BinCode = {
+            class_no: this.classNo,
+            floor_no: this.currentFloor,
+            seq_no: seq
+          }
+          newBins.push(newBin)
+        }
+
+        this.lastSelectedSeq = seq
+        this.emitChange(newBins)
+      },
+
+	      onBinLongPress(seq: number) {
+	        // 长按连续范围选择
+	        if (this.lastSelectedSeq == 0) {
+	          // 没有上次选中位置，当作普通点击
+          this.onBinClick(seq)
+          return
+        }
+	
+	        const startSeq = this.lastSelectedSeq < seq ? this.lastSelectedSeq : seq
+	        const endSeq = this.lastSelectedSeq > seq ? this.lastSelectedSeq : seq
+	
+	        const newBins = [...(this.selectedBins as BinCode[])]
+	        const existSeqSet = new Map<number, boolean>()
+	        for (let i = 0; i < newBins.length; i++) {
+	          const bin = newBins[i]
+	          if (bin.class_no == this.classNo && bin.floor_no == this.currentFloor) {
+	            existSeqSet.set(bin.seq_no, true)
+	          }
+	        }
+	
+	        // 添加范围内所有未选中的仓
+	        for (let s = startSeq; s <= endSeq; s++) {
+	          if (!existSeqSet.has(s)) {
+	            const newBin: BinCode = {
+	              class_no: this.classNo,
+	              floor_no: this.currentFloor,
+	              seq_no: s
+	            }
+	            newBins.push(newBin)
+	            existSeqSet.set(s, true)
+	          }
+	        }
+	
+	        this.lastSelectedSeq = seq
+	        this.emitChange(newBins)
+	      },
+
+      onClearAll() {
+        this.lastSelectedSeq = 0
+        this.emitChange([] as BinCode[])
+      },
+
+	      emitChange(bins: BinCode[]) {
+	        this.rebuildSelectedSeqLookup(bins)
+	        this.$emit('update:selectedBins', bins)
+	        this.$emit('change', bins)
+	      }
+	    }
+	  }
+</script>
+
+<style>
+  .bin-selector {
+    background-color: #ffffff;
+    border-radius: 12px;
+    padding: 16px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #ebebeb;
+  }
+
+  /* 头部样式 */
+  .selector-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .class-display {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .class-label {
+    font-size: 14px;
+    color: #666666;
+    margin-right: 8px;
+  }
+
+  .class-badge {
+    background-color: #e6f0ff;
+    padding: 4px 12px;
+    border-radius: 50px;
+  }
+
+  .class-text {
+    color: #007aff;
+    font-size: 14px;
+    font-weight: bold;
+  }
+
+  /* 楼层切换 */
+  .floor-tabs {
+    flex-direction: row;
+    background-color: #f0f2f5;
+    border-radius: 6px;
+    padding: 2px;
+  }
+
+  .floor-tab {
+    padding: 6px 12px;
+    border-radius: 4px;
+  }
+
+  .floor-tab-active {
+    background-color: #007aff;
+  }
+
+  .floor-tab-text {
+    font-size: 13px;
+    color: #666666;
+  }
+
+  .floor-tab-text-active {
+    color: #ffffff;
+  }
+
+  /* 选择信息 */
+  .selection-info {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .selection-text {
+    font-size: 13px;
+    color: #999999;
+  }
+
+  .clear-btn {
+    padding: 4px 10px;
+    background-color: #fff0f0;
+    border-radius: 4px;
+  }
+
+  .clear-btn-text {
+    font-size: 12px;
+    color: #ff4d4f;
+  }
+
+  /* 发酵仓网格 */
+  .bin-grid {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .bin-cell {
+    width: 52px;
+    height: 36px;
+    justify-content: center;
+    align-items: center;
+    background-color: #f5f7fa;
+    border-radius: 4px;
+    margin-right: 6px;
+    margin-bottom: 6px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+  }
+
+  .bin-cell-selected {
+    background-color: #007aff;
+    border-color: #007aff;
+  }
+
+  .bin-code {
+    font-size: 12px;
+    color: #333333;
+  }
+
+  .bin-code-selected {
+    color: #ffffff;
+  }
+
+  /* 提示区域 */
+  .hint-area {
+    margin-top: 8px;
+    align-items: center;
+  }
+
+  .hint-text {
+    font-size: 11px;
+    color: #bbbbbb;
+  }
+</style>

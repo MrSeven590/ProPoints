@@ -79,7 +79,7 @@
       </view>
 
       <scroll-view class="review-list" scroll-y="true">
-        <view v-for="(item, index) in parsedNames" :key="index" class="review-item">
+        <view v-for="(item, index) in parsedNames" :key="item.id" class="review-item">
           <view class="review-item-content">
             <input
               v-if="editingIndex == index"
@@ -107,7 +107,7 @@
           <text class="btn-text">取消</text>
         </view>
         <view class="btn btn-primary" @click="confirmImport">
-          <text class="btn-text">确认导入 ({{ getValidCount() }})</text>
+          <text class="btn-text">确认导入 ({{ validCount }})</text>
         </view>
       </view>
     </view>
@@ -177,6 +177,7 @@
 
   // 解析后的姓名项
   type ParsedNameItem = {
+    id: number
     name: string
     isDuplicate: boolean
     exists: boolean
@@ -195,17 +196,19 @@
         // 校对列表
         parsedNames: [] as ParsedNameItem[],
         editingIndex: -1 as number,
+        validCount: 0 as number,
         // 花名册列表
         allPersons: [] as SearchablePerson[],
         filteredPersons: [] as SearchablePerson[],
         searchKeyword: '' as string,
         groupKeys: [] as string[],
         personGroups: null as Map<string, SearchablePerson[]> | null,
+        searchDebounceTimer: 0 as number,
         // 编辑人员
         editingPersonId: -1 as number,
         editingPersonName: '' as string,
-        // 现有人员姓名列表（用于校对）
-        existingNames: [] as string[]
+        // 现有人员姓名集合（用于校对）
+        existingNameSet: null as Map<string, boolean> | null
       }
     },
     onShow() {
@@ -322,44 +325,41 @@
         // 解析姓名：支持换行符、空格、逗号、制表符分隔
         const separators = /[\n\r\t,，、\s]+/
         const parts = content.split(separators)
-        const names: string[] = []
+        const parsed: ParsedNameItem[] = []
+        let nextId = 1
 
         for (let i = 0; i < parts.length; i++) {
           const name = parts[i].trim()
           if (name.length > 0) {
-            names.push(name)
+            parsed.push({
+              id: nextId,
+              name: name,
+              isDuplicate: false,
+              exists: false
+            } as ParsedNameItem)
+            nextId++
           }
         }
 
-        if (names.length == 0) {
+        if (parsed.length == 0) {
           uni.showToast({ title: '未解析到有效姓名', icon: 'none' })
           return
         }
 
         // 加载现有人员用于对比
         const existingPersons = loadPersons()
-        this.existingNames = []
+        const existingSet = new Map<string, boolean>()
         for (let i = 0; i < existingPersons.length; i++) {
-          this.existingNames.push(existingPersons[i]['name'] as string)
+          const existingName = (existingPersons[i]['name'] as string).trim()
+          if (existingName.length > 0) {
+            existingSet.set(existingName, true)
+          }
         }
-
-        // 构建解析结果
-        const parsed: ParsedNameItem[] = []
-        const seenNames: string[] = []
-
-        for (let i = 0; i < names.length; i++) {
-          const name = names[i]
-          const isDuplicate = seenNames.indexOf(name) != -1
-          const exists = this.existingNames.indexOf(name) != -1
-          parsed.push({
-            name: name,
-            isDuplicate: isDuplicate,
-            exists: exists
-          } as ParsedNameItem)
-          seenNames.push(name)
-        }
+        this.existingNameSet = existingSet
 
         this.parsedNames = parsed
+        this.editingIndex = -1
+        this.recheckAll()
         this.viewMode = 'review'
       },
 
@@ -388,17 +388,19 @@
 
       removeDuplicates() {
         const unique: ParsedNameItem[] = []
-        const seen: string[] = []
+        const seen = new Map<string, boolean>()
         for (let i = 0; i < this.parsedNames.length; i++) {
           const item = this.parsedNames[i]
           const trimmedName = item.name.trim()
-          if (seen.indexOf(trimmedName) == -1) {
-            item.isDuplicate = false
+          if (!seen.has(trimmedName)) {
+            item.name = trimmedName
             unique.push(item)
-            seen.push(trimmedName)
+            seen.set(trimmedName, true)
           }
         }
         this.parsedNames = unique
+        this.editingIndex = -1
+        this.recheckAll()
         uni.showToast({ title: '已去重', icon: 'success' })
       },
 
@@ -410,42 +412,47 @@
           }
         }
         this.parsedNames = filtered
+        this.editingIndex = -1
         this.recheckAll()
         uni.showToast({ title: '已排除已有人员', icon: 'success' })
       },
 
       recheckAll() {
         // 重新检查重复和已存在状态
-        const seen: string[] = []
+        const existingSet = this.existingNameSet
+        const seen = new Map<string, boolean>()
+        let validCount = 0
         for (let i = 0; i < this.parsedNames.length; i++) {
           const name = this.parsedNames[i].name.trim()
-          this.parsedNames[i].isDuplicate = seen.indexOf(name) != -1
-          this.parsedNames[i].exists = this.existingNames.indexOf(name) != -1
-          seen.push(name)
-        }
-      },
+          this.parsedNames[i].name = name
+          this.parsedNames[i].isDuplicate = seen.has(name)
+          this.parsedNames[i].exists = existingSet != null ? existingSet.has(name) : false
+          seen.set(name, true)
 
-      getValidCount(): number {
-        let count = 0
-        for (let i = 0; i < this.parsedNames.length; i++) {
-          const item = this.parsedNames[i]
-          if (!item.isDuplicate && !item.exists && item.name.trim().length > 0) {
-            count++
+          if (name.length > 0 && !this.parsedNames[i].isDuplicate && !this.parsedNames[i].exists) {
+            validCount++
           }
         }
-        return count
+
+        this.validCount = validCount
       },
 
       confirmImport() {
+        // 防止编辑中未 blur 导致 exists/duplicate 状态不同步
+        if (this.editingIndex != -1) {
+          this.editingIndex = -1
+          this.recheckAll()
+        }
+
         const validNames: string[] = []
-        const seen: string[] = []
+        const seen = new Map<string, boolean>()
 
         for (let i = 0; i < this.parsedNames.length; i++) {
           const item = this.parsedNames[i]
           const name = item.name.trim()
-          if (name.length > 0 && !item.exists && seen.indexOf(name) == -1) {
+          if (name.length > 0 && !item.exists && !seen.has(name)) {
             validNames.push(name)
-            seen.push(name)
+            seen.set(name, true)
           }
         }
 
@@ -492,7 +499,22 @@
 
       onSearchInput(e: UniInputEvent) {
         this.searchKeyword = e.detail.value
-        this.applySearch()
+        if (this.searchKeyword.length == 0) {
+          if (this.searchDebounceTimer != 0) {
+            clearTimeout(this.searchDebounceTimer)
+            this.searchDebounceTimer = 0
+          }
+          this.applySearch()
+          return
+        }
+
+        if (this.searchDebounceTimer != 0) {
+          clearTimeout(this.searchDebounceTimer)
+        }
+        this.searchDebounceTimer = setTimeout(() => {
+          this.applySearch()
+          this.searchDebounceTimer = 0
+        }, 120) as number
       },
 
       applySearch() {
