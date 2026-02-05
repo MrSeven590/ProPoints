@@ -299,3 +299,66 @@ getInitials(cn: string): string
 ### Next Steps
 
 - None - task complete
+
+## Session 6: Phase 3 工分计算核心服务实现
+
+**Date**: 2026-02-06
+**Task**: Phase 3 工分计算核心服务实现
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 完成内容
+
+| 模块 | 说明 |
+|------|------|
+| ScoreAllocator | 新增仓内按技能系数分配算法（最大余数法）、微调平衡算法 |
+| StageCoefService | 工序系数配置服务，支持存储层优先读取 |
+| DuiQuBaseService | 堆曲基数服务，晾堂岗位工分池计算 |
+
+## Codex 审查修复
+
+- 避免修改输入参数（创建 coefs 副本）
+- 移除全局计数器，改用 rotationCount 参数
+- 添加负数工分校验（newPointsUnits < 0）
+- 统一系数来源（存储层 + 硬编码回退）
+- getAllStageCoefs/getAllLiangTangRoleCoefs 返回实际存储值
+- getStageRoleConfigs 对接 loadStageRoleDefaults()
+
+## 新增文件
+
+- `domain/services/StageCoefService.uts` - 工序系数配置服务
+- `domain/services/DuiQuBaseService.uts` - 堆曲基数服务
+
+## 修改文件
+
+- `domain/services/ScoreAllocator.uts` - 新增分配算法
+- `domain/services/index.uts` - 服务导出
+- `.trellis/spec/backend/directory-structure.md` - 文档更新
+
+## 关键算法
+
+1. **allocateBinPointsByCoef** - 仓内工分按技能系数分配（最大余数法）
+2. **balanceAfterAdjustment** - 微调平衡算法，调整一人后自动平衡其他人
+3. **calcAllLiangTangPools** - 计算晾堂岗位工分池
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b405cd5` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
