@@ -128,3 +128,407 @@ export function allocateCrossBinPoints(
     totalUnits: totalUnits
   } as CrossBinAllocationResult
 }
+
+// ============================================
+// 仓内工分分配（按技能系数）
+// ============================================
+
+/**
+ * 人员技能系数信息
+ */
+export type PersonCoefInfo = {
+  person_id: number
+  coef: number  // 技能系数，如 1.2, 1.0, 0.9
+}
+
+/**
+ * 工分分配结果项
+ */
+export type AllocationResultItem = {
+  person_id: number
+  points_units: PointsUnits
+}
+
+/**
+ * 仓内工分分配结果
+ */
+export type BinAllocationResult = {
+  allocations: AllocationResultItem[]
+  totalUnits: PointsUnits
+}
+
+/**
+ * 仓内工分按技能系数分配算法（最大余数法）
+ *
+ * 使用整数单位（1单位=0.1分），避免浮点数漂移。
+ * 按技能系数权重比例分配工分。
+ *
+ * @param persons 人员技能系数列表（不会修改原数组）
+ * @param totalUnits 待分配总工分（整数单位）
+ * @returns 分配结果
+ */
+export function allocateBinPointsByCoef(
+  persons: PersonCoefInfo[],
+  totalUnits: PointsUnits
+): BinAllocationResult {
+  if (persons.length == 0 || totalUnits <= 0) {
+    return {
+      allocations: [] as AllocationResultItem[],
+      totalUnits: 0
+    } as BinAllocationResult
+  }
+
+  // 1. 创建系数副本，避免修改原数组
+  const coefs: number[] = []
+  for (let i = 0; i < persons.length; i++) {
+    coefs.push(persons[i].coef)
+  }
+
+  // 2. 计算权重和
+  let sumCoef = 0.0
+  for (let i = 0; i < coefs.length; i++) {
+    sumCoef += coefs[i]
+  }
+
+  if (sumCoef == 0) {
+    // 如果所有系数都是0，则平均分配（修改副本而非原数组）
+    sumCoef = persons.length as number
+    for (let i = 0; i < coefs.length; i++) {
+      coefs[i] = 1.0
+    }
+  }
+
+  // 3. 计算原始份额和取整下界
+  const baseShares: number[] = []
+  const remainders: number[] = []
+
+  for (let i = 0; i < persons.length; i++) {
+    const raw = (totalUnits * coefs[i]) / sumCoef
+    baseShares.push(Math.floor(raw))
+    remainders.push(raw - Math.floor(raw))
+  }
+
+  // 4. 计算需要补齐的单位数
+  let baseSum = 0
+  for (let i = 0; i < baseShares.length; i++) {
+    baseSum += baseShares[i]
+  }
+  let remaining = totalUnits - baseSum
+
+  // 5. 最大余数补齐
+  // 创建索引数组并按余数从大到小排序（平局按技能系数降序）
+  const indices: number[] = []
+  for (let i = 0; i < persons.length; i++) {
+    indices.push(i)
+  }
+
+  // 简单冒泡排序（按余数降序，平局按技能系数降序）
+  for (let i = 0; i < indices.length - 1; i++) {
+    for (let j = i + 1; j < indices.length; j++) {
+      const idxI = indices[i]
+      const idxJ = indices[j]
+      let shouldSwap = false
+
+      if (remainders[idxJ] > remainders[idxI]) {
+        shouldSwap = true
+      } else if (remainders[idxJ] == remainders[idxI]) {
+        if (coefs[idxJ] > coefs[idxI]) {
+          shouldSwap = true
+        }
+      }
+
+      if (shouldSwap) {
+        const temp = indices[i]
+        indices[i] = indices[j]
+        indices[j] = temp
+      }
+    }
+  }
+
+  // 前 remaining 个各+1单位
+  for (let i = 0; i < remaining && i < indices.length; i++) {
+    baseShares[indices[i]] += 1
+  }
+
+  // 6. 构建结果
+  const allocations: AllocationResultItem[] = []
+  for (let i = 0; i < persons.length; i++) {
+    allocations.push({
+      person_id: persons[i].person_id,
+      points_units: baseShares[i]
+    } as AllocationResultItem)
+  }
+
+  return {
+    allocations: allocations,
+    totalUnits: totalUnits
+  } as BinAllocationResult
+}
+
+// ============================================
+// 微调平衡算法
+// ============================================
+
+/**
+ * 人员当前工分信息（用于微调平衡）
+ */
+export type PersonPointsInfo = {
+  person_id: number
+  coef: number           // 技能系数
+  points_units: PointsUnits  // 当前工分
+}
+
+/**
+ * 微调平衡结果
+ */
+export type BalanceResult = {
+  adjustments: AllocationResultItem[]  // 调整后的工分
+  success: boolean
+  message: string
+  rotationCount: number  // 返回更新后的轮转计数，供调用方保存
+}
+
+/**
+ * 微调平衡算法
+ *
+ * 当调整某人工分后，自动平衡同作用域内其他人员，保证总分不变。
+ * 差额按技能系数权重进行比例分摊。
+ *
+ * PRD 规则：任何人工分不得小于0，在基础分配阶段就强制 min-0。
+ *
+ * 剩余单位处理规则：
+ * - 第一次：集中给技能系数最高的人
+ * - 第二次：给技能系数第二高的人
+ * - 后续：在第一/第二名之间交替轮转
+ *
+ * @param persons 人员工分信息列表
+ * @param adjustedPersonId 被调整的人员ID
+ * @param newPointsUnits 调整后的工分
+ * @param rotationCount 当前轮转计数（传入，用于跨调用保持状态）
+ * @returns 平衡结果（包含更新后的轮转计数）
+ */
+export function balanceAfterAdjustment(
+  persons: PersonPointsInfo[],
+  adjustedPersonId: number,
+  newPointsUnits: PointsUnits,
+  rotationCount: number = 0
+): BalanceResult {
+  // 校验：被调整的工分不能为负数
+  if (newPointsUnits < 0) {
+    return {
+      adjustments: [] as AllocationResultItem[],
+      success: false,
+      message: '工分不能为负数',
+      rotationCount: rotationCount
+    } as BalanceResult
+  }
+
+  if (persons.length < 2) {
+    return {
+      adjustments: [] as AllocationResultItem[],
+      success: false,
+      message: '人员数量不足，无法平衡',
+      rotationCount: rotationCount
+    } as BalanceResult
+  }
+
+  // 1. 找到被调整的人员索引
+  let adjustedIndex = -1
+  for (let i = 0; i < persons.length; i++) {
+    if (persons[i].person_id == adjustedPersonId) {
+      adjustedIndex = i
+      break
+    }
+  }
+
+  if (adjustedIndex == -1) {
+    return {
+      adjustments: [] as AllocationResultItem[],
+      success: false,
+      message: '未找到被调整的人员',
+      rotationCount: rotationCount
+    } as BalanceResult
+  }
+
+  // 2. 计算原始总分和差额
+  let originalTotal = 0
+  for (let i = 0; i < persons.length; i++) {
+    originalTotal += persons[i].points_units
+  }
+
+  const oldPoints = persons[adjustedIndex].points_units
+  const diff = newPointsUnits - oldPoints  // 正数表示增加，负数表示减少
+
+  if (diff == 0) {
+    // 没有变化，直接返回原值
+    const result: AllocationResultItem[] = []
+    for (let i = 0; i < persons.length; i++) {
+      result.push({
+        person_id: persons[i].person_id,
+        points_units: persons[i].points_units
+      } as AllocationResultItem)
+    }
+    return {
+      adjustments: result,
+      success: true,
+      message: '无需调整',
+      rotationCount: rotationCount
+    } as BalanceResult
+  }
+
+  // 3. 计算其他人员的技能系数总和（如果为0则使用等权重）
+  let otherCoefSum = 0.0
+  let otherCount = 0
+  for (let i = 0; i < persons.length; i++) {
+    if (i != adjustedIndex) {
+      otherCoefSum += persons[i].coef
+      otherCount += 1
+    }
+  }
+
+  // 创建系数副本，避免修改原数组
+  const coefs: number[] = []
+  for (let i = 0; i < persons.length; i++) {
+    coefs.push(persons[i].coef)
+  }
+
+  if (otherCoefSum == 0) {
+    // 如果其他人员系数总和为0，使用等权重分配
+    otherCoefSum = otherCount as number
+    for (let i = 0; i < persons.length; i++) {
+      if (i != adjustedIndex) {
+        coefs[i] = 1.0
+      }
+    }
+  }
+
+  // 4. 按技能系数比例分摊差额（需要从其他人扣减/增加）
+  // 在基础分配阶段就强制 min-0
+  const adjustAmount = -diff  // 需要从其他人调整的总量
+  const newPoints: number[] = []
+
+  for (let i = 0; i < persons.length; i++) {
+    if (i == adjustedIndex) {
+      newPoints.push(newPointsUnits)
+    } else {
+      const share = (adjustAmount * coefs[i]) / otherCoefSum
+      const baseAdj = Math.floor(Math.abs(share)) * (share >= 0 ? 1 : -1)
+      let newVal = persons[i].points_units + baseAdj
+
+      // 强制 min-0：如果计算结果为负，则设为0
+      if (newVal < 0) {
+        newVal = 0
+      }
+
+      newPoints.push(newVal)
+    }
+  }
+
+  // 5. 计算剩余单位（包含因 min-0 产生的差额）
+  let adjustedSum = 0
+  for (let i = 0; i < newPoints.length; i++) {
+    adjustedSum += newPoints[i]
+  }
+  let remainingUnits = originalTotal - adjustedSum
+
+  // 6. 按技能系数排序其他人员（用于剩余单位分配）
+  const otherIndices: number[] = []
+  for (let i = 0; i < persons.length; i++) {
+    if (i != adjustedIndex) {
+      otherIndices.push(i)
+    }
+  }
+
+  // 按技能系数降序排序
+  for (let i = 0; i < otherIndices.length - 1; i++) {
+    for (let j = i + 1; j < otherIndices.length; j++) {
+      if (coefs[otherIndices[j]] > coefs[otherIndices[i]]) {
+        const temp = otherIndices[i]
+        otherIndices[i] = otherIndices[j]
+        otherIndices[j] = temp
+      }
+    }
+  }
+
+  // 7. 分配剩余单位（轮转规则）
+  let currentRotation = rotationCount
+  while (remainingUnits != 0) {
+    let targetIndex = -1
+
+    if (otherIndices.length >= 2) {
+      // 轮转规则：第一次给第一名，第二次给第二名，后续交替
+      if (currentRotation % 2 == 0) {
+        targetIndex = otherIndices[0]  // 技能系数最高
+      } else {
+        targetIndex = otherIndices[1]  // 技能系数第二高
+      }
+    } else if (otherIndices.length == 1) {
+      targetIndex = otherIndices[0]
+    }
+
+    if (targetIndex == -1) {
+      break
+    }
+
+    // 检查下限（工分不能小于0）
+    if (remainingUnits < 0 && newPoints[targetIndex] <= 0) {
+      // 尝试下一个人
+      let found = false
+      for (let k = 0; k < otherIndices.length; k++) {
+        if (newPoints[otherIndices[k]] > 0) {
+          targetIndex = otherIndices[k]
+          found = true
+          break
+        }
+      }
+      if (!found) {
+        break  // 无法继续分配
+      }
+    }
+
+    if (remainingUnits > 0) {
+      newPoints[targetIndex] += 1
+      remainingUnits -= 1
+    } else {
+      if (newPoints[targetIndex] > 0) {
+        newPoints[targetIndex] -= 1
+        remainingUnits += 1
+      } else {
+        break  // 无法继续扣减
+      }
+    }
+
+    currentRotation += 1
+  }
+
+  // 8. 构建结果
+  const adjustments: AllocationResultItem[] = []
+  for (let i = 0; i < persons.length; i++) {
+    adjustments.push({
+      person_id: persons[i].person_id,
+      points_units: newPoints[i]
+    } as AllocationResultItem)
+  }
+
+  // 验证总分
+  let finalTotal = 0
+  for (let i = 0; i < newPoints.length; i++) {
+    finalTotal += newPoints[i]
+  }
+
+  if (finalTotal != originalTotal) {
+    return {
+      adjustments: adjustments,
+      success: false,
+      message: `平衡后总分不一致：原 ${originalTotal}，现 ${finalTotal}`,
+      rotationCount: currentRotation
+    } as BalanceResult
+  }
+
+  return {
+    adjustments: adjustments,
+    success: true,
+    message: '平衡成功',
+    rotationCount: currentRotation
+  } as BalanceResult
+}

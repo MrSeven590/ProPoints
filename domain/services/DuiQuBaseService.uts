@@ -1,0 +1,300 @@
+/**
+ * 堆曲基数服务
+ * 负责获取堆曲和晾堂岗位的计分基数
+ */
+
+import { PointsUnits, RoleCode } from '../models/types.uts'
+import { getSessionsByDateAndStage } from '../../storage/storage-repository.uts'
+import { calcSessionTotalPointsUnits } from './ScoreCalculator.uts'
+import { getStageCoef, getLiangTangRoleCoef, getAllLiangTangRoleCoefs } from './StageCoefService.uts'
+
+// ============================================
+// 堆曲基数查询结果
+// ============================================
+
+/**
+ * 堆曲基数查询结果
+ */
+export type DuiQuBaseResult = {
+  totalKojiCount: number        // 当日拆曲总曲坯数
+  totalPointsUnits: PointsUnits // 堆曲总工分（整数单位）
+  hasChaiQuData: boolean        // 是否有拆曲数据
+  chaiQuSessionCount: number    // 拆曲会话数量
+  roundIds: number[]            // 涉及的轮次ID列表
+  isMixedRound: boolean         // 是否为混合轮次
+}
+
+/**
+ * 获取当日堆曲基数
+ *
+ * 业务规则：
+ * - 当日堆曲总曲坯数量 = 当日拆曲环节总曲坯数量
+ * - 汇总同一 session_date 下所有"拆曲 StageSession"的 StageBin.koji_count
+ * - 若当日存在多条拆曲录入单则求和（不区分轮次）
+ *
+ * @param date 日期 YYYY-MM-DD
+ * @returns 堆曲基数查询结果
+ */
+export function getDuiQuBase(date: string): DuiQuBaseResult {
+  // 获取当日所有拆曲会话
+  const chaiQuSessions = getSessionsByDateAndStage(date, 'CHAI_QU')
+
+  if (chaiQuSessions.length == 0) {
+    return {
+      totalKojiCount: 0,
+      totalPointsUnits: 0,
+      hasChaiQuData: false,
+      chaiQuSessionCount: 0,
+      roundIds: [] as number[],
+      isMixedRound: false
+    } as DuiQuBaseResult
+  }
+
+  // 汇总曲坯数量和轮次
+  let totalKojiCount = 0
+  const roundIdSet = new Set<number>()
+
+  for (let i = 0; i < chaiQuSessions.length; i++) {
+    const session = chaiQuSessions[i]
+
+    // 获取轮次ID
+    const roundId = session['round_id']
+    if (roundId != null) {
+      roundIdSet.add(roundId as number)
+    }
+
+    // 获取发酵仓列表
+    const bins = session['bins']
+    if (bins != null) {
+      const binList = bins as UTSJSONObject[]
+      for (let j = 0; j < binList.length; j++) {
+        const kojiCount = binList[j]['koji_count']
+        if (kojiCount != null) {
+          totalKojiCount += kojiCount as number
+        }
+      }
+    }
+  }
+
+  // 转换 Set 为数组
+  const roundIds: number[] = []
+  roundIdSet.forEach((id: number) => {
+    roundIds.push(id)
+  })
+
+  // 计算堆曲总工分
+  const duiQuCoef = getStageCoef('DUI_QU')
+  const totalPointsUnits = calcSessionTotalPointsUnits(totalKojiCount, duiQuCoef)
+
+  return {
+    totalKojiCount: totalKojiCount,
+    totalPointsUnits: totalPointsUnits,
+    hasChaiQuData: true,
+    chaiQuSessionCount: chaiQuSessions.length,
+    roundIds: roundIds,
+    isMixedRound: roundIds.length > 1
+  } as DuiQuBaseResult
+}
+
+// ============================================
+// 安曲晾堂基数查询结果
+// ============================================
+
+/**
+ * 安曲晾堂基数查询结果
+ */
+export type AnQuLiangTangBaseResult = {
+  totalKojiCount: number        // 当日安曲总曲坯数
+  hasAnQuData: boolean          // 是否有安曲数据
+  anQuSessionCount: number      // 安曲会话数量
+}
+
+/**
+ * 获取当日安曲晾堂基数
+ *
+ * 业务规则：
+ * - 晾堂岗位基数 = 当日安曲环节总曲坯数
+ * - 汇总同一 session_date 下所有"安曲 StageSession"的 StageBin.koji_count
+ *
+ * @param date 日期 YYYY-MM-DD
+ * @returns 安曲晾堂基数查询结果
+ */
+export function getAnQuLiangTangBase(date: string): AnQuLiangTangBaseResult {
+  // 获取当日所有安曲会话
+  const anQuSessions = getSessionsByDateAndStage(date, 'AN_QU')
+
+  if (anQuSessions.length == 0) {
+    return {
+      totalKojiCount: 0,
+      hasAnQuData: false,
+      anQuSessionCount: 0
+    } as AnQuLiangTangBaseResult
+  }
+
+  // 汇总曲坯数量
+  let totalKojiCount = 0
+
+  for (let i = 0; i < anQuSessions.length; i++) {
+    const session = anQuSessions[i]
+
+    // 获取发酵仓列表
+    const bins = session['bins']
+    if (bins != null) {
+      const binList = bins as UTSJSONObject[]
+      for (let j = 0; j < binList.length; j++) {
+        const kojiCount = binList[j]['koji_count']
+        if (kojiCount != null) {
+          totalKojiCount += kojiCount as number
+        }
+      }
+    }
+  }
+
+  return {
+    totalKojiCount: totalKojiCount,
+    hasAnQuData: true,
+    anQuSessionCount: anQuSessions.length
+  } as AnQuLiangTangBaseResult
+}
+
+// ============================================
+// 晾堂岗位工分计算
+// ============================================
+
+/**
+ * 晾堂岗位工分结果
+ */
+export type LiangTangPoolResult = {
+  roleCode: RoleCode
+  roleName: string
+  coef: number
+  totalPointsUnits: PointsUnits
+}
+
+/**
+ * 计算所有晾堂岗位的工分池子
+ * 系数从 StageCoefService 统一获取，避免硬编码
+ *
+ * @param dailyAnQuKojiCount 当日安曲总曲坯数
+ * @param microEnabled 微机是否有计分权
+ * @returns 晾堂岗位工分结果列表
+ */
+export function calcAllLiangTangPools(
+  dailyAnQuKojiCount: number,
+  microEnabled: boolean
+): LiangTangPoolResult[] {
+  const results: LiangTangPoolResult[] = []
+
+  // 从 StageCoefService 获取所有晾堂岗位配置
+  const allRoleCoefs = getAllLiangTangRoleCoefs()
+
+  for (let i = 0; i < allRoleCoefs.length; i++) {
+    const roleConfig = allRoleCoefs[i]
+
+    // 微机岗位需要检查是否有计分权
+    if (roleConfig.role_code == 'MICRO_OPERATOR' && !microEnabled) {
+      continue
+    }
+
+    const coef = getLiangTangRoleCoef(roleConfig.role_code)
+    const totalUnits = calcSessionTotalPointsUnits(dailyAnQuKojiCount, coef)
+
+    results.push({
+      roleCode: roleConfig.role_code,
+      roleName: roleConfig.role_name,
+      coef: coef,
+      totalPointsUnits: totalUnits
+    } as LiangTangPoolResult)
+  }
+
+  return results
+}
+
+// ============================================
+// 发酵仓曲坯数量查询
+// ============================================
+
+/**
+ * 发酵仓曲坯数量查询结果
+ */
+export type BinKojiCountResult = {
+  binId: number
+  binCode: string
+  kojiCount: number
+  found: boolean
+}
+
+/**
+ * 获取发酵仓的曲坯数量（从安曲记录中查询）
+ *
+ * 业务规则：
+ * - 每个发酵仓的曲坯数量仅在安曲环节录入一次
+ * - 后续环节（一翻/二翻/拆曲）自动使用该仓安曲已录入的曲坯数量
+ *
+ * @param binId 发酵仓ID
+ * @returns 曲坯数量查询结果
+ */
+export function getBinKojiCountFromAnQu(binId: number): BinKojiCountResult {
+  // 获取所有存储的会话数据，查找该发酵仓的安曲记录
+  // 注意：这里需要遍历历史数据，实际实现可能需要优化
+
+  // 由于 uni.getStorageInfoSync 返回所有 key，我们需要遍历查找
+  const storageInfo = uni.getStorageInfoSync()
+  const keys = storageInfo.keys
+
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i]
+    // 只处理安曲会话
+    if (key.indexOf(':AN_QU:') == -1) {
+      continue
+    }
+
+    const data = uni.getStorageSync(key)
+    if (data == null || data == '') {
+      continue
+    }
+
+    const session = data as UTSJSONObject
+    const bins = session['bins']
+    if (bins == null) {
+      continue
+    }
+
+    const binList = bins as UTSJSONObject[]
+    for (let j = 0; j < binList.length; j++) {
+      const bin = binList[j]
+      const id = bin['bin_id']
+      if (id != null && (id as number) == binId) {
+        const kojiCount = bin['koji_count']
+        const binCode = bin['bin_code']
+        return {
+          binId: binId,
+          binCode: binCode != null ? binCode as string : '',
+          kojiCount: kojiCount != null ? kojiCount as number : 0,
+          found: true
+        } as BinKojiCountResult
+      }
+    }
+  }
+
+  return {
+    binId: binId,
+    binCode: '',
+    kojiCount: 0,
+    found: false
+  } as BinKojiCountResult
+}
+
+/**
+ * 批量获取发酵仓的曲坯数量
+ *
+ * @param binIds 发酵仓ID列表
+ * @returns 曲坯数量查询结果列表
+ */
+export function getBinKojiCountsFromAnQu(binIds: number[]): BinKojiCountResult[] {
+  const results: BinKojiCountResult[] = []
+  for (let i = 0; i < binIds.length; i++) {
+    results.push(getBinKojiCountFromAnQu(binIds[i]))
+  }
+  return results
+}

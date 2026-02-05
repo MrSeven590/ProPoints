@@ -1,0 +1,336 @@
+/**
+ * 工序系数配置服务
+ * 管理各环节的工序系数
+ * 优先从存储层读取配置，硬编码作为默认值
+ */
+
+import { StageCode, Scope, RoleCode } from '../models/types.uts'
+import { loadCoefConfig, loadStageRoleDefaults } from '../../storage/storage-repository.uts'
+
+// ============================================
+// 工序系数配置
+// ============================================
+
+/**
+ * 工序系数配置类型
+ */
+export type StageCoefConfig = {
+  stage_code: StageCode
+  stage_name: string
+  coef: number
+}
+
+/**
+ * 默认工序系数表（硬编码备用）
+ * 根据 PRD 定义的系数
+ */
+const DEFAULT_STAGE_COEFS: StageCoefConfig[] = [
+  { stage_code: 'AN_QU', stage_name: '安曲', coef: 1.1 } as StageCoefConfig,
+  { stage_code: 'YI_FAN', stage_name: '一次翻曲', coef: 1.25 } as StageCoefConfig,
+  { stage_code: 'ER_FAN', stage_name: '二次翻曲', coef: 0.9 } as StageCoefConfig,
+  { stage_code: 'CHAI_QU', stage_name: '拆曲', coef: 1.12 } as StageCoefConfig,
+  { stage_code: 'DUI_QU', stage_name: '堆曲', coef: 0.29 } as StageCoefConfig
+]
+
+/**
+ * 获取工序系数
+ * 优先从存储层读取，未找到则使用硬编码默认值
+ * @param stageCode 工序代码
+ * @returns 工序系数，未找到返回 1.0
+ */
+export function getStageCoef(stageCode: StageCode): number {
+  // 尝试从存储层读取
+  const config = loadCoefConfig()
+  if (config != null) {
+    const stages = config['stages']
+    if (stages != null) {
+      const stagesObj = stages as UTSJSONObject
+      const coef = stagesObj[stageCode]
+      if (coef != null) {
+        return coef as number
+      }
+    }
+  }
+
+  // 回退到硬编码默认值
+  for (let i = 0; i < DEFAULT_STAGE_COEFS.length; i++) {
+    if (DEFAULT_STAGE_COEFS[i].stage_code == stageCode) {
+      return DEFAULT_STAGE_COEFS[i].coef
+    }
+  }
+  return 1.0
+}
+
+/**
+ * 获取所有工序系数配置
+ * 返回的 coef 值从存储层读取，确保与 getStageCoef() 一致
+ * @returns 工序系数配置列表
+ */
+export function getAllStageCoefs(): StageCoefConfig[] {
+  const result: StageCoefConfig[] = []
+  for (let i = 0; i < DEFAULT_STAGE_COEFS.length; i++) {
+    const defaultConfig = DEFAULT_STAGE_COEFS[i]
+    result.push({
+      stage_code: defaultConfig.stage_code,
+      stage_name: defaultConfig.stage_name,
+      coef: getStageCoef(defaultConfig.stage_code)  // 从存储层获取实际系数
+    } as StageCoefConfig)
+  }
+  return result
+}
+
+/**
+ * 获取工序名称
+ * @param stageCode 工序代码
+ * @returns 工序名称
+ */
+export function getStageNameByCode(stageCode: StageCode): string {
+  for (let i = 0; i < DEFAULT_STAGE_COEFS.length; i++) {
+    if (DEFAULT_STAGE_COEFS[i].stage_code == stageCode) {
+      return DEFAULT_STAGE_COEFS[i].stage_name
+    }
+  }
+  return '未知工序'
+}
+
+// ============================================
+// 晾堂岗位系数配置
+// ============================================
+
+/**
+ * 晾堂岗位系数配置类型
+ */
+export type LiangTangRoleCoefConfig = {
+  role_code: RoleCode
+  role_name: string
+  coef: number
+}
+
+/**
+ * 晾堂岗位系数表（硬编码备用）
+ */
+const LIANG_TANG_ROLE_COEFS: LiangTangRoleCoefConfig[] = [
+  { role_code: 'WHEAT_MATERIAL', role_name: '麦料', coef: 0.85 } as LiangTangRoleCoefConfig,
+  { role_code: 'MACHINE_GUARD', role_name: '守机', coef: 0.8 } as LiangTangRoleCoefConfig,
+  { role_code: 'KOJI_UNLOADER', role_name: '下曲', coef: 0.8 } as LiangTangRoleCoefConfig,
+  { role_code: 'MICRO_OPERATOR', role_name: '微机', coef: 0.7 } as LiangTangRoleCoefConfig
+]
+
+/**
+ * 获取晾堂岗位系数
+ * 优先从存储层读取，未找到则使用硬编码默认值
+ * @param roleCode 岗位代码
+ * @returns 岗位系数，未找到返回 0
+ */
+export function getLiangTangRoleCoef(roleCode: RoleCode): number {
+  // 尝试从存储层读取
+  const config = loadCoefConfig()
+  if (config != null) {
+    const liangTang = config['liangTang']
+    if (liangTang != null) {
+      const liangTangObj = liangTang as UTSJSONObject
+      const coef = liangTangObj[roleCode]
+      if (coef != null) {
+        return coef as number
+      }
+    }
+  }
+
+  // 回退到硬编码默认值
+  for (let i = 0; i < LIANG_TANG_ROLE_COEFS.length; i++) {
+    if (LIANG_TANG_ROLE_COEFS[i].role_code == roleCode) {
+      return LIANG_TANG_ROLE_COEFS[i].coef
+    }
+  }
+  return 0
+}
+
+/**
+ * 获取所有晾堂岗位系数配置
+ * 返回的 coef 值从存储层读取，确保与 getLiangTangRoleCoef() 一致
+ * @returns 晾堂岗位系数配置列表
+ */
+export function getAllLiangTangRoleCoefs(): LiangTangRoleCoefConfig[] {
+  const result: LiangTangRoleCoefConfig[] = []
+  for (let i = 0; i < LIANG_TANG_ROLE_COEFS.length; i++) {
+    const defaultConfig = LIANG_TANG_ROLE_COEFS[i]
+    result.push({
+      role_code: defaultConfig.role_code,
+      role_name: defaultConfig.role_name,
+      coef: getLiangTangRoleCoef(defaultConfig.role_code)  // 从存储层获取实际系数
+    } as LiangTangRoleCoefConfig)
+  }
+  return result
+}
+
+/**
+ * 判断岗位是否为晾堂岗位
+ * @param roleCode 岗位代码
+ * @returns 是否为晾堂岗位
+ */
+export function isLiangTangRole(roleCode: RoleCode): boolean {
+  for (let i = 0; i < LIANG_TANG_ROLE_COEFS.length; i++) {
+    if (LIANG_TANG_ROLE_COEFS[i].role_code == roleCode) {
+      return true
+    }
+  }
+  return false
+}
+
+// ============================================
+// 环节-岗位配置
+// ============================================
+
+/**
+ * 环节岗位配置类型
+ */
+export type StageRoleConfig = {
+  stage_code: StageCode
+  role_code: RoleCode
+  scope: Scope
+  default_count: number
+  is_required: boolean
+}
+
+/**
+ * 默认环节-岗位配置
+ * 根据 PRD 定义的标准人员配置
+ */
+const DEFAULT_STAGE_ROLE_CONFIGS: StageRoleConfig[] = [
+  // 安曲
+  { stage_code: 'AN_QU', role_code: 'BIN_WORKER', scope: 'BIN', default_count: 4, is_required: true } as StageRoleConfig,
+  { stage_code: 'AN_QU', role_code: 'CART_PULLER', scope: 'CROSS_BIN', default_count: 1, is_required: false } as StageRoleConfig,
+  { stage_code: 'AN_QU', role_code: 'WHEAT_MATERIAL', scope: 'SESSION', default_count: 1, is_required: false } as StageRoleConfig,
+  { stage_code: 'AN_QU', role_code: 'MACHINE_GUARD', scope: 'SESSION', default_count: 1, is_required: false } as StageRoleConfig,
+  { stage_code: 'AN_QU', role_code: 'KOJI_UNLOADER', scope: 'SESSION', default_count: 1, is_required: false } as StageRoleConfig,
+  { stage_code: 'AN_QU', role_code: 'MICRO_OPERATOR', scope: 'SESSION', default_count: 1, is_required: false } as StageRoleConfig,
+
+  // 一次翻曲
+  { stage_code: 'YI_FAN', role_code: 'BIN_WORKER', scope: 'BIN', default_count: 5, is_required: true } as StageRoleConfig,
+  { stage_code: 'YI_FAN', role_code: 'HELPER', scope: 'CROSS_BIN', default_count: 1, is_required: false } as StageRoleConfig,
+
+  // 二次翻曲
+  { stage_code: 'ER_FAN', role_code: 'BIN_WORKER', scope: 'BIN', default_count: 4, is_required: true } as StageRoleConfig,
+
+  // 拆曲
+  { stage_code: 'CHAI_QU', role_code: 'BIN_WORKER', scope: 'BIN', default_count: 5, is_required: true } as StageRoleConfig,
+  { stage_code: 'CHAI_QU', role_code: 'CART_PULLER', scope: 'CROSS_BIN', default_count: 1, is_required: false } as StageRoleConfig,
+
+  // 堆曲
+  { stage_code: 'DUI_QU', role_code: 'STACKING_WORKER', scope: 'SESSION', default_count: 3, is_required: true } as StageRoleConfig
+]
+
+/**
+ * 获取环节的岗位配置列表
+ * 优先从存储层读取，未找到则使用硬编码默认值
+ * @param stageCode 环节代码
+ * @returns 岗位配置列表
+ */
+export function getStageRoleConfigs(stageCode: StageCode): StageRoleConfig[] {
+  // 尝试从存储层读取
+  const storedDefaults = loadStageRoleDefaults()
+  if (storedDefaults.length > 0) {
+    const result: StageRoleConfig[] = []
+    for (let i = 0; i < storedDefaults.length; i++) {
+      const item = storedDefaults[i]
+      const itemStageCode = item['stageCode']
+      if (itemStageCode != null && (itemStageCode as string) == stageCode) {
+        const roleCode = item['roleCode']
+        const defaultCount = item['defaultCount']
+        const isRequired = item['isRequired']
+        // 从 roleTypes 获取 scope（或使用默认值）
+        let scope: Scope = 'BIN'
+        // 根据 roleCode 推断 scope
+        const rc = roleCode as string
+        if (rc == 'CART_PULLER' || rc == 'HELPER') {
+          scope = 'CROSS_BIN'
+        } else if (rc == 'WHEAT_MATERIAL' || rc == 'MACHINE_GUARD' || rc == 'KOJI_UNLOADER' || rc == 'MICRO_OPERATOR' || rc == 'STACKING_WORKER') {
+          scope = 'SESSION'
+        }
+        result.push({
+          stage_code: stageCode,
+          role_code: roleCode as RoleCode,
+          scope: scope,
+          default_count: defaultCount != null ? defaultCount as number : 1,
+          is_required: isRequired != null ? isRequired as boolean : false
+        } as StageRoleConfig)
+      }
+    }
+    if (result.length > 0) {
+      return result
+    }
+  }
+
+  // 回退到硬编码默认值
+  const result: StageRoleConfig[] = []
+  for (let i = 0; i < DEFAULT_STAGE_ROLE_CONFIGS.length; i++) {
+    if (DEFAULT_STAGE_ROLE_CONFIGS[i].stage_code == stageCode) {
+      result.push(DEFAULT_STAGE_ROLE_CONFIGS[i])
+    }
+  }
+  return result
+}
+
+/**
+ * 获取环节的仓内默认人数
+ * 优先从存储层读取，未找到则使用硬编码默认值
+ * @param stageCode 环节代码
+ * @returns 默认人数
+ */
+export function getStageBinWorkerCount(stageCode: StageCode): number {
+  // 尝试从存储层读取
+  const storedDefaults = loadStageRoleDefaults()
+  if (storedDefaults.length > 0) {
+    for (let i = 0; i < storedDefaults.length; i++) {
+      const item = storedDefaults[i]
+      const itemStageCode = item['stageCode']
+      const roleCode = item['roleCode']
+      if (itemStageCode != null && (itemStageCode as string) == stageCode &&
+          roleCode != null && (roleCode as string) == 'BIN_WORKER') {
+        const defaultCount = item['defaultCount']
+        if (defaultCount != null) {
+          return defaultCount as number
+        }
+      }
+    }
+  }
+
+  // 回退到硬编码默认值
+  for (let i = 0; i < DEFAULT_STAGE_ROLE_CONFIGS.length; i++) {
+    const config = DEFAULT_STAGE_ROLE_CONFIGS[i]
+    if (config.stage_code == stageCode && config.role_code == 'BIN_WORKER') {
+      return config.default_count
+    }
+  }
+  return 4  // 默认4人
+}
+
+/**
+ * 判断环节是否有跨仓岗位
+ * @param stageCode 环节代码
+ * @returns 是否有跨仓岗位
+ */
+export function stageHasCrossBinRole(stageCode: StageCode): boolean {
+  for (let i = 0; i < DEFAULT_STAGE_ROLE_CONFIGS.length; i++) {
+    const config = DEFAULT_STAGE_ROLE_CONFIGS[i]
+    if (config.stage_code == stageCode && config.scope == 'CROSS_BIN') {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * 判断环节是否有会话岗位
+ * @param stageCode 环节代码
+ * @returns 是否有会话岗位
+ */
+export function stageHasSessionRole(stageCode: StageCode): boolean {
+  for (let i = 0; i < DEFAULT_STAGE_ROLE_CONFIGS.length; i++) {
+    const config = DEFAULT_STAGE_ROLE_CONFIGS[i]
+    if (config.stage_code == stageCode && config.scope == 'SESSION') {
+      return true
+    }
+  }
+  return false
+}
