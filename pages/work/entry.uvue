@@ -29,7 +29,13 @@
 
       <view class="section">
         <text class="section-title">人员分配</text>
-        <text class="placeholder-text">人员分配区域（待实现）</text>
+        <biz-worker-selector-pinyin
+          :selectedPersonId="selectedPersonId"
+          :occupiedIds="occupiedIds"
+          placeholder="搜索姓名/拼音"
+          @select="onPersonSelect"
+          @clear="onPersonClear"
+        />
       </view>
     </scroll-view>
 
@@ -56,7 +62,10 @@
         stageName: '安曲',
         sessionDate: '',
         showBinSection: true,
-        selectedBins: [] as BinCode[]
+        selectedBins: [] as BinCode[],
+        // 人员选择相关
+        selectedPersonId: null as number | null,
+        occupiedIds: [] as number[]
       }
     },
     onLoad(options: UTSJSONObject) {
@@ -72,6 +81,29 @@
     methods: {
       onBinsChange(bins: BinCode[]) {
         this.selectedBins = bins
+      },
+      onPersonSelect(payload: UTSJSONObject) {
+        const id = payload['id'] as number
+        const name = payload['name'] as string
+        this.selectedPersonId = id
+        // 将已选人员加入占用列表（演示互斥机制）
+        if (this.occupiedIds.indexOf(id) == -1) {
+          this.occupiedIds.push(id)
+        }
+        uni.showToast({
+          title: '已选择: ' + name,
+          icon: 'none'
+        })
+      },
+      onPersonClear() {
+        // 从占用列表移除
+        if (this.selectedPersonId != null) {
+          const idx = this.occupiedIds.indexOf(this.selectedPersonId as number)
+          if (idx != -1) {
+            this.occupiedIds.splice(idx, 1)
+          }
+        }
+        this.selectedPersonId = null
       },
       saveDraft() {
         uni.showToast({

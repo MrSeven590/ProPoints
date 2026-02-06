@@ -1,0 +1,7 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/shared/index.md", "reason": "Shared coding standards"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/components.md", "reason": "Component conventions"}
+{"file": "components/biz-bin-selector/biz-bin-selector.uvue", "reason": "参考选择器组件结构"}
+{"file": "domain/services/PersonSearchService.uts", "reason": "复用拼音搜索服务"}
+{"file": "domain/models/person.uts", "reason": "人员类型定义"}

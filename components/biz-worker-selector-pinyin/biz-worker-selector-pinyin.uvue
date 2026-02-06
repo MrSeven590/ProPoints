@@ -1,0 +1,460 @@
+<template>
+  <view class="worker-selector">
+    <!-- 搜索栏 -->
+    <view class="search-bar">
+      <view class="search-input-wrapper">
+        <text class="search-icon">S</text>
+        <input
+          class="search-input"
+          type="text"
+          :placeholder="placeholder"
+          :value="keyword"
+          @input="onSearchInput"
+        />
+        <view v-if="keyword.length > 0" class="clear-icon" @click="onClearKeyword">
+          <text class="clear-icon-text">X</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 当前选中提示 -->
+    <view v-if="selectedPersonId != null" class="selection-info">
+      <text class="selection-text">已选择: {{ selectedPersonName }}</text>
+      <view class="clear-btn" @click="onClearSelection">
+        <text class="clear-btn-text">清空</text>
+      </view>
+    </view>
+
+    <!-- 人员列表 -->
+    <scroll-view class="person-list" scroll-y="true">
+      <!-- 搜索模式：平铺列表 -->
+      <view v-if="keyword.length > 0" class="search-results">
+        <view
+          v-for="person in filteredPersons"
+          :key="person.id"
+          class="person-item"
+          :class="getPersonItemClass(person)"
+          @click="onPersonClick(person)"
+        >
+          <text class="person-name" :class="getPersonNameClass(person)">{{ person.name }}</text>
+          <text v-if="isPersonSelected(person)" class="selected-mark">V</text>
+          <text v-if="isPersonOccupied(person)" class="occupied-mark">(已占用)</text>
+        </view>
+        <view v-if="filteredPersons.length == 0" class="empty-hint">
+          <text class="empty-hint-text">无匹配结果</text>
+        </view>
+      </view>
+
+      <!-- 非搜索模式：按拼音首字母分组 -->
+      <view v-else class="grouped-list">
+        <view v-for="letter in groupKeys" :key="letter" class="letter-group">
+          <view class="letter-header">
+            <text class="letter-text">{{ letter }}</text>
+          </view>
+          <view
+            v-for="person in getGroupPersons(letter)"
+            :key="person.id"
+            class="person-item"
+            :class="getPersonItemClass(person)"
+            @click="onPersonClick(person)"
+          >
+            <text class="person-name" :class="getPersonNameClass(person)">{{ person.name }}</text>
+            <text v-if="isPersonSelected(person)" class="selected-mark">V</text>
+            <text v-if="isPersonOccupied(person)" class="occupied-mark">(已占用)</text>
+          </view>
+        </view>
+        <view v-if="groupKeys.length == 0" class="empty-hint">
+          <text class="empty-hint-text">暂无人员数据</text>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+</template>
+
+<script lang="uts">
+  import { loadPersons } from '../../storage/storage-repository.uts'
+  import {
+    searchPersons,
+    groupByPinyinInitial,
+    getNonEmptyGroupKeys
+  } from '../../domain/services/PersonSearchService.uts'
+  import type { SearchablePerson } from '../../domain/services/PersonSearchService.uts'
+
+  export default {
+    props: {
+      selectedPersonId: {
+        type: Number,
+        default: null
+      },
+      occupiedIds: {
+        type: Array,
+        default: (): number[] => {
+          return [] as number[]
+        }
+      },
+      placeholder: {
+        type: String,
+        default: '搜索姓名/拼音'
+      }
+    },
+    emits: ['select', 'clear'],
+    data() {
+      return {
+        keyword: '' as string,
+        allPersons: [] as SearchablePerson[],
+        filteredPersons: [] as SearchablePerson[],
+        groupedPersons: new Map<string, SearchablePerson[]>(),
+        groupKeys: [] as string[],
+        debounceTimer: 0 as number,
+        occupiedIdSet: new Map<number, boolean>(),
+        // O(1) 查找人员姓名的索引
+        personNameMap: new Map<number, string>()
+      }
+    },
+    computed: {
+      selectedPersonName(): string {
+        if (this.selectedPersonId == null) {
+          return ''
+        }
+        const id = this.selectedPersonId as number
+        // O(1) 查找，优化自 O(n) 遍历
+        const name = this.personNameMap.get(id)
+        return name != null ? name : ''
+      }
+    },
+    watch: {
+      occupiedIds: {
+        handler(newVal: number[]) {
+          this.rebuildOccupiedIdSet(newVal)
+        },
+        immediate: true
+      }
+    },
+    mounted() {
+      this.initData()
+    },
+    beforeUnmount() {
+      // 清理定时器，避免组件卸载后回调执行
+      if (this.debounceTimer != 0) {
+        clearTimeout(this.debounceTimer)
+        this.debounceTimer = 0
+      }
+    },
+    methods: {
+      rebuildOccupiedIdSet(ids: number[]) {
+        const set = new Map<number, boolean>()
+        for (let i = 0; i < ids.length; i++) {
+          set.set(ids[i], true)
+        }
+        this.occupiedIdSet = set
+      },
+
+      initData() {
+        // 加载人员数据
+        const personsData = loadPersons()
+        const persons: SearchablePerson[] = []
+        const nameMap = new Map<number, string>()
+        for (let i = 0; i < personsData.length; i++) {
+          const p = personsData[i]
+          const id = p['id']
+          const name = p['name']
+          const isActive = p['is_active']
+          if (id != null && name != null) {
+            // 只加载激活的人员
+            const activeVal = isActive != null ? (isActive as number) : 1
+            if (activeVal == 1) {
+              const personId = id as number
+              const personName = name as string
+              const person: SearchablePerson = {
+                id: personId,
+                name: personName,
+                is_active: activeVal
+              }
+              persons.push(person)
+              // 构建 id -> name 索引，用于 O(1) 查找
+              nameMap.set(personId, personName)
+            }
+          }
+        }
+        this.allPersons = persons
+        this.personNameMap = nameMap
+
+        // 初始化分组
+        this.updateGroupedData()
+
+        // 初始化占用ID集合
+        this.rebuildOccupiedIdSet(this.occupiedIds as number[])
+      },
+
+      updateGroupedData() {
+        const groups = groupByPinyinInitial(this.allPersons)
+        this.groupedPersons = groups
+        this.groupKeys = getNonEmptyGroupKeys(groups)
+      },
+
+      onSearchInput(e: UniInputEvent) {
+        const value = e.detail.value
+        this.keyword = value
+
+        // 清除之前的定时器
+        if (this.debounceTimer != 0) {
+          clearTimeout(this.debounceTimer)
+        }
+
+        // 设置防抖定时器 300ms
+        this.debounceTimer = setTimeout(() => {
+          this.doSearch()
+        }, 300)
+      },
+
+      doSearch() {
+        // trim 处理，避免空格导致误判
+        const trimmedKeyword = this.keyword.trim()
+        if (trimmedKeyword.length == 0) {
+          this.filteredPersons = []
+          return
+        }
+        this.filteredPersons = searchPersons(trimmedKeyword, this.allPersons)
+      },
+
+      onClearKeyword() {
+        this.keyword = ''
+        this.filteredPersons = []
+        if (this.debounceTimer != 0) {
+          clearTimeout(this.debounceTimer)
+          this.debounceTimer = 0
+        }
+      },
+
+      getGroupPersons(letter: string): SearchablePerson[] {
+        const group = this.groupedPersons.get(letter)
+        if (group != null) {
+          return group
+        }
+        return [] as SearchablePerson[]
+      },
+
+      isPersonOccupied(person: SearchablePerson): boolean {
+        return this.occupiedIdSet.has(person.id)
+      },
+
+      isPersonSelected(person: SearchablePerson): boolean {
+        if (this.selectedPersonId == null) {
+          return false
+        }
+        return person.id == (this.selectedPersonId as number)
+      },
+
+      getPersonItemClass(person: SearchablePerson): string {
+        if (this.isPersonOccupied(person)) {
+          return 'person-item-disabled'
+        }
+        if (this.isPersonSelected(person)) {
+          return 'person-item-selected'
+        }
+        return ''
+      },
+
+      getPersonNameClass(person: SearchablePerson): string {
+        if (this.isPersonOccupied(person)) {
+          return 'person-name-disabled'
+        }
+        if (this.isPersonSelected(person)) {
+          return 'person-name-selected'
+        }
+        return ''
+      },
+
+      onPersonClick(person: SearchablePerson) {
+        // 已占用的人员不可点击
+        if (this.isPersonOccupied(person)) {
+          return
+        }
+
+        // 使用 UTSJSONObject 发送，确保跨组件类型兼容
+        const payload = {
+          id: person.id,
+          name: person.name
+        } as UTSJSONObject
+        this.$emit('select', payload)
+      },
+
+      onClearSelection() {
+        this.$emit('clear')
+      }
+    }
+  }
+</script>
+
+<style>
+  .worker-selector {
+    background-color: #ffffff;
+    border-radius: 12px;
+    padding: 16px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #ebebeb;
+  }
+
+  /* 搜索栏 */
+  .search-bar {
+    margin-bottom: 12px;
+  }
+
+  .search-input-wrapper {
+    flex-direction: row;
+    align-items: center;
+    background-color: #f5f7fa;
+    border-radius: 8px;
+    padding: 8px 12px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+  }
+
+  .search-icon {
+    font-size: 14px;
+    color: #999999;
+    margin-right: 8px;
+  }
+
+  .search-input {
+    flex: 1;
+    font-size: 14px;
+    color: #333333;
+    background-color: transparent;
+  }
+
+  .clear-icon {
+    width: 20px;
+    height: 20px;
+    justify-content: center;
+    align-items: center;
+    background-color: #cccccc;
+    border-radius: 10px;
+    margin-left: 8px;
+  }
+
+  .clear-icon-text {
+    font-size: 12px;
+    color: #ffffff;
+  }
+
+  /* 选择信息 */
+  .selection-info {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    background-color: #e6f7ff;
+    border-radius: 6px;
+  }
+
+  .selection-text {
+    font-size: 13px;
+    color: #007aff;
+  }
+
+  .clear-btn {
+    padding: 4px 10px;
+    background-color: #fff0f0;
+    border-radius: 4px;
+  }
+
+  .clear-btn-text {
+    font-size: 12px;
+    color: #ff4d4f;
+  }
+
+  /* 人员列表 */
+  .person-list {
+    max-height: 300px;
+  }
+
+  .search-results {
+    flex-direction: column;
+  }
+
+  .grouped-list {
+    flex-direction: column;
+  }
+
+  /* 字母分组 */
+  .letter-group {
+    margin-bottom: 8px;
+  }
+
+  .letter-header {
+    padding: 4px 8px;
+    background-color: #f0f2f5;
+    border-radius: 4px;
+    margin-bottom: 4px;
+  }
+
+  .letter-text {
+    font-size: 13px;
+    font-weight: bold;
+    color: #666666;
+  }
+
+  /* 人员项 */
+  .person-item {
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 12px;
+    background-color: #ffffff;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #f0f0f0;
+  }
+
+  .person-item-selected {
+    background-color: #007aff;
+    border-color: #007aff;
+  }
+
+  .person-item-disabled {
+    background-color: #f5f5f5;
+    border-color: #e8e8e8;
+  }
+
+  .person-name {
+    flex: 1;
+    font-size: 14px;
+    color: #333333;
+  }
+
+  .person-name-selected {
+    color: #ffffff;
+  }
+
+  .person-name-disabled {
+    color: #bbbbbb;
+  }
+
+  .selected-mark {
+    font-size: 12px;
+    color: #ffffff;
+    margin-left: 8px;
+  }
+
+  .occupied-mark {
+    font-size: 11px;
+    color: #999999;
+    margin-left: 8px;
+  }
+
+  /* 空状态提示 */
+  .empty-hint {
+    padding: 20px;
+    align-items: center;
+  }
+
+  .empty-hint-text {
+    font-size: 13px;
+    color: #999999;
+  }
+</style>

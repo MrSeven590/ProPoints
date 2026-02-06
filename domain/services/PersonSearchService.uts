@@ -7,11 +7,22 @@ import { getInitials, pinyinMatch } from '@/uni_modules/MrS590-pinyin-match'
 
 /**
  * 人员数据类型（简化版，用于搜索）
+ *
+ * 预计算索引字段说明（预留，当前未使用）：
+ * - name_pinyin_full: 姓名全拼（如 "zhangsan"），用于全拼搜索加速
+ * - name_pinyin_initials: 姓名首字母（如 "zs"），用于首字母搜索加速
+ *
+ * 当前搜索使用 pinyinMatch 实时计算，适用于 < 500 人的场景。
+ * 若人员规模增长（> 1000 人），可在 roster-import 时生成这两个字段，
+ * 搜索时直接用 indexOf 匹配，将复杂度从 O(n × m) 降为 O(n)。
  */
 export type SearchablePerson = {
   id: number
   name: string
   is_active: number
+  // 预留：预计算拼音索引字段（当前未使用，后续可按需启用）
+  // name_pinyin_full: string | null     // 全拼，如 "zhangsan"
+  // name_pinyin_initials: string | null // 首字母，如 "zs"
 }
 
 /**
