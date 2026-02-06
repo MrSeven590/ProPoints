@@ -119,6 +119,57 @@ if (arg instanceof Foo) {
 
 ---
 
+## Cross-Component Type Passing
+
+### 问题：名义类型系统导致的类型不兼容
+
+UTS 采用名义类型系统（nominal typing），即使两个组件定义了结构完全相同的 type，它们也是不同的类型。
+
+```typescript
+// ❌ 错误：父组件和子组件各自定义相同结构的类型
+// 父组件 entry.uvue
+type StageBinInfo = { bin_id: number; bin_code: string }
+data() { return { bins: [] as StageBinInfo[] } }
+
+// 子组件 biz-cross-bin-input.uvue
+type StageBinInfo = { bin_id: number; bin_code: string }  // 结构相同但是不同类型！
+props: { bins: { type: Array, default: (): StageBinInfo[] => [] } }
+
+// 运行时报错：ClassCastException: StageBinInfoReactiveObject cannot be cast to StageBinInfo
+```
+
+### 最佳实践：共享类型定义
+
+将跨组件使用的类型定义在公共位置，父子组件 import 同一个类型：
+
+```typescript
+// ✅ 正确：在公共位置定义类型
+// domain/models/ferment.uts
+export type StageBinInfo = {
+  bin_id: number
+  stage_bin_id: number
+  koji_count: number
+  bin_code: string
+}
+
+// 父组件 entry.uvue
+import { StageBinInfo } from '../../domain/models/ferment.uts'
+data() { return { bins: [] as StageBinInfo[] } }
+
+// 子组件 biz-cross-bin-input.uvue
+import { StageBinInfo } from '../../domain/models/ferment.uts'
+props: { bins: { type: Array, default: (): StageBinInfo[] => [] } }
+```
+
+### 方案对比
+
+| 方案 | 做法 | 优点 | 缺点 |
+|------|------|------|------|
+| **最佳实践** | 公共位置定义类型，父子组件 import 同一类型 | 类型安全、点号访问、IDE 提示 | 需要额外类型文件 |
+| 妥协方案 | 使用 `UTSJSONObject[]` 传递 | 无需公共类型文件 | 失去类型安全、需下标访问 |
+
+---
+
 ## References
 
 - [UTS 官方文档](https://doc.dcloud.net.cn/uni-app-x/uts/)

@@ -18,6 +18,7 @@
         </view>
       </view>
 
+      <!-- 发酵仓选择（非堆曲环节） -->
       <view class="section" v-if="showBinSection">
         <text class="section-title">发酵仓选择</text>
         <biz-bin-selector
@@ -27,15 +28,38 @@
         />
       </view>
 
-      <view class="section">
-        <text class="section-title">人员分配</text>
-        <biz-worker-selector-pinyin
-          :selectedPersonId="selectedPersonId"
-          :occupiedIds="occupiedIds"
-          placeholder="搜索姓名/拼音"
-          @select="onPersonSelect"
-          @clear="onPersonClear"
+      <!-- 跨仓岗位区域（CROSS_BIN） -->
+      <view class="section" v-if="showCrossBinSection">
+        <view class="section-header">
+          <text class="section-title">跨仓岗位</text>
+          <view class="remove-btn" @click="onRemoveCrossBin">
+            <text class="remove-btn-text">移除</text>
+          </view>
+        </view>
+        <biz-cross-bin-input
+          :stageCode="stageCode"
+          :bins="stageBinInfos"
+          :occupiedPersonIds="occupiedIds"
+          :roleCode="crossBinRoleCode"
+          :roleName="crossBinRoleName"
+          :initialPersonId="crossBinPersonId"
+          :initialPersonName="crossBinPersonName"
+          :initialPointsUnits="crossBinPointsUnits"
+          @change="onCrossBinChange"
         />
+      </view>
+
+      <!-- 添加跨仓岗位按钮（当未显示跨仓区域且非堆曲时） -->
+      <view class="section add-section" v-if="showBinSection && !showCrossBinSection">
+        <view class="add-btn" @click="onAddCrossBin">
+          <text class="add-btn-text">+ 添加跨仓岗位</text>
+        </view>
+      </view>
+
+      <!-- 仓内人员分配区域（BIN）- 待后续实现 -->
+      <view class="section" v-if="showBinSection">
+        <text class="section-title">仓内人员分配</text>
+        <text class="placeholder-text">待实现：发酵仓卡片区域</text>
       </view>
     </scroll-view>
 
@@ -51,9 +75,12 @@
 </template>
 
 <script lang="uts">
-  import { getTodayDateString, StageCode } from '../../domain/models/types.uts'
+  import { getTodayDateString } from '../../domain/models/types.uts'
+  import type { StageCode, PointsUnits, RoleCode } from '../../domain/models/types.uts'
   import { getStageName, stageRequiresBin } from '../../domain/models/stage-session.uts'
-  import type { BinCode } from '../../domain/models/ferment.uts'
+  import { stageHasCrossBinRole, getStageRoleConfigs } from '../../domain/services/StageCoefService.uts'
+  import type { BinCode, StageBinInfo } from '../../domain/models/ferment.uts'
+  import type { AssignmentSourceCreateParams } from '../../domain/models/assignment.uts'
 
   export default {
     data() {
@@ -62,9 +89,19 @@
         stageName: '安曲',
         sessionDate: '',
         showBinSection: true,
+        showCrossBinSection: false,
         selectedBins: [] as BinCode[],
-        // 人员选择相关
-        selectedPersonId: null as number | null,
+        // 发酵仓详细信息（用于跨仓组件）
+        stageBinInfos: [] as StageBinInfo[],
+        // 跨仓岗位配置
+        crossBinRoleCode: 'CART_PULLER' as RoleCode,
+        crossBinRoleName: '拉车',
+        // 跨仓岗位分配数据
+        crossBinPersonId: null as number | null,
+        crossBinPersonName: '' as string,
+        crossBinPointsUnits: 0 as PointsUnits,
+        crossBinSources: [] as AssignmentSourceCreateParams[],
+        // 人员互斥列表
         occupiedIds: [] as number[]
       }
     },
@@ -76,42 +113,157 @@
         this.stageCode = stage as StageCode
         this.stageName = getStageName(this.stageCode)
         this.showBinSection = stageRequiresBin(this.stageCode)
+        this.showCrossBinSection = stageHasCrossBinRole(this.stageCode)
+        this.initCrossBinRole()
       }
     },
     methods: {
-      onBinsChange(bins: BinCode[]) {
-        this.selectedBins = bins
-      },
-      onPersonSelect(payload: UTSJSONObject) {
-        const id = payload['id'] as number
-        const name = payload['name'] as string
-        this.selectedPersonId = id
-        // 将已选人员加入占用列表（演示互斥机制）
-        if (this.occupiedIds.indexOf(id) == -1) {
-          this.occupiedIds.push(id)
+      /**
+       * 初始化跨仓岗位配置
+       */
+      initCrossBinRole() {
+        if (this.showCrossBinSection == false) {
+          return
         }
-        uni.showToast({
-          title: '已选择: ' + name,
-          icon: 'none'
-        })
+        // 获取该环节的跨仓岗位配置
+        const roleConfigs = getStageRoleConfigs(this.stageCode)
+        for (let i = 0; i < roleConfigs.length; i++) {
+          const config = roleConfigs[i]
+          if (config.scope == 'CROSS_BIN') {
+            this.crossBinRoleCode = config.role_code
+            // 根据 role_code 设置显示名称
+            if (config.role_code == 'CART_PULLER') {
+              this.crossBinRoleName = '拉车'
+            } else if (config.role_code == 'HELPER') {
+              this.crossBinRoleName = '打杂'
+            }
+            break
+          }
+        }
       },
-      onPersonClear() {
-        // 从占用列表移除
-        if (this.selectedPersonId != null) {
-          const idx = this.occupiedIds.indexOf(this.selectedPersonId as number)
+
+      /**
+       * 手动添加跨仓岗位
+       */
+      onAddCrossBin() {
+        this.showCrossBinSection = true
+        // 设置默认岗位为打杂（用户手动添加时通常是二次翻曲等环节）
+        this.crossBinRoleCode = 'HELPER' as RoleCode
+        this.crossBinRoleName = '打杂'
+        // 重置跨仓岗位数据
+        this.crossBinPersonId = null
+        this.crossBinPersonName = ''
+        this.crossBinPointsUnits = 0
+        this.crossBinSources = [] as AssignmentSourceCreateParams[]
+      },
+
+      /**
+       * 移除跨仓岗位
+       */
+      onRemoveCrossBin() {
+        // 从互斥列表移除跨仓人员
+        if (this.crossBinPersonId != null) {
+          const idx = this.occupiedIds.indexOf(this.crossBinPersonId as number)
           if (idx != -1) {
             this.occupiedIds.splice(idx, 1)
           }
         }
-        this.selectedPersonId = null
+        // 重置跨仓岗位数据
+        this.showCrossBinSection = false
+        this.crossBinPersonId = null
+        this.crossBinPersonName = ''
+        this.crossBinPointsUnits = 0
+        this.crossBinSources = [] as AssignmentSourceCreateParams[]
       },
+
+      /**
+       * 发酵仓选择变更
+       */
+      onBinsChange(bins: BinCode[]) {
+        this.selectedBins = bins
+        // 更新 stageBinInfos（用于跨仓组件）
+        this.updateStageBinInfos(bins)
+      },
+
+      /**
+       * 更新发酵仓详细信息
+       * 注：实际项目中应从存储层获取曲坯数量，这里使用模拟数据
+       */
+      updateStageBinInfos(bins: BinCode[]) {
+        const infos: StageBinInfo[] = []
+        for (let i = 0; i < bins.length; i++) {
+          const bin = bins[i]
+          const binCode = `${bin.class_no}-${bin.floor_no}-${bin.seq_no}`
+          // 模拟数据：实际应从安曲记录获取曲坯数量
+          const mockKojiCount = 1200 + (i * 100)
+          infos.push({
+            bin_id: i + 1,
+            stage_bin_id: i + 1,
+            koji_count: mockKojiCount,
+            bin_code: binCode
+          } as StageBinInfo)
+        }
+        this.stageBinInfos = infos
+      },
+
+      /**
+       * 跨仓岗位分配变更
+       */
+      onCrossBinChange(payload: UTSJSONObject) {
+        const personId = payload['person_id']
+        const personName = payload['person_name']
+        const pointsUnits = payload['points_units']
+        const sources = payload['sources']
+
+        // 更新人员互斥列表
+        if (this.crossBinPersonId != null) {
+          // 移除旧的人员
+          const oldIdx = this.occupiedIds.indexOf(this.crossBinPersonId as number)
+          if (oldIdx != -1) {
+            this.occupiedIds.splice(oldIdx, 1)
+          }
+        }
+
+        if (personId != null) {
+          this.crossBinPersonId = personId as number
+          this.crossBinPersonName = personName as string
+          // 添加新人员到互斥列表
+          if (this.occupiedIds.indexOf(this.crossBinPersonId as number) == -1) {
+            this.occupiedIds.push(this.crossBinPersonId as number)
+          }
+        } else {
+          this.crossBinPersonId = null
+          this.crossBinPersonName = ''
+        }
+
+        if (pointsUnits != null) {
+          this.crossBinPointsUnits = pointsUnits as number
+        }
+
+        if (sources != null) {
+          this.crossBinSources = sources as AssignmentSourceCreateParams[]
+        }
+      },
+
       saveDraft() {
         uni.showToast({
           title: '草稿已保存',
           icon: 'success'
         })
       },
+
       submit() {
+        // 校验跨仓岗位
+        if (this.showCrossBinSection == true && this.crossBinPointsUnits > 0) {
+          if (this.crossBinPersonId == null) {
+            uni.showToast({
+              title: '请选择跨仓岗位人员',
+              icon: 'none'
+            })
+            return
+          }
+        }
+
         uni.showModal({
           title: '提示',
           content: '确认提交工分录入？',
@@ -173,6 +325,49 @@
     font-weight: bold;
     color: #333333;
     margin-bottom: 12px;
+  }
+
+  .section-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .section-header .section-title {
+    margin-bottom: 0;
+  }
+
+  .remove-btn {
+    padding: 4px 10px;
+    background-color: #fff0f0;
+    border-radius: 4px;
+  }
+
+  .remove-btn-text {
+    font-size: 12px;
+    color: #ff4d4f;
+  }
+
+  .add-section {
+    padding: 12px 16px;
+  }
+
+  .add-btn {
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    padding: 12px;
+    background-color: #f0f7ff;
+    border-radius: 6px;
+    border-width: 1px;
+    border-style: dashed;
+    border-color: #007aff;
+  }
+
+  .add-btn-text {
+    font-size: 14px;
+    color: #007aff;
   }
 
   .info-row {

@@ -1,0 +1,9 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/shared/index.md", "reason": "Shared coding standards"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/components.md", "reason": "Component conventions"}
+{"file": ".claude/rules/uts.md", "reason": "UTS 类型系统规范"}
+{"file": "domain/services/ScoreAllocator.uts", "reason": "跨仓抽取算法参考"}
+{"file": "components/biz-worker-selector-pinyin/biz-worker-selector-pinyin.uvue", "reason": "人员选择器组件模式"}
+{"file": "domain/models/assignment.uts", "reason": "Assignment 类型定义"}
+{"file": "domain/services/StageCoefService.uts", "reason": "环节岗位配置"}

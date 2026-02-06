@@ -1,0 +1,582 @@
+<template>
+  <view class="cross-bin-input">
+    <!-- 标题栏 -->
+    <view class="header">
+      <text class="title">{{ roleName }}</text>
+      <view class="scope-badge">
+        <text class="scope-text">跨仓</text>
+      </view>
+    </view>
+
+    <!-- 人员选择区域 -->
+    <view class="input-row">
+      <text class="row-label">人员</text>
+      <view class="person-selector" @click="onOpenPersonSelector">
+        <text v-if="selectedPersonId == null" class="placeholder-text">点击选择人员</text>
+        <text v-else class="person-name-text">{{ selectedPersonName }}</text>
+        <text class="arrow-icon">></text>
+      </view>
+    </view>
+
+    <!-- 工分输入区域 -->
+    <view class="input-row">
+      <text class="row-label">工分</text>
+      <view class="points-input-area">
+        <view class="stepper-btn" @click="onDecrease">
+          <text class="stepper-btn-text">-</text>
+        </view>
+        <input
+          class="points-input"
+          type="digit"
+          :value="displayPoints"
+          @input="onPointsInput"
+          @blur="onPointsBlur"
+        />
+        <view class="stepper-btn" @click="onIncrease">
+          <text class="stepper-btn-text">+</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 提示信息 -->
+    <view class="hint-row">
+      <text class="hint-text">工分将从所选发酵仓按曲坯比例扣减</text>
+    </view>
+
+    <!-- 来源预览（可折叠） -->
+    <view v-if="sources.length > 0" class="source-preview">
+      <view class="source-header" @click="onToggleSourcePreview">
+        <text class="source-title">来源预览</text>
+        <text class="toggle-icon">{{ showSourcePreview ? 'V' : '>' }}</text>
+      </view>
+      <view v-if="showSourcePreview" class="source-list">
+        <view v-for="(source, index) in sourceDisplayList" :key="index" class="source-item">
+          <text class="source-bin-code">{{ source.binCode }}</text>
+          <text class="source-points">{{ source.displayPoints }}分</text>
+          <text class="source-percent">({{ source.percent }}%)</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 人员选择弹窗 -->
+    <view v-if="showPersonPicker" class="picker-mask" @click="onClosePersonSelector">
+      <view class="picker-container" @click.stop="">
+        <view class="picker-header">
+          <text class="picker-title">选择人员</text>
+          <view class="picker-close" @click="onClosePersonSelector">
+            <text class="picker-close-text">X</text>
+          </view>
+        </view>
+        <biz-worker-selector-pinyin
+          :selectedPersonId="selectedPersonId"
+          :occupiedIds="occupiedPersonIds"
+          placeholder="搜索姓名/拼音"
+          @select="onPersonSelect"
+          @clear="onPersonClear"
+        />
+      </view>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+  import { unitsToPoints, pointsToUnits } from '../../domain/models/types.uts'
+  import { allocateCrossBinPoints, BinInfo, CrossBinAllocationResult } from '../../domain/services/ScoreAllocator.uts'
+  import { AssignmentSourceCreateParams } from '../../domain/models/assignment.uts'
+  import { PointsUnits } from '../../domain/models/types.uts'
+  import { StageBinInfo } from '../../domain/models/ferment.uts'
+
+  /**
+   * 来源显示项类型
+   */
+  type SourceDisplayItem = {
+    binCode: string
+    displayPoints: string
+    percent: string
+  }
+
+  export default {
+    props: {
+      stageCode: {
+        type: String,
+        default: 'AN_QU'
+      },
+      bins: {
+        type: Array,
+        default: (): StageBinInfo[] => {
+          return [] as StageBinInfo[]
+        }
+      },
+      occupiedPersonIds: {
+        type: Array,
+        default: (): number[] => {
+          return [] as number[]
+        }
+      },
+      roleCode: {
+        type: String,
+        default: 'CART_PULLER'
+      },
+      roleName: {
+        type: String,
+        default: '拉车'
+      },
+      initialPersonId: {
+        type: Number,
+        default: null
+      },
+      initialPersonName: {
+        type: String,
+        default: ''
+      },
+      initialPointsUnits: {
+        type: Number,
+        default: 0
+      }
+    },
+    emits: ['change'],
+    data() {
+      return {
+        selectedPersonId: null as number | null,
+        selectedPersonName: '' as string,
+        pointsUnits: 0 as PointsUnits,
+        displayPoints: '0.0' as string,
+        sources: [] as AssignmentSourceCreateParams[],
+        showPersonPicker: false as boolean,
+        showSourcePreview: false as boolean,
+        // 来源显示列表（预计算）
+        sourceDisplayList: [] as SourceDisplayItem[],
+        // bin_id -> bin_code 映射
+        binCodeMap: new Map<number, string>()
+      }
+    },
+    watch: {
+      bins: {
+        handler(newVal: StageBinInfo[]) {
+          this.rebuildBinCodeMap(newVal)
+          this.recalculateSources()
+        },
+        immediate: true
+      },
+      initialPersonId: {
+        handler(newVal: number | null) {
+          if (newVal != null) {
+            this.selectedPersonId = newVal
+          }
+        },
+        immediate: true
+      },
+      initialPersonName: {
+        handler(newVal: string) {
+          if (newVal.length > 0) {
+            this.selectedPersonName = newVal
+          }
+        },
+        immediate: true
+      },
+      initialPointsUnits: {
+        handler(newVal: number) {
+          if (newVal > 0) {
+            this.pointsUnits = newVal
+            this.displayPoints = unitsToPoints(newVal).toFixed(1)
+            this.recalculateSources()
+          }
+        },
+        immediate: true
+      }
+    },
+    mounted() {
+      this.initData()
+    },
+    methods: {
+      initData() {
+        // 初始化 bin_id -> bin_code 映射
+        this.rebuildBinCodeMap(this.bins as StageBinInfo[])
+
+        // 初始化已有数据
+        if (this.initialPersonId != null) {
+          this.selectedPersonId = this.initialPersonId as number
+        }
+        if ((this.initialPersonName as string).length > 0) {
+          this.selectedPersonName = this.initialPersonName as string
+        }
+        if ((this.initialPointsUnits as number) > 0) {
+          this.pointsUnits = this.initialPointsUnits as number
+          this.displayPoints = unitsToPoints(this.pointsUnits).toFixed(1)
+          this.recalculateSources()
+        }
+      },
+
+      rebuildBinCodeMap(bins: StageBinInfo[]) {
+        const map = new Map<number, string>()
+        for (let i = 0; i < bins.length; i++) {
+          const bin = bins[i]
+          map.set(bin.stage_bin_id, bin.bin_code)
+        }
+        this.binCodeMap = map
+      },
+
+      onOpenPersonSelector() {
+        this.showPersonPicker = true
+      },
+
+      onClosePersonSelector() {
+        this.showPersonPicker = false
+      },
+
+      onPersonSelect(payload: UTSJSONObject) {
+        const id = payload['id']
+        const name = payload['name']
+        if (id != null && name != null) {
+          this.selectedPersonId = id as number
+          this.selectedPersonName = name as string
+          this.showPersonPicker = false
+          this.emitChange()
+        }
+      },
+
+      onPersonClear() {
+        this.selectedPersonId = null
+        this.selectedPersonName = ''
+        this.emitChange()
+      },
+
+      onPointsInput(e: UniInputEvent) {
+        this.displayPoints = e.detail.value
+      },
+
+      onPointsBlur() {
+        // 解析输入值
+        let inputVal = parseFloat(this.displayPoints)
+        if (isNaN(inputVal)) {
+          inputVal = 0
+        }
+        // 限制最小值为 0
+        if (inputVal < 0) {
+          inputVal = 0
+        }
+        // 转换为整数单位（向下取整到 0.1 精度）
+        this.pointsUnits = pointsToUnits(inputVal)
+        // 更新显示值
+        this.displayPoints = unitsToPoints(this.pointsUnits).toFixed(1)
+        // 重新计算来源分配
+        this.recalculateSources()
+        this.emitChange()
+      },
+
+      onIncrease() {
+        // 增加 0.1 分（即 1 单位）
+        this.pointsUnits = this.pointsUnits + 1
+        this.displayPoints = unitsToPoints(this.pointsUnits).toFixed(1)
+        this.recalculateSources()
+        this.emitChange()
+      },
+
+      onDecrease() {
+        // 减少 0.1 分（即 1 单位），最小为 0
+        if (this.pointsUnits > 0) {
+          this.pointsUnits = this.pointsUnits - 1
+          this.displayPoints = unitsToPoints(this.pointsUnits).toFixed(1)
+          this.recalculateSources()
+          this.emitChange()
+        }
+      },
+
+      onToggleSourcePreview() {
+        this.showSourcePreview = !this.showSourcePreview
+      },
+
+      recalculateSources() {
+        const binsData = this.bins as StageBinInfo[]
+        if (binsData.length == 0 || this.pointsUnits <= 0) {
+          this.sources = [] as AssignmentSourceCreateParams[]
+          this.sourceDisplayList = [] as SourceDisplayItem[]
+          return
+        }
+
+        // 构建 BinInfo 数组
+        const binInfos: BinInfo[] = []
+        for (let i = 0; i < binsData.length; i++) {
+          const bin = binsData[i]
+          binInfos.push({
+            bin_id: bin.bin_id,
+            stage_bin_id: bin.stage_bin_id,
+            koji_count: bin.koji_count
+          } as BinInfo)
+        }
+
+        // 调用分配算法
+        const result = allocateCrossBinPoints(binInfos, this.pointsUnits)
+        this.sources = result.sources
+
+        // 构建显示列表
+        this.buildSourceDisplayList(result)
+      },
+
+      buildSourceDisplayList(result: CrossBinAllocationResult) {
+        const displayList: SourceDisplayItem[] = []
+        const totalUnits = result.totalUnits
+
+        for (let i = 0; i < result.sources.length; i++) {
+          const source = result.sources[i]
+          // 查找 bin_code
+          let binCode = this.binCodeMap.get(source.stage_bin_id)
+          if (binCode == null) {
+            binCode = '未知'
+          }
+          // 计算百分比
+          let percent = '0'
+          if (totalUnits > 0) {
+            const pct = (source.source_points_units * 100) / totalUnits
+            percent = pct.toFixed(0)
+          }
+          displayList.push({
+            binCode: binCode,
+            displayPoints: unitsToPoints(source.source_points_units).toFixed(1),
+            percent: percent
+          } as SourceDisplayItem)
+        }
+
+        this.sourceDisplayList = displayList
+      },
+
+      emitChange() {
+        // 使用 UTSJSONObject 发送，确保跨组件类型兼容
+        const payload = {
+          person_id: this.selectedPersonId,
+          person_name: this.selectedPersonName,
+          points_units: this.pointsUnits,
+          sources: this.sources
+        } as UTSJSONObject
+        this.$emit('change', payload)
+      }
+    }
+  }
+</script>
+
+<style>
+  .cross-bin-input {
+    background-color: #ffffff;
+    border-radius: 12px;
+    padding: 16px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #ebebeb;
+    margin-bottom: 12px;
+  }
+
+  /* 标题栏 */
+  .header {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333333;
+    margin-right: 8px;
+  }
+
+  .scope-badge {
+    background-color: #fff7e6;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  .scope-text {
+    font-size: 11px;
+    color: #fa8c16;
+  }
+
+  /* 输入行 */
+  .input-row {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .row-label {
+    width: 50px;
+    font-size: 14px;
+    color: #666666;
+  }
+
+  /* 人员选择器 */
+  .person-selector {
+    flex: 1;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    background-color: #f5f7fa;
+    border-radius: 6px;
+    padding: 10px 12px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+  }
+
+  .placeholder-text {
+    font-size: 14px;
+    color: #999999;
+  }
+
+  .person-name-text {
+    font-size: 14px;
+    color: #333333;
+  }
+
+  .arrow-icon {
+    font-size: 14px;
+    color: #999999;
+  }
+
+  /* 工分输入区域 */
+  .points-input-area {
+    flex: 1;
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .stepper-btn {
+    width: 36px;
+    height: 36px;
+    justify-content: center;
+    align-items: center;
+    background-color: #f0f2f5;
+    border-radius: 6px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+  }
+
+  .stepper-btn-text {
+    font-size: 18px;
+    color: #333333;
+  }
+
+  .points-input {
+    flex: 1;
+    height: 36px;
+    margin-left: 8px;
+    margin-right: 8px;
+    padding: 0 12px;
+    background-color: #f5f7fa;
+    border-radius: 6px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+    font-size: 14px;
+    color: #333333;
+    text-align: center;
+  }
+
+  /* 提示信息 */
+  .hint-row {
+    margin-bottom: 8px;
+  }
+
+  .hint-text {
+    font-size: 12px;
+    color: #999999;
+  }
+
+  /* 来源预览 */
+  .source-preview {
+    background-color: #fafafa;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-top: 4px;
+  }
+
+  .source-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .source-title {
+    font-size: 13px;
+    color: #666666;
+  }
+
+  .toggle-icon {
+    font-size: 12px;
+    color: #999999;
+  }
+
+  .source-list {
+    margin-top: 8px;
+  }
+
+  .source-item {
+    flex-direction: row;
+    align-items: center;
+    padding: 4px 0;
+  }
+
+  .source-bin-code {
+    font-size: 13px;
+    color: #333333;
+    width: 80px;
+  }
+
+  .source-points {
+    font-size: 13px;
+    color: #007aff;
+    width: 60px;
+  }
+
+  .source-percent {
+    font-size: 12px;
+    color: #999999;
+  }
+
+  /* 人员选择弹窗 */
+  .picker-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    justify-content: center;
+    align-items: center;
+  }
+
+  .picker-container {
+    width: 320px;
+    max-height: 500px;
+    background-color: #ffffff;
+    border-radius: 12px;
+    padding: 16px;
+  }
+
+  .picker-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .picker-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333333;
+  }
+
+  .picker-close {
+    width: 28px;
+    height: 28px;
+    justify-content: center;
+    align-items: center;
+    background-color: #f0f2f5;
+    border-radius: 14px;
+  }
+
+  .picker-close-text {
+    font-size: 14px;
+    color: #666666;
+  }
+</style>
