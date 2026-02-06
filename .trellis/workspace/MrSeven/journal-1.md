@@ -362,3 +362,118 @@ getInitials(cn: string): string
 ### Next Steps
 
 - None - task complete
+
+## Session 7: 实现人员选择器组件（拼音搜索）
+
+**Date**: 2026-02-06
+**Task**: 实现人员选择器组件（拼音搜索）
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 完成内容
+
+| 功能 | 说明 |
+|------|------|
+| 拼音快速搜索 | 支持中文、全拼、首字母三种匹配方式 |
+| 搜索防抖 | 300ms 防抖优化用户体验 |
+| A-Z 分组 | 无搜索时按拼音首字母分组展示 |
+| 人员互斥 | 已占用人员置灰不可选 |
+| 选中高亮 | 当前选中人员视觉高亮 |
+
+## Codex 审查修复
+
+| 问题 | 修复方案 |
+|------|----------|
+| 定时器泄漏 | 添加 `beforeUnmount` 清理 `debounceTimer` |
+| 搜索空格误判 | `doSearch` 中添加 `keyword.trim()` |
+| O(n) 查找姓名 | 新增 `personNameMap` 实现 O(1) 查找 |
+
+## 预留扩展
+
+- 在 `SearchablePerson` 类型中预留 `name_pinyin_full` 和 `name_pinyin_initials` 字段
+- 当前使用 `pinyinMatch` 实时计算，适用于 < 500 人
+- 后续可在 roster-import 时生成预计算索引，将复杂度从 O(n×m) 降为 O(n)
+
+## 新增文件
+
+- `components/biz-worker-selector-pinyin/biz-worker-selector-pinyin.uvue` - 人员选择器组件
+- `.trellis/tasks/02-06-biz-worker-selector-pinyin/` - 任务文档
+
+## 修改文件
+
+- `domain/services/PersonSearchService.uts` - 添加预计算索引字段注释
+- `pages/work/entry.uvue` - 集成人员选择器组件
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `02cd2bf` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+## Session 8: Phase 4: 跨仓岗位录入组件实现
+
+**Date**: 2026-02-07
+**Task**: Phase 4: 跨仓岗位录入组件实现
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 完成内容
+
+| 功能 | 说明 |
+|------|------|
+| biz-cross-bin-input 组件 | 跨仓岗位（拉车/打杂）工分录入，支持人员选择和工分输入 |
+| 来源预览 | 可折叠显示各仓分配明细（按曲坯比例） |
+| 手动添加/移除 | 二次翻曲等环节可手动添加跨仓岗位 |
+| 共享类型定义 | StageBinInfo 类型定义在 ferment.uts |
+
+## 关键经验
+
+**UTS 名义类型系统问题**：
+- 父子组件各自定义相同结构的 type，运行时会抛出 `ClassCastException`
+- **最佳实践**：将共享类型定义在公共位置（如 `domain/models/`），父子组件 import 同一类型
+- 已更新 `.trellis/spec/frontend/type-safety.md` 记录此经验
+
+## 变更文件
+
+- `components/biz-cross-bin-input/biz-cross-bin-input.uvue` (新增)
+- `domain/models/ferment.uts` (新增 StageBinInfo 类型)
+- `pages/work/entry.uvue` (集成跨仓组件)
+- `.trellis/spec/frontend/type-safety.md` (更新规范)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fa10cc2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
