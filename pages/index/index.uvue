@@ -5,64 +5,281 @@
       <text class="header-date">{{ todayDate }}</text>
     </view>
 
-    <view class="section">
-      <text class="section-title">快捷录入</text>
-      <view class="entry-grid">
-        <view class="entry-item" @click="goToEntry('AN_QU')">
-          <text class="entry-icon">曲</text>
-          <text class="entry-name">安曲</text>
-        </view>
-        <view class="entry-item" @click="goToEntry('YI_FAN')">
-          <text class="entry-icon">一</text>
-          <text class="entry-name">一次翻曲</text>
-        </view>
-        <view class="entry-item" @click="goToEntry('ER_FAN')">
-          <text class="entry-icon">二</text>
-          <text class="entry-name">二次翻曲</text>
-        </view>
-        <view class="entry-item" @click="goToEntry('CHAI_QU')">
-          <text class="entry-icon">拆</text>
-          <text class="entry-name">拆曲</text>
-        </view>
-        <view class="entry-item" @click="goToEntry('DUI_QU')">
-          <text class="entry-icon">堆</text>
-          <text class="entry-name">堆曲</text>
+    <scroll-view class="content" scroll-y="true">
+      <view class="section">
+        <text class="section-title">快捷录入</text>
+        <view class="entry-grid">
+          <view class="entry-item" @click="goToEntry('AN_QU')">
+            <text class="entry-icon">曲</text>
+            <text class="entry-name">安曲</text>
+          </view>
+          <view class="entry-item" @click="goToEntry('YI_FAN')">
+            <text class="entry-icon">一</text>
+            <text class="entry-name">一次翻曲</text>
+          </view>
+          <view class="entry-item" @click="goToEntry('ER_FAN')">
+            <text class="entry-icon">二</text>
+            <text class="entry-name">二次翻曲</text>
+          </view>
+          <view class="entry-item" @click="goToEntry('CHAI_QU')">
+            <text class="entry-icon">拆</text>
+            <text class="entry-name">拆曲</text>
+          </view>
+          <view class="entry-item" @click="goToEntry('DUI_QU')">
+            <text class="entry-icon">堆</text>
+            <text class="entry-name">堆曲</text>
+          </view>
         </view>
       </view>
-    </view>
 
-    <view class="section">
-      <text class="section-title">最近草稿</text>
-      <view class="draft-list">
-        <text class="empty-text" v-if="drafts.length == 0">暂无草稿</text>
+      <view class="section">
+        <text class="section-title">最近草稿</text>
+        <view class="session-list">
+          <text class="empty-text" v-if="drafts.length == 0">暂无草稿</text>
+          <view
+            class="session-item"
+            v-for="(item, index) in drafts"
+            :key="item.session_date + '-' + item.stage_code + '-' + (item.round_id != null ? item.round_id : 'null')"
+          >
+            <view class="session-item-left" @click="goToSession(item)">
+              <view class="session-icon-wrap">
+                <text class="session-icon">{{ getStageIcon(item.stage_code) }}</text>
+              </view>
+              <view class="session-info">
+                <text class="session-stage-name">{{ item.stage_name }}</text>
+                <text class="session-date">{{ item.session_date }}{{ item.round_id != null ? ' | 轮次' + item.round_id : '' }}</text>
+              </view>
+            </view>
+            <view class="delete-btn" @click="deleteDraft(item)">
+              <text class="delete-btn-text">删除</text>
+            </view>
+          </view>
+        </view>
       </view>
-    </view>
+
+      <view class="section">
+        <text class="section-title">最近已提交</text>
+        <view class="session-list">
+          <text class="empty-text" v-if="submitted.length == 0">暂无已提交记录</text>
+          <view
+            class="session-item"
+            v-for="(item, index) in submitted"
+            :key="item.session_date + '-' + item.stage_code + '-' + (item.round_id != null ? item.round_id : 'null')"
+            @click="goToSession(item)"
+          >
+            <view class="session-item-left">
+              <view class="session-icon-wrap session-icon-wrap-submitted">
+                <text class="session-icon session-icon-blue">{{ getStageIcon(item.stage_code) }}</text>
+              </view>
+              <view class="session-info">
+                <text class="session-stage-name">{{ item.stage_name }}</text>
+                <text class="session-date">{{ item.session_date }}{{ item.round_id != null ? ' | 轮次' + item.round_id : '' }}</text>
+              </view>
+            </view>
+            <view class="status-badge">
+              <text class="status-badge-text">已提交</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
   </view>
 </template>
 
 <script lang="uts">
   import { getTodayDateString } from '../../domain/models/types.uts'
+  import { getSessionsByDate, deleteSession } from '../../storage/storage-repository.uts'
+
+  /**
+   * 会话列表项类型
+   */
+  type SessionListItem = {
+    session_date: string
+    stage_code: string
+    stage_name: string
+    round_id: number | null
+    status: string
+  }
 
   export default {
     data() {
       return {
         todayDate: '',
-        drafts: [] as string[]
+        drafts: [] as SessionListItem[],
+        submitted: [] as SessionListItem[]
       }
     },
     onLoad() {
       this.todayDate = getTodayDateString()
     },
     onShow() {
-      this.loadDrafts()
+      this.loadSessions()
     },
     methods: {
-      loadDrafts() {
-        // TODO: 从数据库加载草稿
+      /**
+       * 加载最近 7 天的会话数据
+       */
+      loadSessions() {
+        const draftList: SessionListItem[] = []
+        const submittedList: SessionListItem[] = []
+
+        // 获取最近 7 天的日期列表
+        const dates = this.getRecentDates(7)
+
+        for (let i = 0; i < dates.length; i++) {
+          const date = dates[i]
+          const sessions = getSessionsByDate(date)
+
+          for (let j = 0; j < sessions.length; j++) {
+            const session = sessions[j]
+            const stageCode = session['stage_code']
+            const roundId = session['round_id']
+            const status = session['status']
+
+            if (stageCode == null || status == null) {
+              continue
+            }
+
+            const item: SessionListItem = {
+              session_date: date,
+              stage_code: stageCode as string,
+              stage_name: this.getStageName(stageCode as string),
+              round_id: roundId != null ? roundId as number : null,
+              status: status as string
+            }
+
+            if (status == 'draft') {
+              draftList.push(item)
+            } else if (status == 'submitted') {
+              submittedList.push(item)
+            }
+          }
+        }
+
+        // 按日期倒序排列（最新在前）
+        this.drafts = this.sortByDateDesc(draftList)
+        this.submitted = this.sortByDateDesc(submittedList)
       },
+
+      /**
+       * 获取最近 N 天的日期列表（包含今天）
+       * @param days 天数
+       * @returns 日期字符串数组（YYYY-MM-DD 格式）
+       */
+      getRecentDates(days: number): string[] {
+        const dates: string[] = []
+        const now = Date.now()
+        const oneDay = 24 * 60 * 60 * 1000
+
+        for (let i = 0; i < days; i++) {
+          const date = new Date(now - i * oneDay)
+          const year = date.getFullYear()
+          const month = (date.getMonth() + 1).toString().padStart(2, '0')
+          const day = date.getDate().toString().padStart(2, '0')
+          dates.push(`${year}-${month}-${day}`)
+        }
+
+        return dates
+      },
+
+      /**
+       * 按日期倒序排列
+       */
+      sortByDateDesc(list: SessionListItem[]): SessionListItem[] {
+        // 使用冒泡排序（UTS 兼容）
+        const result = list.slice(0)
+        for (let i = 0; i < result.length - 1; i++) {
+          for (let j = 0; j < result.length - 1 - i; j++) {
+            // 比较日期字符串（YYYY-MM-DD 格式可直接比较）
+            if (result[j].session_date < result[j + 1].session_date) {
+              const temp = result[j]
+              result[j] = result[j + 1]
+              result[j + 1] = temp
+            }
+          }
+        }
+        return result
+      },
+
+      /**
+       * 获取环节名称
+       */
+      getStageName(stageCode: string): string {
+        if (stageCode == 'AN_QU') {
+          return '安曲'
+        } else if (stageCode == 'YI_FAN') {
+          return '一次翻曲'
+        } else if (stageCode == 'ER_FAN') {
+          return '二次翻曲'
+        } else if (stageCode == 'CHAI_QU') {
+          return '拆曲'
+        } else if (stageCode == 'DUI_QU') {
+          return '堆曲'
+        }
+        return '未知环节'
+      },
+
+      /**
+       * 获取环节图标
+       */
+      getStageIcon(stageCode: string): string {
+        if (stageCode == 'AN_QU') {
+          return '曲'
+        } else if (stageCode == 'YI_FAN') {
+          return '一'
+        } else if (stageCode == 'ER_FAN') {
+          return '二'
+        } else if (stageCode == 'CHAI_QU') {
+          return '拆'
+        } else if (stageCode == 'DUI_QU') {
+          return '堆'
+        }
+        return '?'
+      },
+
+      /**
+       * 跳转到录入页
+       */
       goToEntry(stageCode: string) {
         uni.navigateTo({
           url: `/pages/work/entry?stage=${stageCode}`
+        })
+      },
+
+      /**
+       * 跳转到会话详情
+       */
+      goToSession(item: SessionListItem) {
+        let url = `/pages/work/entry?stage=${item.stage_code}&date=${item.session_date}`
+        if (item.round_id != null) {
+          url = url + `&roundId=${item.round_id}`
+        }
+        uni.navigateTo({
+          url: url
+        })
+      },
+
+      /**
+       * 删除草稿
+       */
+      deleteDraft(item: SessionListItem) {
+        uni.showModal({
+          title: '确认删除',
+          content: `确定要删除 ${item.session_date} ${item.stage_name} 的草稿吗？`,
+          success: (res) => {
+            if (res.confirm == true) {
+              // 调用 deleteSession 删除数据和索引
+              deleteSession(item.session_date, item.stage_code, item.round_id)
+
+              // 刷新列表
+              this.loadSessions()
+
+              uni.showToast({
+                title: '删除成功',
+                icon: 'success'
+              })
+            }
+          }
         })
       }
     }
@@ -72,6 +289,7 @@
 <style>
   .page-container {
     flex: 1;
+    flex-direction: column;
     background-color: #f5f5f5;
   }
 
@@ -91,6 +309,10 @@
     font-size: 14px;
     color: rgba(255, 255, 255, 0.8);
     margin-top: 4px;
+  }
+
+  .content {
+    flex: 1;
   }
 
   .section {
@@ -140,7 +362,7 @@
     margin-top: 4px;
   }
 
-  .draft-list {
+  .session-list {
     min-height: 60px;
   }
 
@@ -149,5 +371,84 @@
     color: #999999;
     text-align: center;
     padding: 20px 0;
+  }
+
+  .session-item {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .session-item-left {
+    flex: 1;
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .session-icon-wrap {
+    width: 40px;
+    height: 40px;
+    background-color: #fff7e6;
+    border-radius: 20px;
+    justify-content: center;
+    align-items: center;
+    margin-right: 12px;
+  }
+
+  .session-icon-wrap-submitted {
+    background-color: #e6f7ff;
+  }
+
+  .session-icon {
+    font-size: 16px;
+    font-weight: bold;
+    color: #fa8c16;
+  }
+
+  .session-icon-blue {
+    color: #1890ff;
+  }
+
+  .session-info {
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .session-stage-name {
+    font-size: 15px;
+    font-weight: bold;
+    color: #333333;
+  }
+
+  .session-date {
+    font-size: 12px;
+    color: #999999;
+    margin-top: 2px;
+  }
+
+  .delete-btn {
+    padding: 6px 12px;
+    background-color: #fff0f0;
+    border-radius: 4px;
+  }
+
+  .delete-btn-text {
+    font-size: 12px;
+    color: #ff4d4f;
+  }
+
+  .status-badge {
+    padding: 4px 8px;
+    background-color: #e6f7ff;
+    border-radius: 4px;
+  }
+
+  .status-badge-text {
+    font-size: 12px;
+    color: #1890ff;
   }
 </style>

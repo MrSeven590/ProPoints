@@ -1,0 +1,318 @@
+<template>
+  <view :class="['score-input', sizeClass]">
+    <view :class="['stepper-btn', stepperBtnClass, disabledBtnClass]" @click="onDecrease">
+      <text :class="['stepper-btn-text', stepperTextClass, disabledTextClass]">-</text>
+    </view>
+    <input
+      :class="['points-input', inputClass, disabledInputClass]"
+      type="digit"
+      :value="displayPoints"
+      :disabled="disabled"
+      @input="onPointsInput"
+      @blur="onPointsBlur"
+    />
+    <view :class="['stepper-btn', stepperBtnClass, disabledBtnClass]" @click="onIncrease">
+      <text :class="['stepper-btn-text', stepperTextClass, disabledTextClass]">+</text>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+  import { unitsToPoints, pointsToUnits, PointsUnits } from '../../domain/models/types.uts'
+
+  export default {
+    props: {
+      /**
+       * v-model 绑定值（PointsUnits 整数单位，1单位 = 0.1分）
+       */
+      modelValue: {
+        type: Number,
+        default: 0
+      },
+      /**
+       * 最小值（单位），默认 0
+       */
+      min: {
+        type: Number,
+        default: 0
+      },
+      /**
+       * 最大值（单位），默认 null（无限制）
+       */
+      max: {
+        type: Number,
+        default: null
+      },
+      /**
+       * 步进值（单位），默认 1（对应 0.1 分）
+       */
+      step: {
+        type: Number,
+        default: 1
+      },
+      /**
+       * 禁用状态
+       */
+      disabled: {
+        type: Boolean,
+        default: false
+      },
+      /**
+       * 尺寸：'normal' | 'small'
+       */
+      size: {
+        type: String,
+        default: 'normal'
+      }
+    },
+    emits: ['update:modelValue'],
+    data() {
+      return {
+        // 内部工分单位值
+        internalUnits: 0 as PointsUnits,
+        // 显示值（字符串，用于输入框）
+        displayPoints: '0.0' as string
+      }
+    },
+    computed: {
+      sizeClass(): string {
+        return (this.size as string) == 'small' ? 'size-small' : 'size-normal'
+      },
+      disabledBtnClass(): string {
+        return (this.disabled as boolean) ? 'stepper-btn-disabled' : ''
+      },
+      disabledTextClass(): string {
+        return (this.disabled as boolean) ? 'stepper-text-disabled' : ''
+      },
+      disabledInputClass(): string {
+        return (this.disabled as boolean) ? 'input-disabled' : ''
+      },
+      stepperBtnClass(): string {
+        return (this.size as string) == 'small' ? 'stepper-btn-small' : 'stepper-btn-normal'
+      },
+      stepperTextClass(): string {
+        return (this.size as string) == 'small' ? 'stepper-text-small' : 'stepper-text-normal'
+      },
+      inputClass(): string {
+        return (this.size as string) == 'small' ? 'input-small' : 'input-normal'
+      }
+    },
+    watch: {
+      modelValue: {
+        handler(newVal: number) {
+          // 外部值变化时同步到内部
+          if (newVal != this.internalUnits) {
+            this.internalUnits = newVal
+            this.displayPoints = unitsToPoints(newVal).toFixed(1)
+          }
+        },
+        immediate: true
+      }
+    },
+    methods: {
+      /**
+       * 输入事件处理
+       */
+      onPointsInput(e: UniInputEvent) {
+        this.displayPoints = e.detail.value
+      },
+
+      /**
+       * 失焦时格式化并发送更新
+       */
+      onPointsBlur() {
+        // 解析输入值
+        let inputVal = parseFloat(this.displayPoints)
+        if (isNaN(inputVal)) {
+          inputVal = 0
+        }
+        // 转换为整数单位
+        let units = pointsToUnits(inputVal)
+        // 应用边界限制
+        units = this.clampValue(units)
+        // 更新内部状态
+        this.internalUnits = units
+        this.displayPoints = unitsToPoints(units).toFixed(1)
+        // 发送更新事件
+        this.$emit('update:modelValue', units)
+      },
+
+      /**
+       * 同步显示值到内部单位（用于按钮点击前同步用户输入）
+       */
+      syncDisplayToInternal() {
+        let inputVal = parseFloat(this.displayPoints)
+        if (isNaN(inputVal)) {
+          inputVal = 0
+        }
+        this.internalUnits = this.clampValue(pointsToUnits(inputVal))
+      },
+
+      /**
+       * 增加按钮点击
+       */
+      onIncrease() {
+        if (this.disabled as boolean) {
+          return
+        }
+        // 先同步用户可能已输入但未 blur 的值
+        this.syncDisplayToInternal()
+        const stepVal = this.step as number
+        let newUnits = this.internalUnits + stepVal
+        // 应用边界限制
+        newUnits = this.clampValue(newUnits)
+        // 更新状态
+        this.internalUnits = newUnits
+        this.displayPoints = unitsToPoints(newUnits).toFixed(1)
+        // 发送更新事件
+        this.$emit('update:modelValue', newUnits)
+      },
+
+      /**
+       * 减少按钮点击
+       */
+      onDecrease() {
+        if (this.disabled as boolean) {
+          return
+        }
+        // 先同步用户可能已输入但未 blur 的值
+        this.syncDisplayToInternal()
+        const stepVal = this.step as number
+        let newUnits = this.internalUnits - stepVal
+        // 应用边界限制
+        newUnits = this.clampValue(newUnits)
+        // 更新状态
+        this.internalUnits = newUnits
+        this.displayPoints = unitsToPoints(newUnits).toFixed(1)
+        // 发送更新事件
+        this.$emit('update:modelValue', newUnits)
+      },
+
+      /**
+       * 限制值在 min/max 范围内
+       */
+      clampValue(value: PointsUnits): PointsUnits {
+        const minVal = this.min as number
+        const maxVal = this.max as number | null
+        let result = value
+        // 应用最小值限制
+        if (result < minVal) {
+          result = minVal
+        }
+        // 应用最大值限制（如果设置了）
+        if (maxVal != null && result > maxVal) {
+          result = maxVal
+        }
+        return result
+      }
+    }
+  }
+</script>
+
+<style>
+  .score-input {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  /* 尺寸容器类 */
+  .size-normal {
+    /* normal 尺寸容器样式 */
+  }
+
+  .size-small {
+    /* small 尺寸容器样式 */
+  }
+
+  /* ============================================ */
+  /* 尺寸变体 - Normal（用于跨仓岗位等独立输入场景） */
+  /* ============================================ */
+
+  .stepper-btn-normal {
+    width: 36px;
+    height: 36px;
+    justify-content: center;
+    align-items: center;
+    background-color: #f0f2f5;
+    border-radius: 6px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+  }
+
+  .stepper-text-normal {
+    font-size: 18px;
+    color: #333333;
+  }
+
+  .input-normal {
+    flex: 1;
+    height: 36px;
+    margin-left: 8px;
+    margin-right: 8px;
+    padding: 0 12px;
+    background-color: #f5f7fa;
+    border-radius: 6px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+    font-size: 14px;
+    color: #333333;
+    text-align: center;
+  }
+
+  /* ============================================ */
+  /* 尺寸变体 - Small（用于仓卡片内的紧凑布局） */
+  /* ============================================ */
+
+  .stepper-btn-small {
+    width: 28px;
+    height: 28px;
+    justify-content: center;
+    align-items: center;
+    background-color: #f0f2f5;
+    border-radius: 4px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+  }
+
+  .stepper-text-small {
+    font-size: 14px;
+    color: #333333;
+  }
+
+  .input-small {
+    width: 50px;
+    height: 28px;
+    margin-left: 4px;
+    margin-right: 4px;
+    padding: 0 4px;
+    background-color: #f5f7fa;
+    border-radius: 4px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+    font-size: 13px;
+    color: #333333;
+    text-align: center;
+  }
+
+  /* ============================================ */
+  /* 禁用状态 */
+  /* ============================================ */
+
+  .stepper-btn-disabled {
+    background-color: #f5f5f5;
+    border-color: #e0e0e0;
+  }
+
+  .stepper-text-disabled {
+    color: #bfbfbf;
+  }
+
+  .input-disabled {
+    background-color: #f5f5f5;
+    color: #bfbfbf;
+  }
+</style>
