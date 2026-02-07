@@ -602,3 +602,58 @@ getInitials(cn: string): string
 ### Next Steps
 
 - None - task complete
+
+## Session 11: P5-T01 扣分服务实现
+
+**Date**: 2026-02-07
+**Task**: P5-T01 扣分服务实现
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 任务完成
+
+实现 `PenaltyService.uts`（400行），提供扣分记录的 CRUD 和汇总功能。
+
+## 新增功能
+
+| 函数 | 说明 |
+|------|------|
+| `jsonToPenalty/penaltyToJson` | JSON 转换 |
+| `createPenalty` | 创建扣分记录 |
+| `updatePenalty` | 更新扣分记录 |
+| `deletePenalty` | 删除扣分记录 |
+| `getPenaltiesByAssignment/Session/Person` | 查询函数 |
+| `getAssignmentWithPenalty` | 汇总（final = raw - deducted） |
+
+## 变更文件
+
+- `domain/services/PenaltyService.uts` - 新增
+- `domain/services/index.uts` - 添加导出
+- `开发进度.md` - 更新 P5-T01 状态
+
+## Codex 审查
+
+- 修复 SyncStatus 未导入问题
+- 修复 createPenalty 静默失败问题（返回 null 表示失败）
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1d0ce21` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

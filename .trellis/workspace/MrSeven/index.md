@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 10
+- **Total Sessions**: 11
 - **Last Active**: 2026-02-07
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~604 | Active |
+| `journal-1.md` | ~659 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits |
 |---|------|-------|---------|
+| 11 | 2026-02-07 | P5-T01 扣分服务实现 | `1d0ce21` |
 | 10 | 2026-02-07 | P3-T05 曲坯数复用功能实现 | `c4fda88` |
 | 9 | 2026-02-07 | P3-T04 仓卡片组件实现 | `68269bf` |
 | 8 | 2026-02-07 | Phase 4: 跨仓岗位录入组件实现 | `fa10cc2` |
