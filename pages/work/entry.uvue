@@ -101,13 +101,14 @@
 </template>
 
 <script lang="uts">
-  import { getTodayDateString } from '../../domain/models/types.uts'
+  import { getTodayDateString, getCurrentTimestamp } from '../../domain/models/types.uts'
   import type { StageCode, PointsUnits, RoleCode } from '../../domain/models/types.uts'
   import { getStageName, stageRequiresBin } from '../../domain/models/stage-session.uts'
   import { stageHasCrossBinRole, getStageRoleConfigs, getStageBinWorkerCount } from '../../domain/services/StageCoefService.uts'
   import type { BinCode, StageBinInfo } from '../../domain/models/ferment.uts'
   import type { AssignmentSourceCreateParams } from '../../domain/models/assignment.uts'
   import { getBinKojiCountFromAnQu } from '../../domain/services/DuiQuBaseService.uts'
+  import { saveSession, loadSession } from '../../storage/storage-repository.uts'
 
   /**
    * 仓内工人分配数据类型
@@ -138,6 +139,7 @@
         stageCode: 'AN_QU' as StageCode,
         stageName: '安曲',
         sessionDate: '',
+        roundId: null as number | null,
         showBinSection: true,
         showCrossBinSection: false,
         selectedBins: [] as BinCode[],
@@ -162,8 +164,10 @@
       }
     },
     onLoad(options: UTSJSONObject) {
+      // 默认使用今日日期
       this.sessionDate = getTodayDateString()
 
+      // 解析环节代码
       const stage = options['stage'] as string | null
       if (stage != null) {
         this.stageCode = stage as StageCode
@@ -173,6 +177,26 @@
         this.initCrossBinRole()
         // 初始化默认仓内工人数
         this.defaultBinWorkerCount = getStageBinWorkerCount(this.stageCode)
+      }
+
+      // 解析日期参数（用于加载已有会话）
+      const dateParam = options['date'] as string | null
+      if (dateParam != null) {
+        this.sessionDate = dateParam
+      }
+
+      // 解析轮次 ID
+      const roundIdParam = options['roundId'] as string | null
+      if (roundIdParam != null) {
+        const parsedRoundId = parseInt(roundIdParam)
+        if (isNaN(parsedRoundId) == false) {
+          this.roundId = parsedRoundId
+        }
+      }
+
+      // 如果提供了日期参数，尝试加载已有会话
+      if (dateParam != null) {
+        this.loadExistingSession()
       }
     },
     methods: {
@@ -450,13 +474,197 @@
         })
       },
 
+      /**
+       * 加载已有会话数据
+       */
+      loadExistingSession() {
+        const sessionData = loadSession(this.sessionDate, this.stageCode, this.roundId)
+        if (sessionData == null) {
+          // 无已有数据，使用默认新建流程
+          return
+        }
+
+        // 恢复发酵仓数据
+        const binsData = sessionData['bins'] as UTSJSONObject[] | null
+        if (binsData != null && binsData.length > 0) {
+          const bins: BinCode[] = []
+          const infos: StageBinInfo[] = []
+
+          for (let i = 0; i < binsData.length; i++) {
+            const binObj = binsData[i]
+            const classNo = binObj['class_no'] as number | null
+            const floorNo = binObj['floor_no'] as number | null
+            const seqNo = binObj['seq_no'] as number | null
+            const binId = binObj['bin_id'] as number | null
+            const stageBinId = binObj['stage_bin_id'] as number | null
+            const kojiCount = binObj['koji_count'] as number | null
+            const binCode = binObj['bin_code'] as string | null
+
+            if (classNo != null && floorNo != null && seqNo != null) {
+              bins.push({
+                class_no: classNo,
+                floor_no: floorNo,
+                seq_no: seqNo
+              } as BinCode)
+
+              infos.push({
+                bin_id: binId != null ? binId : i + 1,
+                stage_bin_id: stageBinId != null ? stageBinId : i + 1,
+                koji_count: kojiCount != null ? kojiCount : 0,
+                bin_code: binCode != null ? binCode : `${classNo}-${floorNo}-${seqNo}`
+              } as StageBinInfo)
+
+              // 恢复仓卡片数据
+              const workersData = binObj['workers'] as UTSJSONObject[] | null
+              if (workersData != null) {
+                const workers: BinWorkerData[] = []
+                for (let j = 0; j < workersData.length; j++) {
+                  const w = workersData[j]
+                  workers.push({
+                    personId: w['personId'] != null ? w['personId'] as number : null,
+                    personName: w['personName'] != null ? w['personName'] as string : '',
+                    pointsUnits: w['pointsUnits'] != null ? w['pointsUnits'] as number : 0,
+                    positionIndex: w['positionIndex'] != null ? w['positionIndex'] as number : j + 1
+                  } as BinWorkerData)
+                }
+
+                const cardStageBinId = stageBinId != null ? stageBinId : i + 1
+                this.binCardsData.set(cardStageBinId, {
+                  stageBinId: cardStageBinId,
+                  binId: binId != null ? binId : i + 1,
+                  binCode: binCode != null ? binCode : `${classNo}-${floorNo}-${seqNo}`,
+                  kojiCount: kojiCount != null ? kojiCount : 0,
+                  totalPointsUnits: binObj['totalPointsUnits'] != null ? binObj['totalPointsUnits'] as number : 0,
+                  assignedUnits: binObj['assignedUnits'] != null ? binObj['assignedUnits'] as number : 0,
+                  workers: workers
+                } as BinCardData)
+              }
+            }
+          }
+
+          this.selectedBins = bins
+          this.stageBinInfos = infos
+        }
+
+        // 恢复跨仓岗位数据
+        const crossBinData = sessionData['cross_bin'] as UTSJSONObject | null
+        if (crossBinData != null) {
+          const hasCrossBin = crossBinData['enabled'] as boolean | null
+          if (hasCrossBin == true) {
+            this.showCrossBinSection = true
+            this.crossBinPersonId = crossBinData['person_id'] != null ? crossBinData['person_id'] as number : null
+            this.crossBinPersonName = crossBinData['person_name'] != null ? crossBinData['person_name'] as string : ''
+            this.crossBinPointsUnits = crossBinData['points_units'] != null ? crossBinData['points_units'] as number : 0
+            const roleCode = crossBinData['role_code'] as string | null
+            if (roleCode != null) {
+              this.crossBinRoleCode = roleCode as RoleCode
+              if (roleCode == 'CART_PULLER') {
+                this.crossBinRoleName = '拉车'
+              } else if (roleCode == 'HELPER') {
+                this.crossBinRoleName = '打杂'
+              }
+            }
+          }
+        }
+
+        // 更新人员互斥列表
+        this.updateOccupiedIds()
+      },
+
+      /**
+       * 构建会话数据对象
+       * @param status 会话状态
+       * @returns 会话数据对象
+       */
+      buildSessionData(status: string): UTSJSONObject {
+        // 构建发酵仓数据
+        const binsData: UTSJSONObject[] = []
+        for (let i = 0; i < this.stageBinInfos.length; i++) {
+          const info = this.stageBinInfos[i]
+          const cardData = this.binCardsData.get(info.stage_bin_id)
+
+          // 构建工人数据
+          const workersData: UTSJSONObject[] = []
+          if (cardData != null) {
+            for (let j = 0; j < cardData.workers.length; j++) {
+              const w = cardData.workers[j]
+              workersData.push({
+                personId: w.personId,
+                personName: w.personName,
+                pointsUnits: w.pointsUnits,
+                positionIndex: w.positionIndex
+              } as UTSJSONObject)
+            }
+          }
+
+          // 从 selectedBins 获取原始 BinCode
+          let classNo = 0
+          let floorNo = 0
+          let seqNo = 0
+          if (i < this.selectedBins.length) {
+            classNo = this.selectedBins[i].class_no
+            floorNo = this.selectedBins[i].floor_no
+            seqNo = this.selectedBins[i].seq_no
+          }
+
+          binsData.push({
+            bin_id: info.bin_id,
+            stage_bin_id: info.stage_bin_id,
+            koji_count: info.koji_count,
+            bin_code: info.bin_code,
+            class_no: classNo,
+            floor_no: floorNo,
+            seq_no: seqNo,
+            totalPointsUnits: cardData != null ? cardData.totalPointsUnits : 0,
+            assignedUnits: cardData != null ? cardData.assignedUnits : 0,
+            workers: workersData
+          } as UTSJSONObject)
+        }
+
+        // 构建跨仓岗位数据
+        const crossBinData = {
+          enabled: this.showCrossBinSection,
+          role_code: this.crossBinRoleCode,
+          role_name: this.crossBinRoleName,
+          person_id: this.crossBinPersonId,
+          person_name: this.crossBinPersonName,
+          points_units: this.crossBinPointsUnits
+        } as UTSJSONObject
+
+        // 构建完整会话数据
+        const sessionData = {
+          status: status,
+          session_date: this.sessionDate,
+          stage_code: this.stageCode,
+          stage_name: this.stageName,
+          round_id: this.roundId,
+          bins: binsData,
+          cross_bin: crossBinData,
+          timestamp: getCurrentTimestamp()
+        } as UTSJSONObject
+
+        return sessionData
+      },
+
+      /**
+       * 保存草稿
+       */
       saveDraft() {
+        // 构建会话数据
+        const sessionData = this.buildSessionData('draft')
+
+        // 保存到存储
+        saveSession(this.sessionDate, this.stageCode, this.roundId, sessionData)
+
         uni.showToast({
           title: '草稿已保存',
           icon: 'success'
         })
       },
 
+      /**
+       * 提交确认
+       */
       submit() {
         // 校验是否存在缺失安曲记录的仓
         if (this.missingAnQuBins.length > 0) {
@@ -468,7 +676,7 @@
             cancelText: '取消',
             confirmText: '去录入',
             success: (res) => {
-              if (res.confirm) {
+              if (res.confirm == true) {
                 // 跳转到安曲录入页面
                 uni.navigateTo({
                   url: '/pages/work/entry?stage=AN_QU'
@@ -477,6 +685,46 @@
             }
           })
           return
+        }
+
+        // 校验是否有发酵仓数据（非堆曲环节）
+        if (this.showBinSection == true && this.stageBinInfos.length == 0) {
+          uni.showToast({
+            title: '请选择发酵仓',
+            icon: 'none'
+          })
+          return
+        }
+
+        // 校验每个仓是否有人员分配
+        if (this.showBinSection == true) {
+          for (let i = 0; i < this.stageBinInfos.length; i++) {
+            const info = this.stageBinInfos[i]
+            const cardData = this.binCardsData.get(info.stage_bin_id)
+            if (cardData == null) {
+              uni.showToast({
+                title: `仓 ${info.bin_code} 未分配人员`,
+                icon: 'none'
+              })
+              return
+            }
+
+            // 检查是否有至少一个人员
+            let hasWorker = false
+            for (let j = 0; j < cardData.workers.length; j++) {
+              if (cardData.workers[j].personId != null) {
+                hasWorker = true
+                break
+              }
+            }
+            if (hasWorker == false) {
+              uni.showToast({
+                title: `仓 ${info.bin_code} 未分配人员`,
+                icon: 'none'
+              })
+              return
+            }
+          }
         }
 
         // 校验跨仓岗位
@@ -494,7 +742,13 @@
           title: '提示',
           content: '确认提交工分录入？',
           success: (res) => {
-            if (res.confirm) {
+            if (res.confirm == true) {
+              // 构建会话数据
+              const sessionData = this.buildSessionData('submitted')
+
+              // 保存到存储
+              saveSession(this.sessionDate, this.stageCode, this.roundId, sessionData)
+
               uni.showToast({
                 title: '提交成功',
                 icon: 'success'

@@ -160,6 +160,101 @@ uni.request({
 
 ---
 
+## Session Data Pattern
+
+### 会话数据保存模式
+
+会话数据（如草稿、已提交记录）需要包含状态字段，以便区分不同类型的数据。
+
+#### 数据结构
+
+```typescript
+type SessionData = {
+  status: 'draft' | 'submitted'  // 状态字段（必需）
+  session_date: string           // 会话日期
+  stage_code: string             // 阶段代码
+  round_id: number | null        // 轮次 ID
+  timestamp: number              // 保存时间戳
+  // ... 其他业务数据
+}
+```
+
+#### 保存会话
+
+```typescript
+import { saveSession } from '@/storage/storage-repository.uts'
+
+// 保存草稿
+const draftData = {
+  status: 'draft',
+  session_date: '2026-02-07',
+  stage_code: 'AN_QU',
+  round_id: null,
+  timestamp: Date.now(),
+  bins: [/* ... */]
+}
+saveSession(date, stageCode, roundId, draftData)
+
+// 提交数据
+const submittedData = {
+  ...draftData,
+  status: 'submitted'
+}
+saveSession(date, stageCode, roundId, submittedData)
+```
+
+#### 加载会话
+
+```typescript
+import { loadSession } from '@/storage/storage-repository.uts'
+
+// 从 URL 参数加载
+onLoad(options: UTSJSONObject) {
+  const date = options['date'] as string | null
+  const stage = options['stage'] as string | null
+  const roundId = options['roundId'] as string | null
+
+  if (date != null && stage != null) {
+    const sessionData = loadSession(date, stage, roundId)
+    if (sessionData != null) {
+      // 恢复页面状态
+      this.restoreFromSession(sessionData)
+    }
+  }
+}
+```
+
+#### 过滤会话状态
+
+在查询数据时，必须检查 `status` 字段：
+
+```typescript
+// ✅ 正确：只处理已提交的数据
+const sessionStatus = sessionData['status'] as string | null
+if (sessionStatus == 'draft') {
+  continue  // 跳过草稿
+}
+
+// ❌ 错误：不检查状态，草稿和已提交数据混在一起
+const bins = sessionData['bins']  // 可能包含草稿数据
+```
+
+#### 向后兼容
+
+旧数据可能没有 `status` 字段，需要兼容处理：
+
+```typescript
+const sessionStatus = sessionData['status'] as string | null
+
+// 如果 status 字段不存在（旧数据），视为已提交
+if (sessionStatus == 'draft') {
+  continue
+}
+// sessionStatus == null 或 'submitted' 都会继续处理
+```
+
+---
+
 ## Common Mistakes
 
 | 错误 | 正确做法 |
@@ -169,3 +264,5 @@ uni.request({
 | 忘记 `uni.$off` | 页面销毁时移除监听 |
 | 页面直接调用 `uni.getStorageSync` | 通过 AppStore 访问 |
 | 硬编码 Storage Key | 使用 storage-keys.uts 定义 |
+| 保存会话数据不包含 `status` 字段 | 必须包含 `status: 'draft' \| 'submitted'` |
+| 查询数据时不检查 `status` | 必须过滤草稿数据 |
