@@ -657,3 +657,61 @@ getInitials(cn: string): string
 ### Next Steps
 
 - None - task complete
+
+## Session 12: Phase 3 剩余任务完成（P3-T07/P3-T10）
+
+**Date**: 2026-02-07
+**Task**: Phase 3 剩余任务完成（P3-T07/P3-T10）
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 完成任务
+
+| 任务 | 说明 |
+|------|------|
+| P3-T07 工分输入控件 | 新增 biz-score-input.uvue (314行)，支持 v-model、两种尺寸、禁用态 |
+| P3-T10 工作台列表 | 更新 pages/index/index.uvue (455行)，实现草稿/已提交列表、删除、跳转 |
+
+## 关键实现
+
+### biz-score-input 组件
+- Props: modelValue, min, max, step, disabled, size
+- 支持 +0.1/-0.1 微调（内部整数单位）
+- blur 时格式化纠错
+- 两种尺寸：normal (36px) / small (28px)
+
+### 工作台列表
+- 加载最近 7 天会话数据
+- 按状态分组：草稿 / 已提交
+- 支持删除草稿（含确认弹窗）
+- 点击跳转到录入页
+
+## Codex 审查修复
+- 按钮点击前同步输入值（syncDisplayToInternal）
+- v-for key 改用稳定业务 key
+
+## 进度更新
+- Phase 3 完成度: 80% → **100%** ✅
+- 总体进度: 72% → **77%**
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cfe5b33` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
