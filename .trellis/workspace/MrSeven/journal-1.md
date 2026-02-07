@@ -477,3 +477,77 @@ getInitials(cn: string): string
 ### Next Steps
 
 - None - task complete
+
+## Session 9: P3-T04 仓卡片组件实现
+
+**Date**: 2026-02-07
+**Task**: P3-T04 仓卡片组件实现
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 完成内容
+
+### 新建文件
+- `components/biz-bin-card/biz-bin-card.uvue` (860行) - 仓卡片组件
+
+### 修改文件
+- `pages/work/entry.uvue` - 集成仓卡片组件
+- `.trellis/spec/frontend/type-safety.md` - 新增 Map 遍历章节
+- `开发进度.md` - 更新任务状态
+
+## 功能实现
+
+| 功能 | 说明 |
+|------|------|
+| 仓号显示 | 仓号 + 仓内标签 |
+| 曲坯数输入 | 仅 AN_QU 环节可编辑，步进 +/-100 |
+| 总分计算 | calcBinTotalPointsUnits(kojiCount, coef) |
+| 人员分配 | 站位顺序（门口→里面），支持添加/移除 |
+| 工分输入 | 0.1 精度，PointsUnits 整数单位 |
+| 分配状态 | 已分配/总分，平衡/不平衡提示 |
+| 人员互斥 | occupiedPersonIds 跨卡片互斥 |
+| 人员选择 | 集成 biz-worker-selector-pinyin |
+
+## 修复问题
+
+| 问题 | 解决方案 |
+|------|----------|
+| CSS 后代选择器 | ucss 不支持，改为独立类名 |
+| Map 迭代器 | UTS 不支持 entries().next()，使用 forEach |
+| :key 使用 index | 改为 stage_bin_id 避免状态错乱 |
+| initialWorkers watcher | 移除 watcher，只在 mounted 初始化 |
+| 已选人员显示占用 | 从 occupiedIds 排除当前位置已选人员 |
+
+## Codex 审查
+
+- 业务逻辑正确性：✅ 通过
+- UTS 类型安全：✅ 通过
+- 组件设计：✅ 通过（修复 3 个问题）
+
+## 进度更新
+
+- Phase 3 完成度：60% → 75%
+- P3-T04 仓卡片组件：✅ 完成
+- P3-T06 BIN 分配行：✅ 完成（已集成在 biz-bin-card）
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `68269bf` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
