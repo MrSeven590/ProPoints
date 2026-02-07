@@ -1,0 +1,7 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/shared/index.md", "reason": "Shared coding standards"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/components.md", "reason": "Component conventions"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件开发规范，定义了 Vue 3 组合式 API 和 uvue 组件结构"}
+{"file": "components/biz-bin-card/biz-bin-card.uvue", "reason": "现有的仓卡片组件，包含按钮组和工分分配逻辑"}
+{"file": "domain/services/ScoreAllocator.uts", "reason": "工分分配算法服务，包含平均分配逻辑"}

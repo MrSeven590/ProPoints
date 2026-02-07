@@ -715,3 +715,112 @@ getInitials(cn: string): string
 ### Next Steps
 
 - None - task complete
+
+## Session 13: 实现平分按钮、修复草稿功能和发酵仓推测
+
+**Date**: 2026-02-08
+**Task**: 实现平分按钮、修复草稿功能和发酵仓推测
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 会话概述
+
+本次会话完成了三个主要功能：平分按钮、草稿功能修复、发酵仓推测修复。
+
+## 完成的功能
+
+### 1. 平分按钮功能 (feat)
+
+**提交**: `ed10ebd`
+
+**实现内容**:
+- 在仓内人员分配页面添加"平分"按钮（右对齐）
+- 使用最大余数法平分发酵仓总分
+- 确保分配后总和等于仓总分
+
+**修改文件**:
+- `components/biz-bin-card/biz-bin-card.uvue`
+
+### 2. 草稿功能修复 (fix)
+
+**提交**: `cab0cb4`
+
+**问题**:
+- 保存草稿和提交功能只显示提示，不实际保存数据
+- 无法加载已有草稿
+- 草稿和已提交数据混在一起
+
+**修复内容**:
+- 修复 `saveDraft()` 方法，调用 `saveSession()` 实际保存数据
+- 修复 `submit()` 方法，添加数据验证并保存
+- 实现草稿加载功能，支持从首页打开草稿继续编辑
+- 修复 `getLastSubmittedBins()`，添加状态过滤
+- 新增 `buildSessionData()` 和 `loadExistingSession()` 方法
+- 更新状态管理规范文档
+
+**修改文件**:
+- `pages/work/entry.uvue`
+- `.trellis/spec/frontend/state-management.md`
+
+### 3. 发酵仓推测和选中状态修复 (fix)
+
+**提交**: `ad01e51`
+
+**问题**:
+- 推测到错误楼层（3-3-2 后推测到 3-4-1 而非 3-3-3）
+- 手动选择楼层只显示已使用的仓
+- 自动推断的仓不显示选中状态
+
+**修复内容**:
+- 修复 `getSeqMaxForFloor()` 返回 `max(配置容量, 历史最大值)`
+- 标准化 Map 键为字符串，避免类型不匹配
+
+**修改文件**:
+- `domain/services/BinService.uts`
+- `components/biz-bin-selector/biz-bin-selector.uvue`
+
+## 技术亮点
+
+1. **最大余数法**: 平分工分时使用最大余数法处理余数，确保公平分配
+2. **会话状态管理**: 引入 `status: 'draft' | 'submitted'` 字段区分草稿和已提交数据
+3. **类型标准化**: 使用字符串键解决 Map 的严格类型匹配问题
+4. **向后兼容**: 旧数据无 `status` 字段时视为已提交
+
+## 代码质量
+
+- ✅ 符合 UTS 类型安全规范
+- ✅ 符合状态管理规范
+- ✅ 符合错误处理规范
+- ✅ 功能测试通过
+
+## 统计数据
+
+- **提交数量**: 3 个
+- **修改文件**: 5 个
+- **新增代码**: 约 400+ 行
+- **修复 Bug**: 3 个
+- **新增功能**: 1 个
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ed10ebd` | (see git log) |
+| `cab0cb4` | (see git log) |
+| `ad01e51` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
