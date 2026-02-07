@@ -1,0 +1,401 @@
+/**
+ * 扣分服务
+ * 负责扣分记录的 CRUD 操作和汇总功能
+ * 扣分数据采用"独立明细"口径，最终分不回写 Assignment 原始分
+ */
+
+import {
+  PenaltyRecord,
+  PenaltyRecordCreateParams,
+  Assignment,
+  AssignmentWithPenalty,
+  calcFinalPoints
+} from '../models/assignment.uts'
+
+import {
+  PointsUnits,
+  SyncStatus,
+  generateUUID,
+  getCurrentTimestamp
+} from '../models/types.uts'
+
+import {
+  loadData,
+  saveData
+} from '../../storage/storage-repository.uts'
+
+// ============================================
+// JSON 转换函数
+// ============================================
+
+/**
+ * 将 UTSJSONObject 转换为 PenaltyRecord
+ * @param json JSON 对象
+ * @returns PenaltyRecord 类型
+ */
+export function jsonToPenalty(json: UTSJSONObject): PenaltyRecord {
+  return {
+    id: json['id'] as number,
+    uuid: json['uuid'] as string,
+    stage_session_id: json['stage_session_id'] as number,
+    assignment_id: json['assignment_id'] as number,
+    target_person_id: json['target_person_id'] as number,
+    manager_name: json['manager_name'] as string,
+    reason: json['reason'] as string,
+    deducted_points_units: json['deducted_points_units'] as PointsUnits,
+    created_at: json['created_at'] as number,
+    updated_at: json['updated_at'] as number,
+    version: json['version'] as number,
+    sync_status: json['sync_status'] as SyncStatus
+  } as PenaltyRecord
+}
+
+/**
+ * 将 PenaltyRecord 转换为 UTSJSONObject
+ * @param penalty 扣分记录
+ * @returns JSON 对象
+ */
+export function penaltyToJson(penalty: PenaltyRecord): UTSJSONObject {
+  return {
+    id: penalty.id,
+    uuid: penalty.uuid,
+    stage_session_id: penalty.stage_session_id,
+    assignment_id: penalty.assignment_id,
+    target_person_id: penalty.target_person_id,
+    manager_name: penalty.manager_name,
+    reason: penalty.reason,
+    deducted_points_units: penalty.deducted_points_units,
+    created_at: penalty.created_at,
+    updated_at: penalty.updated_at,
+    version: penalty.version,
+    sync_status: penalty.sync_status
+  } as UTSJSONObject
+}
+
+// ============================================
+// ID 生成
+// ============================================
+
+/**
+ * 生成新的扣分记录 ID
+ * @param penalties 现有扣分记录列表
+ * @returns 新 ID
+ */
+export function generatePenaltyId(penalties: PenaltyRecord[]): number {
+  let maxId = 0
+  for (let i = 0; i < penalties.length; i++) {
+    if (penalties[i].id > maxId) {
+      maxId = penalties[i].id
+    }
+  }
+  return maxId + 1
+}
+
+// ============================================
+// 内部辅助函数
+// ============================================
+
+/**
+ * 从 session 数据中加载扣分记录列表
+ * @param sessionKey session 存储键
+ * @returns 扣分记录列表
+ */
+function loadPenaltiesFromSession(sessionKey: string): PenaltyRecord[] {
+  const sessionData = loadData(sessionKey)
+  if (sessionData == null) {
+    return []
+  }
+
+  const penaltiesJson = sessionData['penalties']
+  if (penaltiesJson == null) {
+    return []
+  }
+
+  const jsonArray = penaltiesJson as UTSJSONObject[]
+  const penalties: PenaltyRecord[] = []
+
+  for (let i = 0; i < jsonArray.length; i++) {
+    penalties.push(jsonToPenalty(jsonArray[i]))
+  }
+
+  return penalties
+}
+
+/**
+ * 将扣分记录列表保存到 session 数据
+ * @param sessionKey session 存储键
+ * @param penalties 扣分记录列表
+ * @returns 是否成功
+ */
+function savePenaltiesToSession(sessionKey: string, penalties: PenaltyRecord[]): boolean {
+  const sessionData = loadData(sessionKey)
+  if (sessionData == null) {
+    return false
+  }
+
+  const jsonArray: UTSJSONObject[] = []
+  for (let i = 0; i < penalties.length; i++) {
+    jsonArray.push(penaltyToJson(penalties[i]))
+  }
+
+  sessionData['penalties'] = jsonArray
+  saveData(sessionKey, sessionData)
+  return true
+}
+
+// ============================================
+// CRUD 操作
+// ============================================
+
+/**
+ * 创建扣分记录
+ * @param sessionKey session 存储键
+ * @param params 创建参数
+ * @returns 新创建的扣分记录，session 不存在时返回 null
+ */
+export function createPenalty(sessionKey: string, params: PenaltyRecordCreateParams): PenaltyRecord | null {
+  const penalties = loadPenaltiesFromSession(sessionKey)
+  const now = getCurrentTimestamp()
+
+  const newPenalty: PenaltyRecord = {
+    id: generatePenaltyId(penalties),
+    uuid: generateUUID(),
+    stage_session_id: params.stage_session_id,
+    assignment_id: params.assignment_id,
+    target_person_id: params.target_person_id,
+    manager_name: params.manager_name,
+    reason: params.reason,
+    deducted_points_units: params.deducted_points_units,
+    created_at: now,
+    updated_at: now,
+    version: 1,
+    sync_status: 'local'
+  }
+
+  penalties.push(newPenalty)
+  const saved = savePenaltiesToSession(sessionKey, penalties)
+
+  if (saved == false) {
+    return null
+  }
+
+  return newPenalty
+}
+
+/**
+ * 更新扣分记录
+ * @param sessionKey session 存储键
+ * @param penaltyId 扣分记录 ID
+ * @param deductedUnits 扣分值
+ * @param reason 扣分原因
+ * @param managerName 管理员姓名
+ * @returns 是否成功
+ */
+export function updatePenalty(
+  sessionKey: string,
+  penaltyId: number,
+  deductedUnits: PointsUnits,
+  reason: string,
+  managerName: string
+): boolean {
+  const penalties = loadPenaltiesFromSession(sessionKey)
+  let found = false
+  const now = getCurrentTimestamp()
+
+  for (let i = 0; i < penalties.length; i++) {
+    if (penalties[i].id == penaltyId) {
+      // 创建更新后的记录
+      const updated: PenaltyRecord = {
+        id: penalties[i].id,
+        uuid: penalties[i].uuid,
+        stage_session_id: penalties[i].stage_session_id,
+        assignment_id: penalties[i].assignment_id,
+        target_person_id: penalties[i].target_person_id,
+        manager_name: managerName,
+        reason: reason,
+        deducted_points_units: deductedUnits,
+        created_at: penalties[i].created_at,
+        updated_at: now,
+        version: penalties[i].version + 1,
+        sync_status: 'local'
+      }
+      penalties[i] = updated
+      found = true
+      break
+    }
+  }
+
+  if (found == true) {
+    savePenaltiesToSession(sessionKey, penalties)
+  }
+
+  return found
+}
+
+/**
+ * 删除扣分记录
+ * @param sessionKey session 存储键
+ * @param penaltyId 扣分记录 ID
+ * @returns 是否成功
+ */
+export function deletePenalty(sessionKey: string, penaltyId: number): boolean {
+  const penalties = loadPenaltiesFromSession(sessionKey)
+  const newPenalties: PenaltyRecord[] = []
+  let found = false
+
+  for (let i = 0; i < penalties.length; i++) {
+    if (penalties[i].id == penaltyId) {
+      found = true
+      // 跳过此记录（即删除）
+    } else {
+      newPenalties.push(penalties[i])
+    }
+  }
+
+  if (found == true) {
+    savePenaltiesToSession(sessionKey, newPenalties)
+  }
+
+  return found
+}
+
+// ============================================
+// 查询函数
+// ============================================
+
+/**
+ * 按分配行 ID 查询扣分记录
+ * @param sessionKey session 存储键
+ * @param assignmentId 分配行 ID
+ * @returns 扣分记录列表
+ */
+export function getPenaltiesByAssignment(sessionKey: string, assignmentId: number): PenaltyRecord[] {
+  const penalties = loadPenaltiesFromSession(sessionKey)
+  const result: PenaltyRecord[] = []
+
+  for (let i = 0; i < penalties.length; i++) {
+    if (penalties[i].assignment_id == assignmentId) {
+      result.push(penalties[i])
+    }
+  }
+
+  return result
+}
+
+/**
+ * 按会话查询所有扣分记录
+ * @param sessionKey session 存储键
+ * @returns 扣分记录列表
+ */
+export function getPenaltiesBySession(sessionKey: string): PenaltyRecord[] {
+  return loadPenaltiesFromSession(sessionKey)
+}
+
+/**
+ * 按人员 ID 查询扣分记录
+ * @param sessionKey session 存储键
+ * @param personId 人员 ID
+ * @returns 扣分记录列表
+ */
+export function getPenaltiesByPerson(sessionKey: string, personId: number): PenaltyRecord[] {
+  const penalties = loadPenaltiesFromSession(sessionKey)
+  const result: PenaltyRecord[] = []
+
+  for (let i = 0; i < penalties.length; i++) {
+    if (penalties[i].target_person_id == personId) {
+      result.push(penalties[i])
+    }
+  }
+
+  return result
+}
+
+/**
+ * 获取分配行的扣分合计
+ * @param penalties 扣分记录列表
+ * @param assignmentId 分配行 ID
+ * @returns 扣分合计（工分单位）
+ */
+export function getTotalDeductedByAssignment(penalties: PenaltyRecord[], assignmentId: number): PointsUnits {
+  let total: PointsUnits = 0
+
+  for (let i = 0; i < penalties.length; i++) {
+    if (penalties[i].assignment_id == assignmentId) {
+      total = total + penalties[i].deducted_points_units
+    }
+  }
+
+  return total
+}
+
+// ============================================
+// 汇总函数
+// ============================================
+
+/**
+ * 获取带扣分汇总的分配行
+ * @param assignment 分配行
+ * @param penalties 扣分记录列表（该会话的所有扣分）
+ * @returns 带扣分汇总的分配行
+ */
+export function getAssignmentWithPenalty(
+  assignment: Assignment,
+  penalties: PenaltyRecord[]
+): AssignmentWithPenalty {
+  // 筛选该分配行的扣分记录
+  const assignmentPenalties: PenaltyRecord[] = []
+  let totalDeducted: PointsUnits = 0
+
+  for (let i = 0; i < penalties.length; i++) {
+    if (penalties[i].assignment_id == assignment.id) {
+      assignmentPenalties.push(penalties[i])
+      totalDeducted = totalDeducted + penalties[i].deducted_points_units
+    }
+  }
+
+  // 计算最终工分
+  const finalPoints = calcFinalPoints(assignment.points_units, totalDeducted)
+
+  return {
+    assignment: assignment,
+    total_deducted_units: totalDeducted,
+    final_points_units: finalPoints,
+    penalties: assignmentPenalties
+  } as AssignmentWithPenalty
+}
+
+/**
+ * 批量获取带扣分汇总的分配行
+ * @param assignments 分配行列表
+ * @param penalties 扣分记录列表（该会话的所有扣分）
+ * @returns 带扣分汇总的分配行列表
+ */
+export function getAssignmentsWithPenalties(
+  assignments: Assignment[],
+  penalties: PenaltyRecord[]
+): AssignmentWithPenalty[] {
+  const result: AssignmentWithPenalty[] = []
+
+  for (let i = 0; i < assignments.length; i++) {
+    result.push(getAssignmentWithPenalty(assignments[i], penalties))
+  }
+
+  return result
+}
+
+/**
+ * 获取人员在指定会话的扣分合计
+ * @param sessionKey session 存储键
+ * @param personId 人员 ID
+ * @returns 扣分合计（工分单位）
+ */
+export function getTotalDeductedByPerson(sessionKey: string, personId: number): PointsUnits {
+  const penalties = getPenaltiesByPerson(sessionKey, personId)
+  let total: PointsUnits = 0
+
+  for (let i = 0; i < penalties.length; i++) {
+    total = total + penalties[i].deducted_points_units
+  }
+
+  return total
+}
