@@ -551,3 +551,54 @@ getInitials(cn: string): string
 ### Next Steps
 
 - None - task complete
+
+## Session 10: P3-T05 曲坯数复用功能实现
+
+**Date**: 2026-02-07
+**Task**: P3-T05 曲坯数复用功能实现
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 完成内容
+
+### 1. P3-T05 曲坯数复用（主要任务）
+- 修改 `pages/work/entry.uvue`
+- 非安曲环节(一翻/二翻/拆曲)自动从安曲记录获取曲坯数
+- 缺失安曲记录时显示警告并阻止提交
+- 提供跳转到安曲录入页面的入口
+
+### 2. Bug 修复：CSS 类名冲突
+- 修改 `components/biz-bin-card/biz-bin-card.uvue`
+- `.worker-selector` → `.bin-worker-selector`
+- 解决仓内人员选择器无法显示列表的问题
+
+## 验收标准
+- [x] 非安曲环节选仓后自动填入曲坯数
+- [x] 无安曲记录时阻止提交并提示
+- [x] 提供跳转到安曲录入页面的入口
+
+## Codex 审查结果
+- 任务验收标准全部满足
+- 后续优化建议：binId 应使用稳定真实 ID
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c4fda88` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
