@@ -48,7 +48,7 @@
           <view class="worker-position">
             <text class="position-text">{{ index + 1 }}</text>
           </view>
-          <view class="worker-selector" @click="onOpenWorkerSelector(index)">
+          <view class="bin-worker-selector" @click="onOpenWorkerSelector(index)">
             <text v-if="worker.personId == null" class="placeholder-text">点击选择</text>
             <text v-else class="worker-name">{{ worker.personName }}</text>
           </view>
@@ -678,7 +678,7 @@
     color: #666666;
   }
 
-  .worker-selector {
+  .bin-worker-selector {
     flex: 1;
     flex-direction: row;
     align-items: center;

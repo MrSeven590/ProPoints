@@ -28,6 +28,17 @@
         />
       </view>
 
+      <!-- 缺失安曲记录警告 -->
+      <view class="section warning-section" v-if="missingAnQuBins.length > 0">
+        <view class="warning-content">
+          <text class="warning-text">以下仓位缺少安曲记录: {{ missingAnQuBins.join(', ') }}</text>
+          <text class="warning-hint">请先录入安曲数据后再进行当前环节操作</text>
+        </view>
+        <view class="warning-btn" @click="goToAnQuEntry">
+          <text class="warning-btn-text">去录入安曲</text>
+        </view>
+      </view>
+
       <!-- 跨仓岗位区域（CROSS_BIN） -->
       <view class="section" v-if="showCrossBinSection">
         <view class="section-header">
@@ -96,6 +107,7 @@
   import { stageHasCrossBinRole, getStageRoleConfigs, getStageBinWorkerCount } from '../../domain/services/StageCoefService.uts'
   import type { BinCode, StageBinInfo } from '../../domain/models/ferment.uts'
   import type { AssignmentSourceCreateParams } from '../../domain/models/assignment.uts'
+  import { getBinKojiCountFromAnQu } from '../../domain/services/DuiQuBaseService.uts'
 
   /**
    * 仓内工人分配数据类型
@@ -144,7 +156,9 @@
         // 仓卡片数据
         binCardsData: new Map<number, BinCardData>(),
         // 默认仓内工人数
-        defaultBinWorkerCount: 4 as number
+        defaultBinWorkerCount: 4 as number,
+        // 缺失安曲记录的仓号列表
+        missingAnQuBins: [] as string[]
       }
     },
     onLoad(options: UTSJSONObject) {
@@ -231,23 +245,51 @@
 
       /**
        * 更新发酵仓详细信息
-       * 注：实际项目中应从存储层获取曲坯数量，这里使用模拟数据
+       * - 安曲环节：曲坯数可编辑，使用默认值
+       * - 非安曲环节（一翻/二翻/拆曲）：从安曲记录获取曲坯数
        */
       updateStageBinInfos(bins: BinCode[]) {
         const infos: StageBinInfo[] = []
+        const missingBins: string[] = []
+
+        // 判断是否需要从安曲记录获取曲坯数
+        const needFetchFromAnQu = this.stageCode == 'YI_FAN' ||
+                                   this.stageCode == 'ER_FAN' ||
+                                   this.stageCode == 'CHAI_QU'
+
         for (let i = 0; i < bins.length; i++) {
           const bin = bins[i]
           const binCode = `${bin.class_no}-${bin.floor_no}-${bin.seq_no}`
-          // 模拟数据：实际应从安曲记录获取曲坯数量
-          const mockKojiCount = 1200 + (i * 100)
+          // 使用索引+1作为临时 bin_id（实际项目中应从存储层获取真实ID）
+          const binId = i + 1
+
+          let kojiCount = 0
+
+          if (needFetchFromAnQu) {
+            // 非安曲环节：从安曲记录获取曲坯数
+            const result = getBinKojiCountFromAnQu(binId)
+            if (result.found == true) {
+              kojiCount = result.kojiCount
+            } else {
+              // 记录缺失安曲记录的仓
+              missingBins.push(binCode)
+              kojiCount = 0
+            }
+          } else {
+            // 安曲环节：使用默认值，用户可编辑
+            kojiCount = 1200 + (i * 100)
+          }
+
           infos.push({
-            bin_id: i + 1,
-            stage_bin_id: i + 1,
-            koji_count: mockKojiCount,
+            bin_id: binId,
+            stage_bin_id: binId,
+            koji_count: kojiCount,
             bin_code: binCode
           } as StageBinInfo)
         }
+
         this.stageBinInfos = infos
+        this.missingAnQuBins = missingBins
       },
 
       /**
@@ -399,6 +441,15 @@
         this.occupiedIds = ids
       },
 
+      /**
+       * 跳转到安曲录入页面
+       */
+      goToAnQuEntry() {
+        uni.navigateTo({
+          url: '/pages/work/entry?stage=AN_QU'
+        })
+      },
+
       saveDraft() {
         uni.showToast({
           title: '草稿已保存',
@@ -407,6 +458,27 @@
       },
 
       submit() {
+        // 校验是否存在缺失安曲记录的仓
+        if (this.missingAnQuBins.length > 0) {
+          const binList = this.missingAnQuBins.join(', ')
+          uni.showModal({
+            title: '无法提交',
+            content: `以下仓位缺少安曲记录: ${binList}，请先录入安曲数据。`,
+            showCancel: true,
+            cancelText: '取消',
+            confirmText: '去录入',
+            success: (res) => {
+              if (res.confirm) {
+                // 跳转到安曲录入页面
+                uni.navigateTo({
+                  url: '/pages/work/entry?stage=AN_QU'
+                })
+              }
+            }
+          })
+          return
+        }
+
         // 校验跨仓岗位
         if (this.showCrossBinSection == true && this.crossBinPointsUnits > 0) {
           if (this.crossBinPersonId == null) {
@@ -526,6 +598,42 @@
   .add-btn-text {
     font-size: 14px;
     color: #007aff;
+  }
+
+  .warning-section {
+    background-color: #fffbe6;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #ffe58f;
+  }
+
+  .warning-content {
+    flex-direction: column;
+    margin-bottom: 12px;
+  }
+
+  .warning-text {
+    font-size: 14px;
+    color: #d48806;
+    line-height: 20px;
+  }
+
+  .warning-hint {
+    font-size: 12px;
+    color: #d48806;
+    margin-top: 4px;
+  }
+
+  .warning-btn {
+    background-color: #faad14;
+    border-radius: 4px;
+    padding: 8px 16px;
+    align-self: flex-start;
+  }
+
+  .warning-btn-text {
+    font-size: 14px;
+    color: #ffffff;
   }
 
   .info-row {
