@@ -76,7 +76,9 @@ export function getHistoryMaxSeqNo(
 
 /**
  * 获取指定楼层的 seq_max
- * 优先取历史最大值，否则取配置默认值
+ * 返回 max(配置容量, 历史最大值)
+ * - 配置容量保证物理仓位不会被缩小
+ * - 历史最大值允许扩展显示（如果历史超过配置）
  * @param classNo 班级编号
  * @param floorNo 楼层编号
  * @param stageCode 环节代码
@@ -87,13 +89,10 @@ export function getSeqMaxForFloor(
   floorNo: number,
   stageCode: StageCode
 ): number {
-  // 优先取历史最大值
+  const configMax = getBinSeqMaxByFloor(floorNo)
   const historyMax = getHistoryMaxSeqNo(classNo, floorNo, stageCode)
-  if (historyMax > 0) {
-    return historyMax
-  }
-  // 否则取配置默认值
-  return getBinSeqMaxByFloor(floorNo)
+  // 返回两者中的较大值
+  return configMax > historyMax ? configMax : historyMax
 }
 
 // ============================================
@@ -110,6 +109,7 @@ export type InferredBins = {
 
 /**
  * 获取最近一次提交的发酵仓记录
+ * 只返回已提交（submitted）状态的会话数据，跳过草稿（draft）
  * @param classNo 班级编号
  * @param stageCode 环节代码
  * @returns 最近的发酵仓列表（按 floor DESC, seq DESC 排序后的尾部仓）
@@ -132,6 +132,13 @@ export function getLastSubmittedBins(
         if (sessionData != null) {
           const sessionStage = sessionData['stage_code'] as string | null
           const sessionDate = sessionData['session_date'] as string | null
+          const sessionStatus = sessionData['status'] as string | null
+
+          // 只处理已提交的会话，跳过草稿
+          // 如果 status 字段不存在（旧数据），为了向后兼容，视为已提交
+          if (sessionStatus == 'draft') {
+            continue
+          }
 
           if (sessionStage == stageCode && sessionDate != null) {
             // 比较日期，取最新的

@@ -93,7 +93,7 @@
 	        seqMax: 24 as number,
 	        lastSelectedSeq: 0 as number,
 	        hasInferred: false as boolean,
-	        selectedSeqLookup: new Map<number, boolean>()
+	        selectedSeqLookup: new Map<string, boolean>()
 	      }
 	    },
 	    mounted() {
@@ -101,11 +101,13 @@
 	    },
 	    methods: {
 	      rebuildSelectedSeqLookup(bins: BinCode[]) {
-	        const lookup = new Map<number, boolean>()
+	        const lookup = new Map<string, boolean>()
 	        for (let i = 0; i < bins.length; i++) {
 	          const bin = bins[i]
 	          if (bin.class_no == this.classNo && bin.floor_no == this.currentFloor) {
-	            lookup.set(bin.seq_no, true)
+	            // 标准化键为字符串，避免类型不匹配
+	            const key = Math.floor(bin.seq_no).toString()
+	            lookup.set(key, true)
 	          }
 	        }
 	        this.selectedSeqLookup = lookup
@@ -164,7 +166,9 @@
       },
 
 	      isBinSelected(seq: number): boolean {
-	        return this.selectedSeqLookup.has(seq)
+	        // 标准化键为字符串，避免类型不匹配
+	        const key = Math.floor(seq).toString()
+	        return this.selectedSeqLookup.has(key)
 	      },
 
       findBinIndex(seq: number): number {
