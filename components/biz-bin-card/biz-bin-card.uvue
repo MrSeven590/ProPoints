@@ -1,0 +1,855 @@
+<template>
+  <view class="bin-card">
+    <!-- 卡片头部：仓号 + 曲坯数 + 总分 -->
+    <view class="card-header">
+      <view class="header-left">
+        <text class="bin-code">{{ binCode }}</text>
+        <view class="scope-badge">
+          <text class="scope-text">仓内</text>
+        </view>
+      </view>
+      <view class="header-right">
+        <text class="total-points-label">总分</text>
+        <text class="total-points-value">{{ displayTotalPoints }}</text>
+      </view>
+    </view>
+
+    <!-- 曲坯数输入区域 -->
+    <view class="koji-row">
+      <text class="row-label">曲坯数</text>
+      <view class="koji-input-area">
+        <view v-if="isAnQu" class="stepper-btn" @click="onKojiDecrease">
+          <text class="stepper-btn-text">-</text>
+        </view>
+        <input
+          v-if="isAnQu"
+          class="koji-input"
+          type="number"
+          :value="kojiCountStr"
+          @input="onKojiInput"
+          @blur="onKojiBlur"
+        />
+        <text v-else class="koji-readonly">{{ kojiCount }}</text>
+        <view v-if="isAnQu" class="stepper-btn" @click="onKojiIncrease">
+          <text class="stepper-btn-text">+</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 人员分配列表 -->
+    <view class="workers-section">
+      <view class="workers-header">
+        <text class="workers-title">人员分配</text>
+        <text class="workers-hint">站位：门口→里面</text>
+      </view>
+
+      <view class="worker-list">
+        <view v-for="(worker, index) in workerList" :key="index" class="worker-item">
+          <view class="worker-position">
+            <text class="position-text">{{ index + 1 }}</text>
+          </view>
+          <view class="worker-selector" @click="onOpenWorkerSelector(index)">
+            <text v-if="worker.personId == null" class="placeholder-text">点击选择</text>
+            <text v-else class="worker-name">{{ worker.personName }}</text>
+          </view>
+          <view class="worker-points">
+            <view class="stepper-btn-small" @click="onWorkerPointsDecrease(index)">
+              <text class="stepper-btn-text-small">-</text>
+            </view>
+            <input
+              class="points-input"
+              type="digit"
+              :value="worker.displayPoints"
+              @input="onWorkerPointsInput(index, $event)"
+              @blur="onWorkerPointsBlur(index)"
+            />
+            <view class="stepper-btn-small" @click="onWorkerPointsIncrease(index)">
+              <text class="stepper-btn-text-small">+</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 添加/删除人员按钮 -->
+      <view class="worker-actions">
+        <view class="action-btn add-btn" @click="onAddWorker">
+          <text class="action-btn-text">+ 添加</text>
+        </view>
+        <view v-if="workerList.length > 1" class="action-btn remove-btn" @click="onRemoveWorker">
+          <text class="action-btn-text remove-text">- 移除</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 分配状态提示 -->
+    <view class="status-row">
+      <text class="status-label">已分配</text>
+      <text :class="['status-value', isBalanced ? 'balanced' : 'unbalanced']">
+        {{ displayAssignedPoints }} / {{ displayTotalPoints }}
+      </text>
+      <text v-if="!isBalanced" class="status-hint">
+        {{ remainingUnits > 0 ? '剩余 ' + displayRemainingPoints : '超出 ' + displayOverflowPoints }}
+      </text>
+    </view>
+
+    <!-- 人员选择弹窗 -->
+    <view v-if="showWorkerPicker" class="picker-mask" @click="onCloseWorkerSelector">
+      <view class="picker-container" @click.stop="">
+        <view class="picker-header">
+          <text class="picker-title">选择人员 (站位{{ currentWorkerIndex + 1 }})</text>
+          <view class="picker-close" @click="onCloseWorkerSelector">
+            <text class="picker-close-text">X</text>
+          </view>
+        </view>
+        <biz-worker-selector-pinyin
+          :selectedPersonId="currentSelectedPersonId"
+          :occupiedIds="allOccupiedIds"
+          placeholder="搜索姓名/拼音"
+          @select="onWorkerSelect"
+          @clear="onWorkerClear"
+        />
+      </view>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+  import { unitsToPoints, pointsToUnits, PointsUnits } from '../../domain/models/types.uts'
+  import type { StageCode } from '../../domain/models/types.uts'
+  import { calcBinTotalPointsUnits } from '../../domain/services/ScoreCalculator.uts'
+  import { getStageCoef } from '../../domain/services/StageCoefService.uts'
+
+  /**
+   * 仓内工人分配项类型
+   */
+  type BinWorkerItem = {
+    personId: number | null
+    personName: string
+    pointsUnits: PointsUnits
+    displayPoints: string
+  }
+
+  export default {
+    props: {
+      stageBinId: {
+        type: Number,
+        default: 0
+      },
+      binId: {
+        type: Number,
+        default: 0
+      },
+      binCode: {
+        type: String,
+        default: ''
+      },
+      stageCode: {
+        type: String,
+        default: 'AN_QU'
+      },
+      initialKojiCount: {
+        type: Number,
+        default: 1200
+      },
+      initialWorkers: {
+        type: Array,
+        default: (): UTSJSONObject[] => {
+          return [] as UTSJSONObject[]
+        }
+      },
+      occupiedPersonIds: {
+        type: Array,
+        default: (): number[] => {
+          return [] as number[]
+        }
+      },
+      defaultWorkerCount: {
+        type: Number,
+        default: 4
+      }
+    },
+    emits: ['change', 'kojiChange'],
+    data() {
+      return {
+        kojiCount: 1200 as number,
+        kojiCountStr: '1200' as string,
+        totalPointsUnits: 0 as PointsUnits,
+        workerList: [] as BinWorkerItem[],
+        showWorkerPicker: false as boolean,
+        currentWorkerIndex: -1 as number
+      }
+    },
+    computed: {
+      isAnQu(): boolean {
+        return (this.stageCode as string) == 'AN_QU'
+      },
+      displayTotalPoints(): string {
+        return unitsToPoints(this.totalPointsUnits).toFixed(1)
+      },
+      assignedUnits(): PointsUnits {
+        let sum = 0
+        for (let i = 0; i < this.workerList.length; i++) {
+          sum = sum + this.workerList[i].pointsUnits
+        }
+        return sum
+      },
+      displayAssignedPoints(): string {
+        return unitsToPoints(this.assignedUnits).toFixed(1)
+      },
+      remainingUnits(): PointsUnits {
+        return this.totalPointsUnits - this.assignedUnits
+      },
+      displayRemainingPoints(): string {
+        return unitsToPoints(Math.abs(this.remainingUnits)).toFixed(1)
+      },
+      displayOverflowPoints(): string {
+        return unitsToPoints(Math.abs(this.remainingUnits)).toFixed(1)
+      },
+      isBalanced(): boolean {
+        return this.remainingUnits == 0
+      },
+      currentSelectedPersonId(): number | null {
+        if (this.currentWorkerIndex >= 0 && this.currentWorkerIndex < this.workerList.length) {
+          return this.workerList[this.currentWorkerIndex].personId
+        }
+        return null
+      },
+      allOccupiedIds(): number[] {
+        const ids: number[] = []
+        // 获取当前正在选择位置的已选人员 ID（需要排除）
+        let currentSlotPersonId: number | null = null
+        if (this.currentWorkerIndex >= 0 && this.currentWorkerIndex < this.workerList.length) {
+          currentSlotPersonId = this.workerList[this.currentWorkerIndex].personId
+        }
+        // 添加外部传入的已占用 ID（排除当前位置的已选人员）
+        const externalIds = this.occupiedPersonIds as number[]
+        for (let i = 0; i < externalIds.length; i++) {
+          const extId = externalIds[i]
+          // 排除当前位置的已选人员，使其可以被重新选择
+          if (currentSlotPersonId != null && extId == currentSlotPersonId) {
+            continue
+          }
+          ids.push(extId)
+        }
+        // 添加本卡片内已选择的人员（排除当前正在选择的位置）
+        for (let i = 0; i < this.workerList.length; i++) {
+          if (i != this.currentWorkerIndex) {
+            const worker = this.workerList[i]
+            if (worker.personId != null) {
+              const pid = worker.personId as number
+              if (ids.indexOf(pid) == -1) {
+                ids.push(pid)
+              }
+            }
+          }
+        }
+        return ids
+      }
+    },
+    watch: {
+      initialKojiCount: {
+        handler(newVal: number) {
+          this.kojiCount = newVal
+          this.kojiCountStr = newVal.toString()
+          this.recalculateTotalPoints()
+        },
+        immediate: true
+      }
+      // 注意：initialWorkers 不使用 watcher，只在 mounted 时初始化一次
+      // 因为组件是自管理状态的，通过 @change 事件同步回父组件
+    },
+    mounted() {
+      this.initData()
+    },
+    methods: {
+      initData() {
+        // 初始化曲坯数
+        this.kojiCount = this.initialKojiCount as number
+        this.kojiCountStr = this.kojiCount.toString()
+        this.recalculateTotalPoints()
+
+        // 初始化人员列表
+        const initialWorkers = this.initialWorkers as UTSJSONObject[]
+        if (initialWorkers.length > 0) {
+          this.initWorkerList(initialWorkers)
+        } else {
+          // 创建默认人员行
+          this.createDefaultWorkers()
+        }
+      },
+
+      initWorkerList(workers: UTSJSONObject[]) {
+        if (workers.length == 0) {
+          this.createDefaultWorkers()
+          return
+        }
+        const list: BinWorkerItem[] = []
+        for (let i = 0; i < workers.length; i++) {
+          const w = workers[i]
+          const personId = w['personId']
+          const personName = w['personName']
+          const pointsUnits = w['pointsUnits']
+          const units = pointsUnits != null ? pointsUnits as number : 0
+          list.push({
+            personId: personId != null ? personId as number : null,
+            personName: personName != null ? personName as string : '',
+            pointsUnits: units,
+            displayPoints: unitsToPoints(units).toFixed(1)
+          } as BinWorkerItem)
+        }
+        this.workerList = list
+      },
+
+      createDefaultWorkers() {
+        const count = this.defaultWorkerCount as number
+        const list: BinWorkerItem[] = []
+        for (let i = 0; i < count; i++) {
+          list.push({
+            personId: null,
+            personName: '',
+            pointsUnits: 0,
+            displayPoints: '0.0'
+          } as BinWorkerItem)
+        }
+        this.workerList = list
+      },
+
+      recalculateTotalPoints() {
+        const stageCode = this.stageCode as StageCode
+        const coef = getStageCoef(stageCode)
+        this.totalPointsUnits = calcBinTotalPointsUnits(this.kojiCount, coef)
+      },
+
+      // ============================================
+      // 曲坯数操作
+      // ============================================
+
+      onKojiInput(e: UniInputEvent) {
+        this.kojiCountStr = e.detail.value
+      },
+
+      onKojiBlur() {
+        let inputVal = parseInt(this.kojiCountStr)
+        if (isNaN(inputVal)) {
+          inputVal = 0
+        }
+        if (inputVal < 0) {
+          inputVal = 0
+        }
+        this.kojiCount = inputVal
+        this.kojiCountStr = inputVal.toString()
+        this.recalculateTotalPoints()
+        this.emitKojiChange()
+        this.emitChange()
+      },
+
+      onKojiIncrease() {
+        this.kojiCount = this.kojiCount + 100
+        this.kojiCountStr = this.kojiCount.toString()
+        this.recalculateTotalPoints()
+        this.emitKojiChange()
+        this.emitChange()
+      },
+
+      onKojiDecrease() {
+        if (this.kojiCount >= 100) {
+          this.kojiCount = this.kojiCount - 100
+          this.kojiCountStr = this.kojiCount.toString()
+          this.recalculateTotalPoints()
+          this.emitKojiChange()
+          this.emitChange()
+        }
+      },
+
+      // ============================================
+      // 人员选择操作
+      // ============================================
+
+      onOpenWorkerSelector(index: number) {
+        this.currentWorkerIndex = index
+        this.showWorkerPicker = true
+      },
+
+      onCloseWorkerSelector() {
+        this.showWorkerPicker = false
+        this.currentWorkerIndex = -1
+      },
+
+      onWorkerSelect(payload: UTSJSONObject) {
+        const id = payload['id']
+        const name = payload['name']
+        if (id != null && name != null && this.currentWorkerIndex >= 0) {
+          const worker = this.workerList[this.currentWorkerIndex]
+          worker.personId = id as number
+          worker.personName = name as string
+          this.showWorkerPicker = false
+          this.currentWorkerIndex = -1
+          this.emitChange()
+        }
+      },
+
+      onWorkerClear() {
+        if (this.currentWorkerIndex >= 0 && this.currentWorkerIndex < this.workerList.length) {
+          const worker = this.workerList[this.currentWorkerIndex]
+          worker.personId = null
+          worker.personName = ''
+          this.emitChange()
+        }
+      },
+
+      // ============================================
+      // 工分操作
+      // ============================================
+
+      onWorkerPointsInput(index: number, e: UniInputEvent) {
+        if (index >= 0 && index < this.workerList.length) {
+          this.workerList[index].displayPoints = e.detail.value
+        }
+      },
+
+      onWorkerPointsBlur(index: number) {
+        if (index >= 0 && index < this.workerList.length) {
+          const worker = this.workerList[index]
+          let inputVal = parseFloat(worker.displayPoints)
+          if (isNaN(inputVal)) {
+            inputVal = 0
+          }
+          if (inputVal < 0) {
+            inputVal = 0
+          }
+          worker.pointsUnits = pointsToUnits(inputVal)
+          worker.displayPoints = unitsToPoints(worker.pointsUnits).toFixed(1)
+          this.emitChange()
+        }
+      },
+
+      onWorkerPointsIncrease(index: number) {
+        if (index >= 0 && index < this.workerList.length) {
+          const worker = this.workerList[index]
+          worker.pointsUnits = worker.pointsUnits + 1
+          worker.displayPoints = unitsToPoints(worker.pointsUnits).toFixed(1)
+          this.emitChange()
+        }
+      },
+
+      onWorkerPointsDecrease(index: number) {
+        if (index >= 0 && index < this.workerList.length) {
+          const worker = this.workerList[index]
+          if (worker.pointsUnits > 0) {
+            worker.pointsUnits = worker.pointsUnits - 1
+            worker.displayPoints = unitsToPoints(worker.pointsUnits).toFixed(1)
+            this.emitChange()
+          }
+        }
+      },
+
+      // ============================================
+      // 添加/删除人员
+      // ============================================
+
+      onAddWorker() {
+        this.workerList.push({
+          personId: null,
+          personName: '',
+          pointsUnits: 0,
+          displayPoints: '0.0'
+        } as BinWorkerItem)
+        this.emitChange()
+      },
+
+      onRemoveWorker() {
+        if (this.workerList.length > 1) {
+          this.workerList.pop()
+          this.emitChange()
+        }
+      },
+
+      // ============================================
+      // 事件发送
+      // ============================================
+
+      emitChange() {
+        const workers: UTSJSONObject[] = []
+        for (let i = 0; i < this.workerList.length; i++) {
+          const w = this.workerList[i]
+          workers.push({
+            personId: w.personId,
+            personName: w.personName,
+            pointsUnits: w.pointsUnits,
+            positionIndex: i + 1
+          } as UTSJSONObject)
+        }
+        const payload = {
+          stageBinId: this.stageBinId,
+          binId: this.binId,
+          binCode: this.binCode,
+          kojiCount: this.kojiCount,
+          totalPointsUnits: this.totalPointsUnits,
+          assignedUnits: this.assignedUnits,
+          workers: workers
+        } as UTSJSONObject
+        this.$emit('change', payload)
+      },
+
+      emitKojiChange() {
+        const payload = {
+          stageBinId: this.stageBinId,
+          binId: this.binId,
+          binCode: this.binCode,
+          kojiCount: this.kojiCount,
+          totalPointsUnits: this.totalPointsUnits
+        } as UTSJSONObject
+        this.$emit('kojiChange', payload)
+      }
+    }
+  }
+</script>
+
+<style>
+  .bin-card {
+    background-color: #ffffff;
+    border-radius: 12px;
+    padding: 16px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #ebebeb;
+    margin-bottom: 12px;
+  }
+
+  /* 卡片头部 */
+  .card-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
+    border-bottom-color: #f0f0f0;
+  }
+
+  .header-left {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .bin-code {
+    font-size: 18px;
+    font-weight: bold;
+    color: #333333;
+    margin-right: 8px;
+  }
+
+  .scope-badge {
+    background-color: #e6f7ff;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  .scope-text {
+    font-size: 11px;
+    color: #1890ff;
+  }
+
+  .header-right {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .total-points-label {
+    font-size: 13px;
+    color: #666666;
+    margin-right: 4px;
+  }
+
+  .total-points-value {
+    font-size: 18px;
+    font-weight: bold;
+    color: #007aff;
+  }
+
+  /* 曲坯数行 */
+  .koji-row {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .row-label {
+    width: 60px;
+    font-size: 14px;
+    color: #666666;
+  }
+
+  .koji-input-area {
+    flex: 1;
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .koji-input {
+    flex: 1;
+    height: 36px;
+    margin-left: 8px;
+    margin-right: 8px;
+    padding: 0 12px;
+    background-color: #f5f7fa;
+    border-radius: 6px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+    font-size: 14px;
+    color: #333333;
+    text-align: center;
+  }
+
+  .koji-readonly {
+    flex: 1;
+    font-size: 14px;
+    color: #333333;
+    text-align: center;
+    padding: 10px 12px;
+    background-color: #f5f7fa;
+    border-radius: 6px;
+  }
+
+  .stepper-btn {
+    width: 36px;
+    height: 36px;
+    justify-content: center;
+    align-items: center;
+    background-color: #f0f2f5;
+    border-radius: 6px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+  }
+
+  .stepper-btn-text {
+    font-size: 18px;
+    color: #333333;
+  }
+
+  /* 人员分配区域 */
+  .workers-section {
+    margin-top: 8px;
+  }
+
+  .workers-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .workers-title {
+    font-size: 14px;
+    font-weight: bold;
+    color: #333333;
+  }
+
+  .workers-hint {
+    font-size: 11px;
+    color: #999999;
+  }
+
+  .worker-list {
+    margin-bottom: 8px;
+  }
+
+  .worker-item {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .worker-position {
+    width: 24px;
+    height: 24px;
+    justify-content: center;
+    align-items: center;
+    background-color: #f0f2f5;
+    border-radius: 12px;
+    margin-right: 8px;
+  }
+
+  .position-text {
+    font-size: 12px;
+    color: #666666;
+  }
+
+  .worker-selector {
+    flex: 1;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    background-color: #f5f7fa;
+    border-radius: 6px;
+    padding: 8px 12px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+    margin-right: 8px;
+  }
+
+  .placeholder-text {
+    font-size: 13px;
+    color: #999999;
+  }
+
+  .worker-name {
+    font-size: 13px;
+    color: #333333;
+  }
+
+  .worker-points {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .stepper-btn-small {
+    width: 28px;
+    height: 28px;
+    justify-content: center;
+    align-items: center;
+    background-color: #f0f2f5;
+    border-radius: 4px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+  }
+
+  .stepper-btn-text-small {
+    font-size: 14px;
+    color: #333333;
+  }
+
+  .points-input {
+    width: 50px;
+    height: 28px;
+    margin-left: 4px;
+    margin-right: 4px;
+    padding: 0 4px;
+    background-color: #f5f7fa;
+    border-radius: 4px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+    font-size: 13px;
+    color: #333333;
+    text-align: center;
+  }
+
+  /* 添加/删除按钮 */
+  .worker-actions {
+    flex-direction: row;
+    justify-content: flex-start;
+    margin-top: 4px;
+  }
+
+  .action-btn {
+    padding: 6px 12px;
+    border-radius: 4px;
+    margin-right: 8px;
+  }
+
+  .add-btn {
+    background-color: #f0f7ff;
+  }
+
+  .remove-btn {
+    background-color: #fff0f0;
+  }
+
+  .action-btn-text {
+    font-size: 12px;
+    color: #007aff;
+  }
+
+  .remove-text {
+    color: #ff4d4f;
+  }
+
+  /* 分配状态 */
+  .status-row {
+    flex-direction: row;
+    align-items: center;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top-width: 1px;
+    border-top-style: solid;
+    border-top-color: #f0f0f0;
+  }
+
+  .status-label {
+    font-size: 13px;
+    color: #666666;
+    margin-right: 8px;
+  }
+
+  .status-value {
+    font-size: 14px;
+    font-weight: bold;
+  }
+
+  .balanced {
+    color: #52c41a;
+  }
+
+  .unbalanced {
+    color: #ff4d4f;
+  }
+
+  .status-hint {
+    font-size: 12px;
+    color: #ff4d4f;
+    margin-left: 8px;
+  }
+
+  /* 人员选择弹窗 */
+  .picker-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    justify-content: center;
+    align-items: center;
+  }
+
+  .picker-container {
+    width: 320px;
+    max-height: 500px;
+    background-color: #ffffff;
+    border-radius: 12px;
+    padding: 16px;
+  }
+
+  .picker-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .picker-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333333;
+  }
+
+  .picker-close {
+    width: 28px;
+    height: 28px;
+    justify-content: center;
+    align-items: center;
+    background-color: #f0f2f5;
+    border-radius: 14px;
+  }
+
+  .picker-close-text {
+    font-size: 14px;
+    color: #666666;
+  }
+</style>

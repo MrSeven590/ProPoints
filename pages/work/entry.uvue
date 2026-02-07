@@ -31,7 +31,7 @@
       <!-- 跨仓岗位区域（CROSS_BIN） -->
       <view class="section" v-if="showCrossBinSection">
         <view class="section-header">
-          <text class="section-title">跨仓岗位</text>
+          <text class="section-title section-header-title">跨仓岗位</text>
           <view class="remove-btn" @click="onRemoveCrossBin">
             <text class="remove-btn-text">移除</text>
           </view>
@@ -56,19 +56,34 @@
         </view>
       </view>
 
-      <!-- 仓内人员分配区域（BIN）- 待后续实现 -->
-      <view class="section" v-if="showBinSection">
+      <!-- 仓内人员分配区域（BIN） -->
+      <view class="section" v-if="showBinSection && stageBinInfos.length > 0">
         <text class="section-title">仓内人员分配</text>
-        <text class="placeholder-text">待实现：发酵仓卡片区域</text>
+        <view class="bin-cards">
+          <biz-bin-card
+            v-for="binInfo in stageBinInfos"
+            :key="binInfo.stage_bin_id"
+            :stageBinId="binInfo.stage_bin_id"
+            :binId="binInfo.bin_id"
+            :binCode="binInfo.bin_code"
+            :stageCode="stageCode"
+            :initialKojiCount="binInfo.koji_count"
+            :initialWorkers="getBinWorkers(binInfo.stage_bin_id)"
+            :occupiedPersonIds="occupiedIds"
+            :defaultWorkerCount="defaultBinWorkerCount"
+            @change="onBinCardChange"
+            @kojiChange="onBinKojiChange"
+          />
+        </view>
       </view>
     </scroll-view>
 
     <view class="footer">
       <view class="btn btn-secondary" @click="saveDraft">
-        <text class="btn-text">保存草稿</text>
+        <text class="btn-text btn-text-secondary">保存草稿</text>
       </view>
       <view class="btn btn-primary" @click="submit">
-        <text class="btn-text">提交确认</text>
+        <text class="btn-text btn-text-primary">提交确认</text>
       </view>
     </view>
   </view>
@@ -78,9 +93,32 @@
   import { getTodayDateString } from '../../domain/models/types.uts'
   import type { StageCode, PointsUnits, RoleCode } from '../../domain/models/types.uts'
   import { getStageName, stageRequiresBin } from '../../domain/models/stage-session.uts'
-  import { stageHasCrossBinRole, getStageRoleConfigs } from '../../domain/services/StageCoefService.uts'
+  import { stageHasCrossBinRole, getStageRoleConfigs, getStageBinWorkerCount } from '../../domain/services/StageCoefService.uts'
   import type { BinCode, StageBinInfo } from '../../domain/models/ferment.uts'
   import type { AssignmentSourceCreateParams } from '../../domain/models/assignment.uts'
+
+  /**
+   * 仓内工人分配数据类型
+   */
+  type BinWorkerData = {
+    personId: number | null
+    personName: string
+    pointsUnits: PointsUnits
+    positionIndex: number
+  }
+
+  /**
+   * 仓卡片数据类型
+   */
+  type BinCardData = {
+    stageBinId: number
+    binId: number
+    binCode: string
+    kojiCount: number
+    totalPointsUnits: PointsUnits
+    assignedUnits: PointsUnits
+    workers: BinWorkerData[]
+  }
 
   export default {
     data() {
@@ -102,7 +140,11 @@
         crossBinPointsUnits: 0 as PointsUnits,
         crossBinSources: [] as AssignmentSourceCreateParams[],
         // 人员互斥列表
-        occupiedIds: [] as number[]
+        occupiedIds: [] as number[],
+        // 仓卡片数据
+        binCardsData: new Map<number, BinCardData>(),
+        // 默认仓内工人数
+        defaultBinWorkerCount: 4 as number
       }
     },
     onLoad(options: UTSJSONObject) {
@@ -115,6 +157,8 @@
         this.showBinSection = stageRequiresBin(this.stageCode)
         this.showCrossBinSection = stageHasCrossBinRole(this.stageCode)
         this.initCrossBinRole()
+        // 初始化默认仓内工人数
+        this.defaultBinWorkerCount = getStageBinWorkerCount(this.stageCode)
       }
     },
     methods: {
@@ -245,6 +289,116 @@
         }
       },
 
+      /**
+       * 获取指定仓的工人分配数据（用于初始化仓卡片）
+       */
+      getBinWorkers(stageBinId: number): UTSJSONObject[] {
+        const cardData = this.binCardsData.get(stageBinId)
+        if (cardData != null) {
+          const workers: UTSJSONObject[] = []
+          for (let i = 0; i < cardData.workers.length; i++) {
+            const w = cardData.workers[i]
+            workers.push({
+              personId: w.personId,
+              personName: w.personName,
+              pointsUnits: w.pointsUnits
+            } as UTSJSONObject)
+          }
+          return workers
+        }
+        return [] as UTSJSONObject[]
+      },
+
+      /**
+       * 仓卡片数据变更
+       */
+      onBinCardChange(payload: UTSJSONObject) {
+        const stageBinId = payload['stageBinId'] as number
+        const binId = payload['binId'] as number
+        const binCode = payload['binCode'] as string
+        const kojiCount = payload['kojiCount'] as number
+        const totalPointsUnits = payload['totalPointsUnits'] as number
+        const assignedUnits = payload['assignedUnits'] as number
+        const workersData = payload['workers'] as UTSJSONObject[]
+
+        // 解析工人数据
+        const workers: BinWorkerData[] = []
+        for (let i = 0; i < workersData.length; i++) {
+          const w = workersData[i]
+          workers.push({
+            personId: w['personId'] != null ? w['personId'] as number : null,
+            personName: w['personName'] != null ? w['personName'] as string : '',
+            pointsUnits: w['pointsUnits'] != null ? w['pointsUnits'] as number : 0,
+            positionIndex: w['positionIndex'] != null ? w['positionIndex'] as number : i + 1
+          } as BinWorkerData)
+        }
+
+        // 更新仓卡片数据
+        this.binCardsData.set(stageBinId, {
+          stageBinId: stageBinId,
+          binId: binId,
+          binCode: binCode,
+          kojiCount: kojiCount,
+          totalPointsUnits: totalPointsUnits,
+          assignedUnits: assignedUnits,
+          workers: workers
+        } as BinCardData)
+
+        // 更新人员互斥列表
+        this.updateOccupiedIds()
+      },
+
+      /**
+       * 仓曲坯数变更（用于刷新当日安曲总曲坯数）
+       */
+      onBinKojiChange(payload: UTSJSONObject) {
+        const stageBinId = payload['stageBinId'] as number
+        const kojiCount = payload['kojiCount'] as number
+        const totalPointsUnits = payload['totalPointsUnits'] as number
+
+        // 更新 stageBinInfos 中的曲坯数
+        for (let i = 0; i < this.stageBinInfos.length; i++) {
+          if (this.stageBinInfos[i].stage_bin_id == stageBinId) {
+            this.stageBinInfos[i].koji_count = kojiCount
+            break
+          }
+        }
+
+        // 更新仓卡片数据中的曲坯数
+        const cardData = this.binCardsData.get(stageBinId)
+        if (cardData != null) {
+          cardData.kojiCount = kojiCount
+          cardData.totalPointsUnits = totalPointsUnits
+        }
+      },
+
+      /**
+       * 更新人员互斥列表
+       */
+      updateOccupiedIds() {
+        const ids: number[] = []
+
+        // 添加跨仓岗位人员
+        if (this.crossBinPersonId != null) {
+          ids.push(this.crossBinPersonId as number)
+        }
+
+        // 添加所有仓卡片中的人员（UTS Map 使用 forEach 遍历）
+        this.binCardsData.forEach((cardData: BinCardData, _key: number) => {
+          for (let i = 0; i < cardData.workers.length; i++) {
+            const worker = cardData.workers[i]
+            if (worker.personId != null) {
+              const pid = worker.personId as number
+              if (ids.indexOf(pid) == -1) {
+                ids.push(pid)
+              }
+            }
+          }
+        })
+
+        this.occupiedIds = ids
+      },
+
       saveDraft() {
         uni.showToast({
           title: '草稿已保存',
@@ -327,6 +481,10 @@
     margin-bottom: 12px;
   }
 
+  .bin-cards {
+    margin-top: 4px;
+  }
+
   .section-header {
     flex-direction: row;
     justify-content: space-between;
@@ -334,7 +492,7 @@
     margin-bottom: 12px;
   }
 
-  .section-header .section-title {
+  .section-header-title {
     margin-bottom: 0;
   }
 
@@ -427,11 +585,11 @@
     font-weight: bold;
   }
 
-  .btn-primary .btn-text {
+  .btn-text-primary {
     color: #ffffff;
   }
 
-  .btn-secondary .btn-text {
+  .btn-text-secondary {
     color: #666666;
   }
 </style>

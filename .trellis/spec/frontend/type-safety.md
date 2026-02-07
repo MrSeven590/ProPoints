@@ -170,6 +170,55 @@ props: { bins: { type: Array, default: (): StageBinInfo[] => [] } }
 
 ---
 
+## Map 遍历
+
+### 问题：迭代器模式不支持
+
+UTS 中 Map 不支持 JavaScript 的迭代器模式 (`entries().next()`)，编译时会报错。
+
+```typescript
+// ❌ 错误：UTS 不支持迭代器模式
+const entries = myMap.entries()
+let entry = entries.next()
+while (entry.done != true) {
+  const value = entry.value[1]
+  entry = entries.next()
+}
+
+// 编译错误：
+// error: Expression 'entries' of type 'MutableSet<...>' cannot be invoked as a function
+// error: 找不到名称"next"
+```
+
+### 正确做法：使用 forEach
+
+```typescript
+// ✅ 正确：使用 forEach 遍历 Map
+myMap.forEach((value: ValueType, key: KeyType) => {
+  // 处理每个键值对
+  console.log(key, value)
+})
+```
+
+### 示例：收集 Map 中的数据
+
+```typescript
+// ✅ 正确示例
+const binCardsData = new Map<number, BinCardData>()
+const ids: number[] = []
+
+binCardsData.forEach((cardData: BinCardData, _key: number) => {
+  for (let i = 0; i < cardData.workers.length; i++) {
+    const worker = cardData.workers[i]
+    if (worker.personId != null) {
+      ids.push(worker.personId as number)
+    }
+  }
+})
+```
+
+---
+
 ## References
 
 - [UTS 官方文档](https://doc.dcloud.net.cn/uni-app-x/uts/)
