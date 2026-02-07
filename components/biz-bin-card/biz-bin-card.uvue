@@ -78,6 +78,9 @@
         <view v-if="workerList.length > 1" class="action-btn remove-btn" @click="onRemoveWorker">
           <text class="action-btn-text remove-text">- 移除</text>
         </view>
+        <view class="action-btn split-btn" @click="onEqualSplit">
+          <text class="action-btn-text split-text">= 平分</text>
+        </view>
       </view>
     </view>
 
@@ -464,6 +467,36 @@
         }
       },
 
+      /**
+       * 平分工分
+       * 使用最大余数法将仓总分平均分配给所有人员
+       */
+      onEqualSplit() {
+        const workerCount = this.workerList.length
+        if (workerCount == 0) {
+          return
+        }
+
+        const totalUnits = this.totalPointsUnits
+        // 计算基础分配
+        const baseUnits = Math.floor(totalUnits / workerCount)
+        // 计算余数
+        const remainder = totalUnits % workerCount
+
+        // 分配工分：前 remainder 个人员分配 baseUnits + 1，其余分配 baseUnits
+        for (let i = 0; i < workerCount; i++) {
+          const worker = this.workerList[i]
+          if (i < remainder) {
+            worker.pointsUnits = baseUnits + 1
+          } else {
+            worker.pointsUnits = baseUnits
+          }
+          worker.displayPoints = unitsToPoints(worker.pointsUnits).toFixed(1)
+        }
+
+        this.emitChange()
+      },
+
       // ============================================
       // 事件发送
       // ============================================
@@ -768,6 +801,16 @@
 
   .remove-text {
     color: #ff4d4f;
+  }
+
+  .split-btn {
+    background-color: #f0fff0;
+    margin-left: auto;
+    margin-right: 0;
+  }
+
+  .split-text {
+    color: #52c41a;
   }
 
   /* 分配状态 */
