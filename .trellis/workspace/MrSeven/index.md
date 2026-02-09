@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 13
-- **Last Active**: 2026-02-08
+- **Total Sessions**: 14
+- **Last Active**: 2026-02-10
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~826 | Active |
+| `journal-1.md` | ~881 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits |
 |---|------|-------|---------|
+| 14 | 2026-02-10 | 实现跨仓工分扣除逻辑 | `bea14d0` |
 | 13 | 2026-02-08 | 实现平分按钮、修复草稿功能和发酵仓推测 | `ed10ebd`, `cab0cb4`, `ad01e51` |
 | 12 | 2026-02-07 | Phase 3 剩余任务完成（P3-T07/P3-T10） | `cfe5b33` |
 | 11 | 2026-02-07 | P5-T01 扣分服务实现 | `1d0ce21` |

@@ -824,3 +824,58 @@ getInitials(cn: string): string
 ### Next Steps
 
 - None - task complete
+
+## Session 14: 实现跨仓工分扣除逻辑
+
+**Date**: 2026-02-10
+**Task**: 实现跨仓工分扣除逻辑
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 完成内容
+
+| 功能 | 描述 |
+|------|------|
+| 跨仓工分扣除 | 发酵仓卡片显示扣除跨仓工分后的剩余工分 |
+| 平分功能修复 | 平分时使用扣除跨仓工分后的总工分 |
+| DEBUG_MODE | 添加调试模式，启动时清除历史存储数据 |
+| 代码清理 | 清理向后兼容代码，保持代码简洁 |
+
+## 修改文件
+
+- `App.uvue` - 添加 DEBUG_MODE 调试模式
+- `components/biz-bin-card/biz-bin-card.uvue` - 添加 crossBinDeduction prop 和 UI 显示
+- `pages/work/entry.uvue` - 添加 getCrossBinDeduction 方法，修复 sources 解析
+- `domain/services/BinService.uts` - 清理向后兼容代码
+
+## 问题修复
+
+1. **类型转换错误**: 从 JSON 存储读取的 sources 是 UTSJSONObject[]，需要手动解析为 AssignmentSourceCreateParams[]
+2. **平分逻辑**: 平分时应使用扣除跨仓工分后的总工分，而非原始总工分
+
+## 协作
+
+- 使用 codex 分析问题和清理向后兼容代码
+- 遵循 Trellis 流程创建任务目录和 PRD
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bea14d0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
