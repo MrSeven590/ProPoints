@@ -1,3 +1,4 @@
 .ccb_config/
 node_modules/
 
+.ace-tool/

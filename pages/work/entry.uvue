@@ -82,6 +82,7 @@
             :initialWorkers="getBinWorkers(binInfo.stage_bin_id)"
             :occupiedPersonIds="occupiedIds"
             :defaultWorkerCount="defaultBinWorkerCount"
+            :crossBinDeduction="getCrossBinDeduction(binInfo.stage_bin_id)"
             @change="onBinCardChange"
             @kojiChange="onBinKojiChange"
           />
@@ -107,6 +108,8 @@
   import { stageHasCrossBinRole, getStageRoleConfigs, getStageBinWorkerCount } from '../../domain/services/StageCoefService.uts'
   import type { BinCode, StageBinInfo } from '../../domain/models/ferment.uts'
   import type { AssignmentSourceCreateParams } from '../../domain/models/assignment.uts'
+  import type { BinInfo } from '../../domain/services/ScoreAllocator.uts'
+  import { allocateCrossBinPoints } from '../../domain/services/ScoreAllocator.uts'
   import { getBinKojiCountFromAnQu } from '../../domain/services/DuiQuBaseService.uts'
   import { saveSession, loadSession } from '../../storage/storage-repository.uts'
 
@@ -356,6 +359,26 @@
       },
 
       /**
+       * 获取指定发酵仓的跨仓扣除工分
+       * @param stageBinId 发酵仓 ID
+       * @returns 从该仓扣除的跨仓工分单位
+       */
+      getCrossBinDeduction(stageBinId: number): PointsUnits {
+        // 如果跨仓区域未显示，返回 0
+        if (this.showCrossBinSection == false) {
+          return 0
+        }
+        // 从 crossBinSources 中查找对应仓的扣除值
+        for (let i = 0; i < this.crossBinSources.length; i++) {
+          const source = this.crossBinSources[i]
+          if (source.stage_bin_id == stageBinId) {
+            return source.source_points_units
+          }
+        }
+        return 0
+      },
+
+      /**
        * 获取指定仓的工人分配数据（用于初始化仓卡片）
        */
       getBinWorkers(stageBinId: number): UTSJSONObject[] {
@@ -550,8 +573,9 @@
         const crossBinData = sessionData['cross_bin'] as UTSJSONObject | null
         if (crossBinData != null) {
           const hasCrossBin = crossBinData['enabled'] as boolean | null
-          if (hasCrossBin == true) {
-            this.showCrossBinSection = true
+          this.showCrossBinSection = hasCrossBin == true
+
+          if (this.showCrossBinSection == true) {
             this.crossBinPersonId = crossBinData['person_id'] != null ? crossBinData['person_id'] as number : null
             this.crossBinPersonName = crossBinData['person_name'] != null ? crossBinData['person_name'] as string : ''
             this.crossBinPointsUnits = crossBinData['points_units'] != null ? crossBinData['points_units'] as number : 0
@@ -564,6 +588,30 @@
                 this.crossBinRoleName = '打杂'
               }
             }
+
+            // 恢复 sources（跨仓抽取来源）
+            const sourcesRaw = crossBinData['sources'] as UTSJSONObject[] | null
+            if (sourcesRaw != null && sourcesRaw.length > 0) {
+              // 手动解析 UTSJSONObject 为 AssignmentSourceCreateParams
+              const parsedSources: AssignmentSourceCreateParams[] = []
+              for (let j = 0; j < sourcesRaw.length; j++) {
+                const s = sourcesRaw[j]
+                parsedSources.push({
+                  assignment_id: s['assignment_id'] != null ? s['assignment_id'] as number : 0,
+                  stage_bin_id: s['stage_bin_id'] != null ? s['stage_bin_id'] as number : 0,
+                  source_points_units: s['source_points_units'] != null ? s['source_points_units'] as number : 0
+                } as AssignmentSourceCreateParams)
+              }
+              this.crossBinSources = parsedSources
+            } else {
+              this.crossBinSources = [] as AssignmentSourceCreateParams[]
+            }
+          } else {
+            // 显式清理（避免残留旧值）
+            this.crossBinPersonId = null
+            this.crossBinPersonName = ''
+            this.crossBinPointsUnits = 0
+            this.crossBinSources = [] as AssignmentSourceCreateParams[]
           }
         }
 
@@ -622,13 +670,28 @@
         }
 
         // 构建跨仓岗位数据
+        let crossBinSourcesToSave = [] as AssignmentSourceCreateParams[]
+        if (this.showCrossBinSection == true && this.crossBinPointsUnits > 0 && this.stageBinInfos.length > 0) {
+          const binInfos: BinInfo[] = []
+          for (let i = 0; i < this.stageBinInfos.length; i++) {
+            const bin = this.stageBinInfos[i]
+            binInfos.push({
+              bin_id: bin.bin_id,
+              stage_bin_id: bin.stage_bin_id,
+              koji_count: bin.koji_count
+            } as BinInfo)
+          }
+          const result = allocateCrossBinPoints(binInfos, this.crossBinPointsUnits)
+          crossBinSourcesToSave = result.sources
+        }
         const crossBinData = {
           enabled: this.showCrossBinSection,
           role_code: this.crossBinRoleCode,
           role_name: this.crossBinRoleName,
           person_id: this.crossBinPersonId,
           person_name: this.crossBinPersonName,
-          points_units: this.crossBinPointsUnits
+          points_units: this.crossBinPointsUnits,
+          sources: crossBinSourcesToSave
         } as UTSJSONObject
 
         // 构建完整会话数据

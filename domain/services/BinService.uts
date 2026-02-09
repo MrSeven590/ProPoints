@@ -135,8 +135,7 @@ export function getLastSubmittedBins(
           const sessionStatus = sessionData['status'] as string | null
 
           // 只处理已提交的会话，跳过草稿
-          // 如果 status 字段不存在（旧数据），为了向后兼容，视为已提交
-          if (sessionStatus == 'draft') {
+          if (sessionStatus != 'submitted') {
             continue
           }
 

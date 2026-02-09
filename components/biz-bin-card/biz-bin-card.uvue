@@ -90,6 +90,9 @@
       <text :class="['status-value', isBalanced ? 'balanced' : 'unbalanced']">
         {{ displayAssignedPoints }} / {{ displayTotalPoints }}
       </text>
+      <text v-if="hasCrossBinDeduction" class="cross-bin-hint">
+        (跨仓扣{{ displayCrossBinDeduction }})
+      </text>
       <text v-if="!isBalanced" class="status-hint">
         {{ remainingUnits > 0 ? '剩余 ' + displayRemainingPoints : '超出 ' + displayOverflowPoints }}
       </text>
@@ -169,6 +172,10 @@
       defaultWorkerCount: {
         type: Number,
         default: 4
+      },
+      crossBinDeduction: {
+        type: Number,
+        default: 0
       }
     },
     emits: ['change', 'kojiChange'],
@@ -200,7 +207,8 @@
         return unitsToPoints(this.assignedUnits).toFixed(1)
       },
       remainingUnits(): PointsUnits {
-        return this.totalPointsUnits - this.assignedUnits
+        const deduction = this.crossBinDeduction as number
+        return this.totalPointsUnits - this.assignedUnits - deduction
       },
       displayRemainingPoints(): string {
         return unitsToPoints(Math.abs(this.remainingUnits)).toFixed(1)
@@ -210,6 +218,14 @@
       },
       isBalanced(): boolean {
         return this.remainingUnits == 0
+      },
+      hasCrossBinDeduction(): boolean {
+        const deduction = this.crossBinDeduction as number
+        return deduction > 0
+      },
+      displayCrossBinDeduction(): string {
+        const deduction = this.crossBinDeduction as number
+        return unitsToPoints(deduction).toFixed(1)
       },
       currentSelectedPersonId(): number | null {
         if (this.currentWorkerIndex >= 0 && this.currentWorkerIndex < this.workerList.length) {
@@ -469,7 +485,7 @@
 
       /**
        * 平分工分
-       * 使用最大余数法将仓总分平均分配给所有人员
+       * 使用最大余数法将扣除跨仓工分后的剩余总分平均分配给所有人员
        */
       onEqualSplit() {
         const workerCount = this.workerList.length
@@ -477,7 +493,9 @@
           return
         }
 
-        const totalUnits = this.totalPointsUnits
+        // 扣除跨仓工分后的可分配总工分
+        const deduction = this.crossBinDeduction as number
+        const totalUnits = this.totalPointsUnits - deduction
         // 计算基础分配
         const baseUnits = Math.floor(totalUnits / workerCount)
         // 计算余数
@@ -847,6 +865,12 @@
     font-size: 12px;
     color: #ff4d4f;
     margin-left: 8px;
+  }
+
+  .cross-bin-hint {
+    font-size: 11px;
+    color: #1890ff;
+    margin-left: 4px;
   }
 
   /* 人员选择弹窗 */
