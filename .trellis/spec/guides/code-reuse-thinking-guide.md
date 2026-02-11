@@ -58,6 +58,41 @@ grep -r "keyword" .
 
 **Good**: Single source of truth, import everywhere
 
+### Pattern 4: Repeated Formatting Logic ⭐
+
+**Bad**: Repeating `unitsToPoints(value).toFixed(1)` in 20+ places
+
+**Good**: Create shared formatter in `domain/models/types.uts`
+
+**Real Example from ProPoints**:
+
+```typescript
+// ❌ Before: Repeated in 21 places
+worker.displayPoints = unitsToPoints(worker.pointsUnits).toFixed(1)
+const formatted = unitsToPoints(units).toFixed(1)
+
+// ✅ After: Shared function in domain/models/types.uts
+export function formatPointsUnits(units: PointsUnits): string {
+  return unitsToPoints(units).toFixed(1)
+}
+
+// Usage everywhere:
+worker.displayPoints = formatPointsUnits(worker.pointsUnits)
+const formatted = formatPointsUnits(units)
+```
+
+**Benefits**:
+- Single source of truth for formatting rules
+- Easy to change format (e.g., 2 decimals instead of 1)
+- Type-safe and consistent
+- Easier to test
+
+**When to apply**:
+- Same transformation appears 3+ times
+- Involves multiple steps (convert + format)
+- Format might change in future
+- Used across multiple components
+
 ---
 
 ## When to Abstract

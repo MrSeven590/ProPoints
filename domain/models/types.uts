@@ -108,6 +108,15 @@ export function pointsToUnits(points: number): PointsUnits {
 }
 
 /**
+ * 格式化工分单位为显示字符串（保留1位小数）
+ * @param units 工分单位（整数）
+ * @returns 格式化后的字符串，如 "12.3"
+ */
+export function formatPointsUnits(units: PointsUnits): string {
+  return unitsToPoints(units).toFixed(1)
+}
+
+/**
  * 向下取1位小数
  * @param value 原始值
  * @returns 向下取整后的值

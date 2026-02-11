@@ -3,7 +3,7 @@
  * 负责校验工分分配的平衡性等
  */
 
-import { PointsUnits } from '../models/types.uts'
+import { PointsUnits, formatPointsUnits } from '../models/types.uts'
 
 /**
  * 校验结果
@@ -39,8 +39,7 @@ export function validateBinBalance(data: BinBalanceData): ValidationResult {
 
   if (expected != actual) {
     const diff = expected - actual
-    const diffPoints = diff / 10
-    errors.push(`发酵仓 ${data.bin_code} 工分不平衡：总分 ${expected / 10}，已分配 ${actual / 10}，差额 ${diffPoints}`)
+    errors.push(`发酵仓 ${data.bin_code} 工分不平衡：总分 ${formatPointsUnits(expected)}，已分配 ${formatPointsUnits(actual)}，差额 ${formatPointsUnits(diff)}`)
   }
 
   return {
@@ -64,7 +63,7 @@ export function validateCrossBinSource(
   const errors: string[] = []
 
   if (assignmentUnits != sourceUnitsSum) {
-    errors.push(`跨仓工分来源不完整：分配 ${assignmentUnits / 10}，来源合计 ${sourceUnitsSum / 10}`)
+    errors.push(`跨仓工分来源不完整：分配 ${formatPointsUnits(assignmentUnits)}，来源合计 ${formatPointsUnits(sourceUnitsSum)}`)
   }
 
   return {
@@ -89,7 +88,7 @@ export function validateSessionPoolBalance(
 
   if (sessionTotalUnits != assignedUnitsSum) {
     const diff = sessionTotalUnits - assignedUnitsSum
-    errors.push(`会话池子不平衡：总分 ${sessionTotalUnits / 10}，已分配 ${assignedUnitsSum / 10}，差额 ${diff / 10}`)
+    errors.push(`会话池子不平衡：总分 ${formatPointsUnits(sessionTotalUnits)}，已分配 ${formatPointsUnits(assignedUnitsSum)}，差额 ${formatPointsUnits(diff)}`)
   }
 
   return {

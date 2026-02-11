@@ -80,11 +80,10 @@
 </template>
 
 <script lang="uts">
-  import { unitsToPoints, pointsToUnits } from '../../domain/models/types.uts'
-  import { allocateCrossBinPoints, BinInfo, CrossBinAllocationResult } from '../../domain/services/ScoreAllocator.uts'
-  import { AssignmentSourceCreateParams } from '../../domain/models/assignment.uts'
-  import { PointsUnits } from '../../domain/models/types.uts'
-  import { StageBinInfo } from '../../domain/models/ferment.uts'
+	  import { pointsToUnits, PointsUnits, formatPointsUnits } from '../../domain/models/types.uts'
+	  import { allocateCrossBinPoints, BinInfo, CrossBinAllocationResult } from '../../domain/services/ScoreAllocator.uts'
+	  import { AssignmentSourceCreateParams } from '../../domain/models/assignment.uts'
+	  import { StageBinInfo } from '../../domain/models/ferment.uts'
 
   /**
    * 来源显示项类型
@@ -178,7 +177,7 @@
         handler(newVal: number) {
           if (newVal > 0) {
             this.pointsUnits = newVal
-            this.displayPoints = unitsToPoints(newVal).toFixed(1)
+            this.displayPoints = formatPointsUnits(newVal)
             this.recalculateSources()
           }
         },
@@ -202,7 +201,7 @@
         }
         if ((this.initialPointsUnits as number) > 0) {
           this.pointsUnits = this.initialPointsUnits as number
-          this.displayPoints = unitsToPoints(this.pointsUnits).toFixed(1)
+          this.displayPoints = formatPointsUnits(this.pointsUnits)
           this.recalculateSources()
         }
       },
@@ -258,7 +257,7 @@
         // 转换为整数单位（向下取整到 0.1 精度）
         this.pointsUnits = pointsToUnits(inputVal)
         // 更新显示值
-        this.displayPoints = unitsToPoints(this.pointsUnits).toFixed(1)
+        this.displayPoints = formatPointsUnits(this.pointsUnits)
         // 重新计算来源分配
         this.recalculateSources()
         this.emitChange()
@@ -267,7 +266,7 @@
       onIncrease() {
         // 增加 0.1 分（即 1 单位）
         this.pointsUnits = this.pointsUnits + 1
-        this.displayPoints = unitsToPoints(this.pointsUnits).toFixed(1)
+        this.displayPoints = formatPointsUnits(this.pointsUnits)
         this.recalculateSources()
         this.emitChange()
       },
@@ -276,7 +275,7 @@
         // 减少 0.1 分（即 1 单位），最小为 0
         if (this.pointsUnits > 0) {
           this.pointsUnits = this.pointsUnits - 1
-          this.displayPoints = unitsToPoints(this.pointsUnits).toFixed(1)
+          this.displayPoints = formatPointsUnits(this.pointsUnits)
           this.recalculateSources()
           this.emitChange()
         }
@@ -332,7 +331,7 @@
           }
           displayList.push({
             binCode: binCode,
-            displayPoints: unitsToPoints(source.source_points_units).toFixed(1),
+            displayPoints: formatPointsUnits(source.source_points_units),
             percent: percent
           } as SourceDisplayItem)
         }

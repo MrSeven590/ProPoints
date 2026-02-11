@@ -3,7 +3,7 @@
  * 负责计算发酵仓总工分、会话总工分等
  */
 
-import { PointsUnits, floor1 } from '../models/types.uts'
+import { PointsUnits, floor1, pointsToUnits } from '../models/types.uts'
 
 /**
  * 计算发酵仓总工分（整数单位）
@@ -15,7 +15,7 @@ import { PointsUnits, floor1 } from '../models/types.uts'
  */
 export function calcBinTotalPointsUnits(kojiCount: number, coef: number): PointsUnits {
   const points = floor1((kojiCount / 20) * coef)
-  return Math.floor(points * 10)
+  return pointsToUnits(points)
 }
 
 /**
@@ -28,7 +28,7 @@ export function calcBinTotalPointsUnits(kojiCount: number, coef: number): Points
  */
 export function calcSessionTotalPointsUnits(baseKojiCount: number, coef: number): PointsUnits {
   const points = floor1((baseKojiCount / 20) * coef)
-  return Math.floor(points * 10)
+  return pointsToUnits(points)
 }
 
 /**

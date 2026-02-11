@@ -18,10 +18,10 @@
 </template>
 
 <script lang="uts">
-  import { unitsToPoints, pointsToUnits, PointsUnits } from '../../domain/models/types.uts'
+	  import { pointsToUnits, PointsUnits, formatPointsUnits } from '../../domain/models/types.uts'
 
-  export default {
-    props: {
+	  export default {
+	    props: {
       /**
        * v-model 绑定值（PointsUnits 整数单位，1单位 = 0.1分）
        */
@@ -103,7 +103,7 @@
           // 外部值变化时同步到内部
           if (newVal != this.internalUnits) {
             this.internalUnits = newVal
-            this.displayPoints = unitsToPoints(newVal).toFixed(1)
+            this.displayPoints = formatPointsUnits(newVal)
           }
         },
         immediate: true
@@ -132,7 +132,7 @@
         units = this.clampValue(units)
         // 更新内部状态
         this.internalUnits = units
-        this.displayPoints = unitsToPoints(units).toFixed(1)
+        this.displayPoints = formatPointsUnits(units)
         // 发送更新事件
         this.$emit('update:modelValue', units)
       },
@@ -163,7 +163,7 @@
         newUnits = this.clampValue(newUnits)
         // 更新状态
         this.internalUnits = newUnits
-        this.displayPoints = unitsToPoints(newUnits).toFixed(1)
+        this.displayPoints = formatPointsUnits(newUnits)
         // 发送更新事件
         this.$emit('update:modelValue', newUnits)
       },
@@ -183,7 +183,7 @@
         newUnits = this.clampValue(newUnits)
         // 更新状态
         this.internalUnits = newUnits
-        this.displayPoints = unitsToPoints(newUnits).toFixed(1)
+        this.displayPoints = formatPointsUnits(newUnits)
         // 发送更新事件
         this.$emit('update:modelValue', newUnits)
       },
