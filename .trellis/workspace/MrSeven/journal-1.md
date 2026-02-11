@@ -879,3 +879,35 @@ getInitials(cn: string): string
 ### Next Steps
 
 - None - task complete
+
+## Session 15: P5-T02: 实现录入页考核交互功能
+
+**Date**: 2026-02-11
+**Task**: P5-T02: 实现录入页考核交互功能
+
+### Summary
+
+实现考核交互UI，包括草稿模式、三段式工分显示、数据校验。同时统一了工分格式化逻辑，创建共享函数并在21处使用点应用。修复了多个UTS规范问题。
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1fd4575` | (see git log) |
+| `a56ebc3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
