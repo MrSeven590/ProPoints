@@ -118,6 +118,14 @@ export type PenaltyRecordCreateParams = {
   deducted_points_units: PointsUnits
 }
 
+/**
+ * 考核草稿类型（用于 UI 组件临时编辑）
+ */
+export type PenaltyDraft = {
+  deductedUnits: PointsUnits
+  reason: string
+}
+
 // ============================================
 // 分配汇总类型
 // ============================================

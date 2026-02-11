@@ -44,27 +44,92 @@
       </view>
 
       <view class="worker-list">
-        <view v-for="(worker, index) in workerList" :key="index" class="worker-item">
-          <view class="worker-position">
-            <text class="position-text">{{ index + 1 }}</text>
-          </view>
-          <view class="bin-worker-selector" @click="onOpenWorkerSelector(index)">
-            <text v-if="worker.personId == null" class="placeholder-text">点击选择</text>
-            <text v-else class="worker-name">{{ worker.personName }}</text>
-          </view>
-          <view class="worker-points">
-            <view class="stepper-btn-small" @click="onWorkerPointsDecrease(index)">
-              <text class="stepper-btn-text-small">-</text>
+        <view v-for="(worker, index) in workerList" :key="index" class="worker-item-wrapper">
+          <!-- 人员分配行 -->
+          <view class="worker-item">
+            <view class="worker-position">
+              <text class="position-text">{{ index + 1 }}</text>
             </view>
-            <input
-              class="points-input"
-              type="digit"
-              :value="worker.displayPoints"
-              @input="onWorkerPointsInput(index, $event)"
-              @blur="onWorkerPointsBlur(index)"
-            />
-            <view class="stepper-btn-small" @click="onWorkerPointsIncrease(index)">
-              <text class="stepper-btn-text-small">+</text>
+            <view class="bin-worker-selector" @click="onOpenWorkerSelector(index)">
+              <text v-if="worker.personId == null" class="placeholder-text">点击选择</text>
+              <text v-else class="worker-name">{{ worker.personName }}</text>
+            </view>
+            <view class="worker-points">
+              <view class="stepper-btn-small" @click="onWorkerPointsDecrease(index)">
+                <text class="stepper-btn-text-small">-</text>
+              </view>
+              <input
+                class="points-input"
+                type="digit"
+                :value="worker.displayPoints"
+                @input="onWorkerPointsInput(index, $event)"
+                @blur="onWorkerPointsBlur(index)"
+              />
+              <view class="stepper-btn-small" @click="onWorkerPointsIncrease(index)">
+                <text class="stepper-btn-text-small">+</text>
+              </view>
+            </view>
+            <!-- 考核按钮 -->
+            <view
+              :class="['penalty-btn', worker.deductedUnits > 0 ? 'penalty-btn-active' : '']"
+              @click="onTogglePenalty(index)"
+            >
+              <text :class="['penalty-btn-text', worker.deductedUnits > 0 ? 'penalty-btn-text-active' : '']">考核</text>
+            </view>
+          </view>
+
+          <!-- 考核输入区域（展开时显示） -->
+          <view v-if="expandedPenaltyIndex == index" class="penalty-panel">
+            <view class="penalty-points-row">
+              <!-- 原始工分（使用 pointsUnits 确保一致性） -->
+              <view class="penalty-points-item">
+                <text class="penalty-points-label">原始</text>
+                <text class="penalty-points-value penalty-original">{{ formatPoints(worker.pointsUnits) }}</text>
+              </view>
+              <!-- 扣分（使用草稿值） -->
+              <view class="penalty-points-item">
+                <text class="penalty-points-label">扣分</text>
+                <biz-score-input
+                  :modelValue="penaltyDraft.deductedUnits"
+                  :min="0"
+                  :max="worker.pointsUnits"
+                  :step="1"
+                  size="small"
+                  @update:modelValue="onDraftDeductedChange"
+                />
+              </view>
+              <!-- 最终工分（使用草稿值计算） -->
+              <view class="penalty-points-item">
+                <text class="penalty-points-label">最终</text>
+                <text class="penalty-points-value penalty-final">{{ getDraftFinalPoints(worker.pointsUnits) }}</text>
+              </view>
+            </view>
+            <!-- 扣分原因（使用草稿值） -->
+            <view class="penalty-reason-row">
+              <text class="penalty-reason-label">原因</text>
+              <input
+                class="penalty-reason-input"
+                type="text"
+                placeholder="请输入扣分原因"
+                :value="penaltyDraft.reason"
+                @input="onDraftReasonInput"
+              />
+            </view>
+            <!-- 错误提示 -->
+            <view v-if="penaltyDraft.deductedUnits > 0 && penaltyDraft.reason.trim().length == 0" class="penalty-error">
+              <text class="penalty-error-text">扣分时原因必填</text>
+            </view>
+            <!-- 操作按钮 -->
+            <view class="penalty-actions">
+              <view class="penalty-cancel-btn" @click="onCancelPenalty">
+                <text class="penalty-cancel-text">取消</text>
+              </view>
+              <view
+                :class="['penalty-save-btn', canSavePenaltyDraft() ? '' : 'penalty-save-btn-disabled']"
+                @click="onSavePenalty(index)"
+              >
+                <text :class="['penalty-save-text', canSavePenaltyDraft() ? '' : 'penalty-save-text-disabled']">保存</text>
+              </view>
             </view>
           </view>
         </view>
@@ -120,19 +185,25 @@
 </template>
 
 <script lang="uts">
-  import { unitsToPoints, pointsToUnits, PointsUnits } from '../../domain/models/types.uts'
-  import type { StageCode } from '../../domain/models/types.uts'
-  import { calcBinTotalPointsUnits } from '../../domain/services/ScoreCalculator.uts'
-  import { getStageCoef } from '../../domain/services/StageCoefService.uts'
+	  import { pointsToUnits, PointsUnits, formatPointsUnits } from '../../domain/models/types.uts'
+	  import type { StageCode } from '../../domain/models/types.uts'
+	  import { calcBinTotalPointsUnits } from '../../domain/services/ScoreCalculator.uts'
+	  import { getStageCoef } from '../../domain/services/StageCoefService.uts'
+	  import { calcFinalPoints } from '../../domain/models/assignment.uts'
+	  import type { PenaltyDraft } from '../../domain/models/assignment.uts'
 
   /**
-   * 仓内工人分配项类型
+   * 仓内工人分配项类型（含扣分信息）
    */
   type BinWorkerItem = {
     personId: number | null
     personName: string
     pointsUnits: PointsUnits
     displayPoints: string
+    // 扣分相关字段
+    deductedUnits: PointsUnits
+    penaltyReason: string
+    penaltyId: number | null
   }
 
   export default {
@@ -176,9 +247,17 @@
       crossBinDeduction: {
         type: Number,
         default: 0
+      },
+      sessionKey: {
+        type: String,
+        default: ''
+      },
+      stageSessionId: {
+        type: Number,
+        default: 0
       }
     },
-    emits: ['change', 'kojiChange'],
+    emits: ['change', 'kojiChange', 'penaltyChange'],
     data() {
       return {
         kojiCount: 1200 as number,
@@ -186,7 +265,14 @@
         totalPointsUnits: 0 as PointsUnits,
         workerList: [] as BinWorkerItem[],
         showWorkerPicker: false as boolean,
-        currentWorkerIndex: -1 as number
+        currentWorkerIndex: -1 as number,
+        // 考核相关（使用 null 而非 -1）
+        expandedPenaltyIndex: null as number | null,
+        // 草稿模式：编辑时使用临时变量
+        penaltyDraft: {
+          deductedUnits: 0,
+          reason: ''
+        } as PenaltyDraft
       }
     },
     computed: {
@@ -194,7 +280,7 @@
         return (this.stageCode as string) == 'AN_QU'
       },
       displayTotalPoints(): string {
-        return unitsToPoints(this.totalPointsUnits).toFixed(1)
+        return formatPointsUnits(this.totalPointsUnits)
       },
       assignedUnits(): PointsUnits {
         let sum = 0
@@ -204,17 +290,17 @@
         return sum
       },
       displayAssignedPoints(): string {
-        return unitsToPoints(this.assignedUnits).toFixed(1)
+        return formatPointsUnits(this.assignedUnits)
       },
       remainingUnits(): PointsUnits {
         const deduction = this.crossBinDeduction as number
         return this.totalPointsUnits - this.assignedUnits - deduction
       },
       displayRemainingPoints(): string {
-        return unitsToPoints(Math.abs(this.remainingUnits)).toFixed(1)
+        return formatPointsUnits(Math.abs(this.remainingUnits))
       },
       displayOverflowPoints(): string {
-        return unitsToPoints(Math.abs(this.remainingUnits)).toFixed(1)
+        return formatPointsUnits(Math.abs(this.remainingUnits))
       },
       isBalanced(): boolean {
         return this.remainingUnits == 0
@@ -225,7 +311,7 @@
       },
       displayCrossBinDeduction(): string {
         const deduction = this.crossBinDeduction as number
-        return unitsToPoints(deduction).toFixed(1)
+        return formatPointsUnits(deduction)
       },
       currentSelectedPersonId(): number | null {
         if (this.currentWorkerIndex >= 0 && this.currentWorkerIndex < this.workerList.length) {
@@ -281,6 +367,13 @@
       this.initData()
     },
     methods: {
+      /**
+       * 将 PointsUnits 转换为显示用的分数字符串
+       */
+      formatPoints(units: PointsUnits): string {
+        return formatPointsUnits(units)
+      },
+
       initData() {
         // 初始化曲坯数
         this.kojiCount = this.initialKojiCount as number
@@ -308,12 +401,21 @@
           const personId = w['personId']
           const personName = w['personName']
           const pointsUnits = w['pointsUnits']
+          const deductedUnits = w['deductedUnits']
+          const penaltyReason = w['penaltyReason']
+          const penaltyId = w['penaltyId']
           const units = pointsUnits != null ? pointsUnits as number : 0
+          const deducted = deductedUnits != null ? deductedUnits as number : 0
+          const reason = penaltyReason != null ? penaltyReason as string : ''
+          const pId = penaltyId != null ? penaltyId as number : null
           list.push({
             personId: personId != null ? personId as number : null,
             personName: personName != null ? personName as string : '',
             pointsUnits: units,
-            displayPoints: unitsToPoints(units).toFixed(1)
+            displayPoints: formatPointsUnits(units),
+            deductedUnits: deducted,
+            penaltyReason: reason,
+            penaltyId: pId
           } as BinWorkerItem)
         }
         this.workerList = list
@@ -327,7 +429,10 @@
             personId: null,
             personName: '',
             pointsUnits: 0,
-            displayPoints: '0.0'
+            displayPoints: '0.0',
+            deductedUnits: 0,
+            penaltyReason: '',
+            penaltyId: null
           } as BinWorkerItem)
         }
         this.workerList = list
@@ -437,7 +542,9 @@
             inputVal = 0
           }
           worker.pointsUnits = pointsToUnits(inputVal)
-          worker.displayPoints = unitsToPoints(worker.pointsUnits).toFixed(1)
+          worker.displayPoints = formatPointsUnits(worker.pointsUnits)
+          // 限制扣分不超过新的原始工分
+          this.clampDeductedUnits(index)
           this.emitChange()
         }
       },
@@ -446,7 +553,8 @@
         if (index >= 0 && index < this.workerList.length) {
           const worker = this.workerList[index]
           worker.pointsUnits = worker.pointsUnits + 1
-          worker.displayPoints = unitsToPoints(worker.pointsUnits).toFixed(1)
+          worker.displayPoints = formatPointsUnits(worker.pointsUnits)
+          // 增加工分时不需要 clamp（扣分不会超出）
           this.emitChange()
         }
       },
@@ -456,7 +564,9 @@
           const worker = this.workerList[index]
           if (worker.pointsUnits > 0) {
             worker.pointsUnits = worker.pointsUnits - 1
-            worker.displayPoints = unitsToPoints(worker.pointsUnits).toFixed(1)
+            worker.displayPoints = formatPointsUnits(worker.pointsUnits)
+            // 限制扣分不超过新的原始工分
+            this.clampDeductedUnits(index)
             this.emitChange()
           }
         }
@@ -471,7 +581,10 @@
           personId: null,
           personName: '',
           pointsUnits: 0,
-          displayPoints: '0.0'
+          displayPoints: '0.0',
+          deductedUnits: 0,
+          penaltyReason: '',
+          penaltyId: null
         } as BinWorkerItem)
         this.emitChange()
       },
@@ -509,10 +622,184 @@
           } else {
             worker.pointsUnits = baseUnits
           }
-          worker.displayPoints = unitsToPoints(worker.pointsUnits).toFixed(1)
+          worker.displayPoints = formatPointsUnits(worker.pointsUnits)
+          // 限制扣分不超过新的原始工分
+          this.clampDeductedUnits(i)
         }
 
         this.emitChange()
+      },
+
+      // ============================================
+      // 考核操作
+      // ============================================
+
+      /**
+       * 切换考核面板展开/收起
+       */
+      onTogglePenalty(index: number) {
+        if (index < 0 || index >= this.workerList.length) {
+          return
+        }
+        const worker = this.workerList[index]
+        // 未选择人员时禁止考核
+        if (worker.personId == null) {
+          uni.showToast({
+            title: '请先选择人员',
+            icon: 'none'
+          })
+          return
+        }
+
+        if (this.expandedPenaltyIndex == index) {
+          // 收起当前面板
+          this.expandedPenaltyIndex = null
+        } else {
+          // 展开新面板（同时收起其他）
+          this.expandedPenaltyIndex = index
+          // 初始化草稿：复制当前值
+          this.penaltyDraft.deductedUnits = worker.deductedUnits
+          this.penaltyDraft.reason = worker.penaltyReason
+        }
+      },
+
+      /**
+       * 草稿：扣分值变化
+       */
+      onDraftDeductedChange(value: PointsUnits) {
+        this.penaltyDraft.deductedUnits = value
+      },
+
+      /**
+       * 草稿：扣分原因输入
+       */
+      onDraftReasonInput(e: UniInputEvent) {
+        this.penaltyDraft.reason = e.detail.value
+      },
+
+      /**
+       * 计算草稿的最终工分显示值
+       */
+      getDraftFinalPoints(originalUnits: PointsUnits): string {
+        const finalUnits = calcFinalPoints(originalUnits, this.penaltyDraft.deductedUnits)
+        return formatPointsUnits(finalUnits)
+      },
+
+      /**
+       * 判断草稿是否可以保存
+       */
+      canSavePenaltyDraft(): boolean {
+        // 扣分为 0 时可以保存（清除扣分）
+        if (this.penaltyDraft.deductedUnits == 0) {
+          return true
+        }
+        // 扣分 > 0 时，原因必填（trim 空格）
+        if (this.penaltyDraft.reason.trim().length > 0) {
+          return true
+        }
+        return false
+      },
+
+      /**
+       * 取消考核编辑（真正取消，丢弃草稿）
+       */
+      onCancelPenalty() {
+        // 收起面板，丢弃草稿
+        this.expandedPenaltyIndex = null
+        this.penaltyDraft.deductedUnits = 0
+        this.penaltyDraft.reason = ''
+      },
+
+      /**
+       * 保存考核（提交草稿到 worker）
+       */
+      onSavePenalty(index: number) {
+        if (this.canSavePenaltyDraft() == false) {
+          // 显示错误提示
+          uni.showToast({
+            title: '请输入扣分原因',
+            icon: 'none'
+          })
+          return
+        }
+        if (index >= 0 && index < this.workerList.length) {
+          const worker = this.workerList[index]
+          // 提交草稿到 worker
+          worker.deductedUnits = this.penaltyDraft.deductedUnits
+          worker.penaltyReason = this.penaltyDraft.reason.trim()
+
+          // 如果扣分为 0，清除原因和 ID（表示删除扣分）
+          if (worker.deductedUnits == 0) {
+            worker.penaltyReason = ''
+            // penaltyId 保留，用于通知父组件删除
+          }
+
+          // 发送扣分变更事件
+          this.emitPenaltyChange(index)
+          // 收起面板
+          this.expandedPenaltyIndex = null
+          // 清空草稿
+          this.penaltyDraft.deductedUnits = 0
+          this.penaltyDraft.reason = ''
+          // 显示保存成功提示
+          uni.showToast({
+            title: '考核已保存',
+            icon: 'success'
+          })
+        }
+      },
+
+      /**
+       * 发送扣分变更事件（完整 payload）
+       */
+      emitPenaltyChange(index: number) {
+        if (index >= 0 && index < this.workerList.length) {
+          const worker = this.workerList[index]
+          // 确定操作类型
+          let action = 'update' as string
+          if (worker.deductedUnits == 0 && worker.penaltyId != null) {
+            action = 'delete'
+          } else if (worker.deductedUnits > 0 && worker.penaltyId == null) {
+            action = 'create'
+          }
+
+          const payload = {
+            // 会话信息
+            sessionKey: this.sessionKey,
+            stageSessionId: this.stageSessionId,
+            // 仓信息
+            stageBinId: this.stageBinId,
+            binId: this.binId,
+            binCode: this.binCode,
+            // 人员信息
+            workerIndex: index,
+            positionIndex: index + 1,
+            personId: worker.personId,
+            personName: worker.personName,
+            // 工分信息
+            originalUnits: worker.pointsUnits,
+            deductedUnits: worker.deductedUnits,
+            finalUnits: calcFinalPoints(worker.pointsUnits, worker.deductedUnits),
+            // 扣分信息
+            penaltyReason: worker.penaltyReason,
+            penaltyId: worker.penaltyId,
+            // 操作类型
+            action: action
+          } as UTSJSONObject
+          this.$emit('penaltyChange', payload)
+        }
+      },
+
+      /**
+       * 限制扣分值不超过原始工分（在原始工分变化时调用）
+       */
+      clampDeductedUnits(index: number) {
+        if (index >= 0 && index < this.workerList.length) {
+          const worker = this.workerList[index]
+          if (worker.deductedUnits > worker.pointsUnits) {
+            worker.deductedUnits = worker.pointsUnits
+          }
+        }
       },
 
       // ============================================
@@ -527,7 +814,10 @@
             personId: w.personId,
             personName: w.personName,
             pointsUnits: w.pointsUnits,
-            positionIndex: i + 1
+            positionIndex: i + 1,
+            deductedUnits: w.deductedUnits,
+            penaltyReason: w.penaltyReason,
+            penaltyId: w.penaltyId
           } as UTSJSONObject)
         }
         const payload = {
@@ -711,7 +1001,7 @@
   .worker-item {
     flex-direction: row;
     align-items: center;
-    margin-bottom: 8px;
+    /* margin-bottom 移到 wrapper，避免重复 */
   }
 
   .worker-position {
@@ -918,5 +1208,150 @@
   .picker-close-text {
     font-size: 14px;
     color: #666666;
+  }
+
+  /* ============================================ */
+  /* 考核相关样式 */
+  /* ============================================ */
+
+  .worker-item-wrapper {
+    margin-bottom: 8px;
+  }
+
+  .penalty-btn {
+    margin-left: 8px;
+    padding: 4px 8px;
+    background-color: #f5f7fa;
+    border-radius: 4px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+  }
+
+  .penalty-btn-active {
+    background-color: #fff0f0;
+    border-color: #ffccc7;
+  }
+
+  .penalty-btn-text {
+    font-size: 12px;
+    color: #666666;
+  }
+
+  .penalty-btn-text-active {
+    color: #f56c6c;
+  }
+
+  .penalty-panel {
+    margin-top: 8px;
+    margin-left: 32px;
+    padding: 12px;
+    background-color: #fafafa;
+    border-radius: 8px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #f0f0f0;
+  }
+
+  .penalty-points-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .penalty-points-item {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .penalty-points-label {
+    font-size: 11px;
+    color: #999999;
+    margin-bottom: 4px;
+  }
+
+  .penalty-points-value {
+    font-size: 16px;
+    font-weight: bold;
+  }
+
+  .penalty-original {
+    color: #666666;
+  }
+
+  .penalty-final {
+    color: #007aff;
+  }
+
+  .penalty-reason-row {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .penalty-reason-label {
+    font-size: 12px;
+    color: #666666;
+    margin-right: 8px;
+    width: 32px;
+  }
+
+  .penalty-reason-input {
+    flex: 1;
+    height: 32px;
+    padding: 0 10px;
+    background-color: #ffffff;
+    border-radius: 4px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+    font-size: 13px;
+    color: #333333;
+  }
+
+  .penalty-error {
+    margin-bottom: 8px;
+  }
+
+  .penalty-error-text {
+    font-size: 11px;
+    color: #f56c6c;
+  }
+
+  .penalty-actions {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+
+  .penalty-cancel-btn {
+    padding: 6px 16px;
+    background-color: #f5f5f5;
+    border-radius: 4px;
+    margin-right: 8px;
+  }
+
+  .penalty-cancel-text {
+    font-size: 13px;
+    color: #666666;
+  }
+
+  .penalty-save-btn {
+    padding: 6px 16px;
+    background-color: #007aff;
+    border-radius: 4px;
+  }
+
+  .penalty-save-btn-disabled {
+    background-color: #e0e0e0;
+  }
+
+  .penalty-save-text {
+    font-size: 13px;
+    color: #ffffff;
+  }
+
+  .penalty-save-text-disabled {
+    color: #999999;
   }
 </style>
