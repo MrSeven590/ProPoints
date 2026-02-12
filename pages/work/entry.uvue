@@ -395,7 +395,10 @@
             workers.push({
               personId: w.personId,
               personName: w.personName,
-              pointsUnits: w.pointsUnits
+              pointsUnits: w.pointsUnits,
+              deductedUnits: w.deductedUnits,
+              penaltyReason: w.penaltyReason,
+              penaltyId: w.penaltyId
             } as UTSJSONObject)
           }
           return workers
