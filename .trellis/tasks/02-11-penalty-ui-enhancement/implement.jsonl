@@ -1,0 +1,7 @@
+{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
+{"file": ".trellis/spec/shared/index.md", "reason": "Shared coding standards"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
+{"file": ".trellis/spec/frontend/components.md", "reason": "Component conventions"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件开发规范,包含 ucss 样式和 Vue 3 组件结构"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "状态管理规范,考核数据的草稿/提交状态处理"}
+{"file": "components/biz-bin-card/biz-bin-card.uvue", "reason": "现有考核功能实现,按钮禁用和分数显示模式"}

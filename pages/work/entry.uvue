@@ -112,6 +112,8 @@
   import { allocateCrossBinPoints } from '../../domain/services/ScoreAllocator.uts'
   import { getBinKojiCountFromAnQu } from '../../domain/services/DuiQuBaseService.uts'
   import { saveSession, loadSession } from '../../storage/storage-repository.uts'
+  import { validateBinBalance, validateCrossBinSource, mergeValidationResults } from '../../domain/services/Validator.uts'
+  import type { ValidationResult } from '../../domain/services/Validator.uts'
 
   /**
    * 仓内工人分配数据类型
@@ -121,6 +123,9 @@
     personName: string
     pointsUnits: PointsUnits
     positionIndex: number
+    deductedUnits: PointsUnits
+    penaltyReason: string
+    penaltyId: number | null
   }
 
   /**
@@ -418,7 +423,10 @@
             personId: w['personId'] != null ? w['personId'] as number : null,
             personName: w['personName'] != null ? w['personName'] as string : '',
             pointsUnits: w['pointsUnits'] != null ? w['pointsUnits'] as number : 0,
-            positionIndex: w['positionIndex'] != null ? w['positionIndex'] as number : i + 1
+            positionIndex: w['positionIndex'] != null ? w['positionIndex'] as number : i + 1,
+            deductedUnits: w['deductedUnits'] != null ? w['deductedUnits'] as number : 0,
+            penaltyReason: w['penaltyReason'] != null ? w['penaltyReason'] as string : '',
+            penaltyId: w['penaltyId'] != null ? w['penaltyId'] as number : null
           } as BinWorkerData)
         }
 
@@ -547,7 +555,10 @@
                     personId: w['personId'] != null ? w['personId'] as number : null,
                     personName: w['personName'] != null ? w['personName'] as string : '',
                     pointsUnits: w['pointsUnits'] != null ? w['pointsUnits'] as number : 0,
-                    positionIndex: w['positionIndex'] != null ? w['positionIndex'] as number : j + 1
+                    positionIndex: w['positionIndex'] != null ? w['positionIndex'] as number : j + 1,
+                    deductedUnits: w['deductedUnits'] != null ? w['deductedUnits'] as number : 0,
+                    penaltyReason: w['penaltyReason'] != null ? w['penaltyReason'] as string : '',
+                    penaltyId: w['penaltyId'] != null ? w['penaltyId'] as number : null
                   } as BinWorkerData)
                 }
 
@@ -640,7 +651,10 @@
                 personId: w.personId,
                 personName: w.personName,
                 pointsUnits: w.pointsUnits,
-                positionIndex: w.positionIndex
+                positionIndex: w.positionIndex,
+                deductedUnits: w.deductedUnits,
+                penaltyReason: w.penaltyReason,
+                penaltyId: w.penaltyId
               } as UTSJSONObject)
             }
           }
@@ -729,6 +743,69 @@
        * 提交确认
        */
       submit() {
+        // ============================================
+        // 数据校验
+        // ============================================
+        const validationResults: ValidationResult[] = []
+
+        // 1. 校验 BIN 平衡
+        if (this.showBinSection == true) {
+          for (let i = 0; i < this.stageBinInfos.length; i++) {
+            const info = this.stageBinInfos[i]
+            const cardData = this.binCardsData.get(info.stage_bin_id)
+            if (cardData != null) {
+              // 计算原始工分总和（不是最终工分）
+              let assignedOriginalUnits = 0
+              for (let j = 0; j < cardData.workers.length; j++) {
+                assignedOriginalUnits = assignedOriginalUnits + cardData.workers[j].pointsUnits
+              }
+
+              // 获取跨仓抽取工分
+              const crossDeduction = this.getCrossBinDeduction(info.stage_bin_id)
+
+              // 校验平衡
+              const result = validateBinBalance({
+                bin_id: info.bin_id,
+                bin_code: info.bin_code,
+                total_points_units: cardData.totalPointsUnits,
+                assigned_points_units: assignedOriginalUnits,
+                cross_bin_deducted_units: crossDeduction
+              })
+              validationResults.push(result)
+            }
+          }
+        }
+
+        // 2. 校验跨仓来源完整性
+        if (this.showCrossBinSection == true && this.crossBinPointsUnits > 0) {
+          let sourceSum = 0
+          for (let i = 0; i < this.crossBinSources.length; i++) {
+            sourceSum = sourceSum + this.crossBinSources[i].source_points_units
+          }
+          const result = validateCrossBinSource(this.crossBinPointsUnits, sourceSum)
+          validationResults.push(result)
+        }
+
+        // 合并校验结果
+        const finalResult = mergeValidationResults(validationResults)
+        if (finalResult.isValid == false) {
+          // 显示所有错误
+          let errorMsg = '数据校验失败：\n'
+          for (let i = 0; i < finalResult.errors.length; i++) {
+            errorMsg = errorMsg + '\n' + (i + 1) + '. ' + finalResult.errors[i]
+          }
+          uni.showModal({
+            title: '无法提交',
+            content: errorMsg,
+            showCancel: false
+          })
+          return
+        }
+
+        // ============================================
+        // 基础必填校验
+        // ============================================
+
         // 校验是否存在缺失安曲记录的仓
         if (this.missingAnQuBins.length > 0) {
           const binList = this.missingAnQuBins.join(', ')

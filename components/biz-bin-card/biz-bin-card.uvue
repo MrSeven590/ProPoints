@@ -78,6 +78,13 @@
             </view>
           </view>
 
+          <!-- 考核摘要（保存后显示，面板未展开时） -->
+          <view v-if="worker.deductedUnits > 0 && expandedPenaltyIndex != index" class="penalty-summary">
+            <text class="penalty-summary-text">原始 {{ formatPoints(worker.pointsUnits) }}</text>
+            <text class="penalty-summary-text penalty-summary-deducted">-{{ formatPoints(worker.deductedUnits) }}</text>
+            <text class="penalty-summary-text penalty-summary-final">= {{ formatPoints(calcFinalPointsForWorker(worker.pointsUnits, worker.deductedUnits)) }}</text>
+          </view>
+
           <!-- 考核输入区域（展开时显示） -->
           <view v-if="expandedPenaltyIndex == index" class="penalty-panel">
             <view class="penalty-points-row">
@@ -152,12 +159,14 @@
     <!-- 分配状态提示 -->
     <view class="status-row">
       <text class="status-label">已分配</text>
-      <text :class="['status-value', isBalanced ? 'balanced' : 'unbalanced']">
-        {{ displayAssignedPoints }} / {{ displayTotalPoints }}
-      </text>
-      <text v-if="hasCrossBinDeduction" class="cross-bin-hint">
-        (跨仓扣{{ displayCrossBinDeduction }})
-      </text>
+      <view class="status-value-container">
+        <text :class="['status-value', isBalanced ? 'balanced' : 'unbalanced']">{{ displayAssignedPoints }}</text>
+        <text v-if="hasCrossBinDeduction && hasPenalty" class="status-extra-info">(含跨仓{{ displayCrossBinDeduction }}分+考核{{ displayTotalPenalty }}分)</text>
+        <text v-else-if="hasCrossBinDeduction" class="status-extra-info">(含跨仓{{ displayCrossBinDeduction }}分)</text>
+        <text v-else-if="hasPenalty" class="status-extra-info">(含考核{{ displayTotalPenalty }}分)</text>
+        <text class="status-slash">/</text>
+        <text class="status-total">{{ displayTotalPoints }}</text>
+      </view>
       <text v-if="!isBalanced" class="status-hint">
         {{ remainingUnits > 0 ? '剩余 ' + displayRemainingPoints : '超出 ' + displayOverflowPoints }}
       </text>
@@ -190,7 +199,6 @@
 	  import { calcBinTotalPointsUnits } from '../../domain/services/ScoreCalculator.uts'
 	  import { getStageCoef } from '../../domain/services/StageCoefService.uts'
 	  import { calcFinalPoints } from '../../domain/models/assignment.uts'
-	  import type { PenaltyDraft } from '../../domain/models/assignment.uts'
 
   /**
    * 仓内工人分配项类型（含扣分信息）
@@ -204,6 +212,17 @@
     deductedUnits: PointsUnits
     penaltyReason: string
     penaltyId: number | null
+  }
+
+  /**
+   * 考核草稿类型（含初始值用于判断变更）
+   */
+  type LocalPenaltyDraft = {
+    deductedUnits: PointsUnits
+    reason: string
+    // 记录初始值，用于判断是否有变更
+    initialDeductedUnits: PointsUnits
+    initialReason: string
   }
 
   export default {
@@ -271,8 +290,10 @@
         // 草稿模式：编辑时使用临时变量
         penaltyDraft: {
           deductedUnits: 0,
-          reason: ''
-        } as PenaltyDraft
+          reason: '',
+          initialDeductedUnits: 0,
+          initialReason: ''
+        } as LocalPenaltyDraft
       }
     },
     computed: {
@@ -282,19 +303,30 @@
       displayTotalPoints(): string {
         return formatPointsUnits(this.totalPointsUnits)
       },
+      /**
+       * 仓内人员分配的工分总和（使用最终工分 = 原始工分 - 考核扣分）
+       */
       assignedUnits(): PointsUnits {
         let sum = 0
         for (let i = 0; i < this.workerList.length; i++) {
-          sum = sum + this.workerList[i].pointsUnits
+          const worker = this.workerList[i]
+          // 使用最终工分 = 原始工分 - 考核扣分
+          sum = sum + (worker.pointsUnits - worker.deductedUnits)
         }
         return sum
       },
+      /**
+       * 已分配的总消耗工分 = 仓内工分 + 跨仓工分 + 考核工分
+       */
+      allocatedUnits(): PointsUnits {
+        const cross = this.crossBinDeduction as number
+        return this.assignedUnits + cross + this.totalPenaltyUnits
+      },
       displayAssignedPoints(): string {
-        return formatPointsUnits(this.assignedUnits)
+        return formatPointsUnits(this.allocatedUnits)
       },
       remainingUnits(): PointsUnits {
-        const deduction = this.crossBinDeduction as number
-        return this.totalPointsUnits - this.assignedUnits - deduction
+        return this.totalPointsUnits - this.allocatedUnits
       },
       displayRemainingPoints(): string {
         return formatPointsUnits(Math.abs(this.remainingUnits))
@@ -312,6 +344,28 @@
       displayCrossBinDeduction(): string {
         const deduction = this.crossBinDeduction as number
         return formatPointsUnits(deduction)
+      },
+      /**
+       * 计算该仓的考核总扣分
+       */
+      totalPenaltyUnits(): PointsUnits {
+        let sum = 0
+        for (let i = 0; i < this.workerList.length; i++) {
+          sum = sum + this.workerList[i].deductedUnits
+        }
+        return sum
+      },
+      /**
+       * 是否有考核扣分
+       */
+      hasPenalty(): boolean {
+        return this.totalPenaltyUnits > 0
+      },
+      /**
+       * 格式化考核总扣分显示
+       */
+      displayTotalPenalty(): string {
+        return formatPointsUnits(this.totalPenaltyUnits)
       },
       currentSelectedPersonId(): number | null {
         if (this.currentWorkerIndex >= 0 && this.currentWorkerIndex < this.workerList.length) {
@@ -372,6 +426,13 @@
        */
       formatPoints(units: PointsUnits): string {
         return formatPointsUnits(units)
+      },
+
+      /**
+       * 计算工人的最终工分（用于模板调用）
+       */
+      calcFinalPointsForWorker(originalUnits: PointsUnits, deductedUnits: PointsUnits): PointsUnits {
+        return calcFinalPoints(originalUnits, deductedUnits)
       },
 
       initData() {
@@ -657,9 +718,11 @@
         } else {
           // 展开新面板（同时收起其他）
           this.expandedPenaltyIndex = index
-          // 初始化草稿：复制当前值
+          // 初始化草稿：复制当前值，并记录初始值
           this.penaltyDraft.deductedUnits = worker.deductedUnits
           this.penaltyDraft.reason = worker.penaltyReason
+          this.penaltyDraft.initialDeductedUnits = worker.deductedUnits
+          this.penaltyDraft.initialReason = worker.penaltyReason
         }
       },
 
@@ -686,15 +749,27 @@
       },
 
       /**
-       * 判断草稿是否可以保存
+       * 判断草稿是否有变更
        */
-      canSavePenaltyDraft(): boolean {
-        // 扣分为 0 时可以保存（清除扣分）
-        if (this.penaltyDraft.deductedUnits == 0) {
+      hasPenaltyDraftChanged(): boolean {
+        // 检查扣分值是否变化
+        if (this.penaltyDraft.deductedUnits != this.penaltyDraft.initialDeductedUnits) {
           return true
         }
-        // 扣分 > 0 时，原因必填（trim 空格）
-        if (this.penaltyDraft.reason.trim().length > 0) {
+        // 检查原因是否变化（trim 后比较）
+        if (this.penaltyDraft.reason.trim() != this.penaltyDraft.initialReason.trim()) {
+          return true
+        }
+        return false
+      },
+
+      /**
+       * 判断保存按钮是否可用
+       * 当且仅当分数和原因同时存在时才可点击
+       */
+      canSavePenaltyDraft(): boolean {
+        // 扣分 > 0 且原因不为空时才可保存
+        if (this.penaltyDraft.deductedUnits > 0 && this.penaltyDraft.reason.trim().length > 0) {
           return true
         }
         return false
@@ -708,6 +783,8 @@
         this.expandedPenaltyIndex = null
         this.penaltyDraft.deductedUnits = 0
         this.penaltyDraft.reason = ''
+        this.penaltyDraft.initialDeductedUnits = 0
+        this.penaltyDraft.initialReason = ''
       },
 
       /**
@@ -715,7 +792,12 @@
        */
       onSavePenalty(index: number) {
         if (this.canSavePenaltyDraft() == false) {
-          // 显示错误提示
+          // 根据不同情况显示不同提示
+          if (this.hasPenaltyDraftChanged() == false) {
+            // 没有变更，不做任何操作
+            return
+          }
+          // 有变更但原因未填写
           uni.showToast({
             title: '请输入扣分原因',
             icon: 'none'
@@ -741,6 +823,8 @@
           // 清空草稿
           this.penaltyDraft.deductedUnits = 0
           this.penaltyDraft.reason = ''
+          this.penaltyDraft.initialDeductedUnits = 0
+          this.penaltyDraft.initialReason = ''
           // 显示保存成功提示
           uni.showToast({
             title: '考核已保存',
@@ -1157,12 +1241,6 @@
     margin-left: 8px;
   }
 
-  .cross-bin-hint {
-    font-size: 11px;
-    color: #1890ff;
-    margin-left: 4px;
-  }
-
   /* 人员选择弹窗 */
   .picker-mask {
     position: fixed;
@@ -1353,5 +1431,56 @@
 
   .penalty-save-text-disabled {
     color: #999999;
+  }
+
+  /* 考核摘要样式 */
+  .penalty-summary {
+    flex-direction: row;
+    align-items: center;
+    margin-top: 4px;
+    margin-left: 32px;
+    padding: 4px 8px;
+    background-color: #fff7e6;
+    border-radius: 4px;
+  }
+
+  .penalty-summary-text {
+    font-size: 11px;
+    color: #666666;
+    margin-right: 8px;
+  }
+
+  .penalty-summary-deducted {
+    color: #f56c6c;
+  }
+
+  .penalty-summary-final {
+    color: #007aff;
+    font-weight: bold;
+  }
+
+  /* 分配状态新样式 */
+  .status-value-container {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .status-extra-info {
+    font-size: 12px;
+    color: #999999;
+    margin-left: 4px;
+  }
+
+  .status-slash {
+    font-size: 12px;
+    color: #999999;
+    margin-left: 4px;
+    margin-right: 4px;
+  }
+
+  .status-total {
+    font-size: 14px;
+    font-weight: bold;
+    color: #007aff;
   }
 </style>

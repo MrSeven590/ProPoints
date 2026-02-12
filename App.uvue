@@ -2,7 +2,7 @@
   import { initStorage, resetAllStorage } from './storage/init.uts'
 
   // 调试模式：设为 true 时启动自动清除所有历史存储数据
-  const DEBUG_MODE = true
+  const DEBUG_MODE = false
 
   // #ifdef APP-ANDROID || APP-HARMONY
   let firstBackTime = 0

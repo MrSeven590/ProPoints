@@ -98,48 +98,6 @@ export function validateSessionPoolBalance(
 }
 
 /**
- * 校验站位完整性
- * 规则：仓内人员必须填 position_index，且同仓不重复
- *
- * @param positions 站位数组
- * @param expectedCount 预期人数
- * @returns 校验结果
- */
-export function validatePositions(
-  positions: number[],
-  expectedCount: number
-): ValidationResult {
-  const errors: string[] = []
-
-  // 检查数量
-  if (positions.length != expectedCount) {
-    errors.push(`站位数量不匹配：预期 ${expectedCount}，实际 ${positions.length}`)
-  }
-
-  // 检查重复
-  const seen = new Set<number>()
-  for (let i = 0; i < positions.length; i++) {
-    const pos = positions[i]
-    if (seen.has(pos)) {
-      errors.push(`站位 ${pos} 重复`)
-    }
-    seen.add(pos)
-  }
-
-  // 检查连续性（1 到 N）
-  for (let i = 1; i <= expectedCount; i++) {
-    if (!seen.has(i)) {
-      errors.push(`缺少站位 ${i}`)
-    }
-  }
-
-  return {
-    isValid: errors.length == 0,
-    errors: errors
-  } as ValidationResult
-}
-
-/**
  * 合并多个校验结果
  * @param results 校验结果数组
  * @returns 合并后的校验结果
