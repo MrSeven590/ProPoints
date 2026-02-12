@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 16
+- **Total Sessions**: 17
 - **Last Active**: 2026-02-12
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1079 | Active |
+| `journal-1.md` | ~1167 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits |
 |---|------|-------|---------|
+| 17 | 2026-02-12 | 工分录入优化和草稿索引重构 | `3599d8c` |
 | 16 | 2026-02-12 | 考核数据持久化与提交校验优化 | `1f88f93` |
 | 15 | 2026-02-11 | P5-T02: 实现录入页考核交互功能 | `1fd4575`, `a56ebc3` |
 | 14 | 2026-02-10 | 实现跨仓工分扣除逻辑 | `bea14d0` |

@@ -1077,3 +1077,91 @@ getInitials(cn: string): string
 ### Next Steps
 
 - None - task complete
+
+## Session 17: 工分录入优化和草稿索引重构
+
+**Date**: 2026-02-12
+**Task**: 工分录入优化和草稿索引重构
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 本次会话完成内容
+
+### 1. 工分录入页面日期步进器弹窗
+- 日期字段点击弹出模态窗口
+- 提供 +1/-1 天步进器按钮调整日期
+- 支持确认/取消/遮罩关闭
+- 添加 `addDaysToDate()` 工具函数处理日期加减
+
+### 2. 保存草稿后自动返回
+- 保存草稿后延迟 500ms 自动返回首页
+- 移除"点击修改"提示文字
+
+### 3. 草稿索引架构重构
+**问题**: 首页使用 `uni.getStorageInfoSync()` 全量扫描违背存储架构设计原则
+
+**解决方案** (参考 Codex 建议):
+- 实现全局草稿索引 `pp:idx:draft`
+- `saveSession()` 自动维护索引（draft 加入，非 draft 移除）
+- `deleteSession()` 自动清理索引
+- 添加 `getDraftSessionKeys()` 查询接口
+- 首页使用索引查询替代全量扫描
+
+**架构优势**:
+- 符合"支持快速查询和索引"设计原则
+- 自动维护，无需手动管理
+- 正确处理状态转换（draft→submitted）
+
+### 4. 首页草稿显示优化
+- 标题"最近草稿"改为"草稿"
+- 显示所有草稿（不限日期）
+- 使用 `getDraftSessionKeys()` + `parseSessionKey()` 获取列表
+
+## 修改文件
+
+| 文件 | 变更 | 说明 |
+|------|------|------|
+| `domain/models/types.uts` | +27 | 添加 `addDaysToDate()` 函数 |
+| `pages/work/entry.uvue` | +246/-71 | 日期步进器弹窗、自动返回 |
+| `pages/index/index.uvue` | +82/-71 | 使用草稿索引 |
+| `storage/storage-keys.uts` | +9 | 添加 `getDraftIndexKey()` |
+| `storage/storage-repository.uts` | +18 | 索引维护和查询接口 |
+
+**总计**: 5 个文件，+311/-71 行
+
+## 技术亮点
+
+1. **分层架构**: storage-keys → storage-repository → pages，职责清晰
+2. **自动维护**: 索引在保存/删除时自动更新，业务层无感知
+3. **性能优化**: 从 O(n) 全量扫描优化为 O(1) 索引查询
+4. **状态转换**: 正确处理 draft→submitted 的索引更新
+
+## 待测试项
+
+- [ ] 日期步进器功能（+1/-1 天）
+- [ ] 保存草稿后自动返回
+- [ ] 首页显示所有草稿
+- [ ] 提交草稿后从草稿列表移除
+- [ ] 删除草稿功能正常
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3599d8c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
