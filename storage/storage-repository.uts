@@ -7,6 +7,7 @@
 import {
   getSessionKey,
   getDateIndexKey,
+  getDraftIndexKey,
   getPersonIndexKey,
   getBinIndexKey,
   getPersonsKey,
@@ -154,6 +155,13 @@ export function saveSession(
   saveData(key, sessionData)
   // 更新日期索引
   addToIndex(getDateIndexKey(date), key)
+  // 维护草稿索引
+  const status = sessionData['status'] != null ? (sessionData['status'] as string) : ''
+  if (status == 'draft') {
+    addToIndex(getDraftIndexKey(), key)
+  } else {
+    removeFromIndex(getDraftIndexKey(), key)
+  }
 }
 
 /**
@@ -187,6 +195,8 @@ export function deleteSession(
   removeData(key)
   // 从日期索引移除
   removeFromIndex(getDateIndexKey(date), key)
+  // 从草稿索引移除
+  removeFromIndex(getDraftIndexKey(), key)
 }
 
 /**
@@ -225,6 +235,14 @@ export function getSessionsByDateAndStage(date: string, stageCode: string): UTSJ
     }
   }
   return sessions
+}
+
+/**
+ * 获取所有草稿会话的 key 列表
+ * @returns 草稿会话 key 列表
+ */
+export function getDraftSessionKeys(): string[] {
+  return getIndexList(getDraftIndexKey())
 }
 
 // ============ 配置数据操作 ============

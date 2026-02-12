@@ -33,7 +33,7 @@
       </view>
 
       <view class="section">
-        <text class="section-title">最近草稿</text>
+        <text class="section-title">草稿</text>
         <view class="session-list">
           <text class="empty-text" v-if="drafts.length == 0">暂无草稿</text>
           <view
@@ -88,7 +88,8 @@
 
 <script lang="uts">
   import { getTodayDateString } from '../../domain/models/types.uts'
-  import { getSessionsByDate, deleteSession } from '../../storage/storage-repository.uts'
+  import { getSessionsByDate, deleteSession, getDraftSessionKeys } from '../../storage/storage-repository.uts'
+  import { parseSessionKey } from '../../storage/storage-keys.uts'
 
   /**
    * 会话列表项类型
@@ -117,69 +118,52 @@
     },
     methods: {
       /**
-       * 加载最近 7 天的会话数据
+       * 加载所有会话数据
        */
       loadSessions() {
         const draftList: SessionListItem[] = []
         const submittedList: SessionListItem[] = []
 
-        // 获取最近 7 天的日期列表
-        const dates = this.getRecentDates(7)
-
-        for (let i = 0; i < dates.length; i++) {
-          const date = dates[i]
-          const sessions = getSessionsByDate(date)
-
-          for (let j = 0; j < sessions.length; j++) {
-            const session = sessions[j]
-            const stageCode = session['stage_code']
-            const roundId = session['round_id']
-            const status = session['status']
-
-            if (stageCode == null || status == null) {
-              continue
+        // 从草稿索引获取草稿 key 列表
+        const draftKeys = getDraftSessionKeys()
+        for (let i = 0; i < draftKeys.length; i++) {
+          const parsed = parseSessionKey(draftKeys[i])
+          if (parsed != null) {
+            const item: SessionListItem = {
+              session_date: parsed.date,
+              stage_code: parsed.stageCode,
+              stage_name: this.getStageName(parsed.stageCode),
+              round_id: parsed.roundId,
+              status: 'draft'
             }
+            draftList.push(item)
+          }
+        }
 
+        // 获取今日已提交的会话
+        const todaySessions = getSessionsByDate(this.todayDate)
+        for (let i = 0; i < todaySessions.length; i++) {
+          const sessionData = todaySessions[i]
+          const status = sessionData['status']
+          if (status == 'submitted') {
+            const date = sessionData['session_date'] as string
+            const stageCode = sessionData['stage_code'] as string
+            const roundIdVal = sessionData['round_id']
+            const roundId = roundIdVal != null ? (roundIdVal as number) : null
             const item: SessionListItem = {
               session_date: date,
-              stage_code: stageCode as string,
-              stage_name: this.getStageName(stageCode as string),
-              round_id: roundId != null ? roundId as number : null,
-              status: status as string
+              stage_code: stageCode,
+              stage_name: this.getStageName(stageCode),
+              round_id: roundId,
+              status: 'submitted'
             }
-
-            if (status == 'draft') {
-              draftList.push(item)
-            } else if (status == 'submitted') {
-              submittedList.push(item)
-            }
+            submittedList.push(item)
           }
         }
 
         // 按日期倒序排列（最新在前）
         this.drafts = this.sortByDateDesc(draftList)
         this.submitted = this.sortByDateDesc(submittedList)
-      },
-
-      /**
-       * 获取最近 N 天的日期列表（包含今天）
-       * @param days 天数
-       * @returns 日期字符串数组（YYYY-MM-DD 格式）
-       */
-      getRecentDates(days: number): string[] {
-        const dates: string[] = []
-        const now = Date.now()
-        const oneDay = 24 * 60 * 60 * 1000
-
-        for (let i = 0; i < days; i++) {
-          const date = new Date(now - i * oneDay)
-          const year = date.getFullYear()
-          const month = (date.getMonth() + 1).toString().padStart(2, '0')
-          const day = date.getDate().toString().padStart(2, '0')
-          dates.push(`${year}-${month}-${day}`)
-        }
-
-        return dates
       },
 
       /**

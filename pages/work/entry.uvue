@@ -8,7 +8,7 @@
     <scroll-view class="content" scroll-y="true">
       <view class="section">
         <text class="section-title">基本信息</text>
-        <view class="info-row">
+        <view class="info-row date-row" @click="onOpenDatePicker">
           <text class="info-label">日期</text>
           <text class="info-value">{{ sessionDate }}</text>
         </view>
@@ -98,11 +98,42 @@
         <text class="btn-text btn-text-primary">提交确认</text>
       </view>
     </view>
+
+    <!-- 日期选择弹窗 -->
+    <view v-if="showDatePicker" class="picker-mask" @click="onCloseDatePicker">
+      <view class="date-picker-container" @click.stop="">
+        <view class="date-picker-header">
+          <text class="date-picker-title">选择日期</text>
+          <view class="date-picker-close" @click="onCloseDatePicker">
+            <text class="date-picker-close-text">X</text>
+          </view>
+        </view>
+        <view class="date-picker-content">
+          <view class="date-stepper">
+            <view class="date-stepper-btn" @click="onDateDecrease">
+              <text class="date-stepper-btn-text">-1天</text>
+            </view>
+            <text class="date-display">{{ tempDate }}</text>
+            <view class="date-stepper-btn" @click="onDateIncrease">
+              <text class="date-stepper-btn-text">+1天</text>
+            </view>
+          </view>
+        </view>
+        <view class="date-picker-actions">
+          <view class="date-picker-btn date-picker-cancel" @click="onCancelDatePicker">
+            <text class="date-picker-btn-text date-picker-cancel-text">取消</text>
+          </view>
+          <view class="date-picker-btn date-picker-confirm" @click="onConfirmDatePicker">
+            <text class="date-picker-btn-text date-picker-confirm-text">确认</text>
+          </view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
 <script lang="uts">
-  import { getTodayDateString, getCurrentTimestamp } from '../../domain/models/types.uts'
+  import { getTodayDateString, getCurrentTimestamp, addDaysToDate } from '../../domain/models/types.uts'
   import type { StageCode, PointsUnits, RoleCode } from '../../domain/models/types.uts'
   import { getStageName, stageRequiresBin } from '../../domain/models/stage-session.uts'
   import { stageHasCrossBinRole, getStageRoleConfigs, getStageBinWorkerCount } from '../../domain/services/StageCoefService.uts'
@@ -168,7 +199,10 @@
         // 默认仓内工人数
         defaultBinWorkerCount: 4 as number,
         // 缺失安曲记录的仓号列表
-        missingAnQuBins: [] as string[]
+        missingAnQuBins: [] as string[],
+        // 日期选择弹窗
+        showDatePicker: false as boolean,
+        tempDate: '' as string
       }
     },
     onLoad(options: UTSJSONObject) {
@@ -508,6 +542,54 @@
         })
       },
 
+      // ============================================
+      // 日期选择弹窗操作
+      // ============================================
+
+      /**
+       * 打开日期选择弹窗
+       */
+      onOpenDatePicker() {
+        this.tempDate = this.sessionDate
+        this.showDatePicker = true
+      },
+
+      /**
+       * 关闭日期选择弹窗
+       */
+      onCloseDatePicker() {
+        this.showDatePicker = false
+      },
+
+      /**
+       * 日期减一天
+       */
+      onDateDecrease() {
+        this.tempDate = addDaysToDate(this.tempDate, -1)
+      },
+
+      /**
+       * 日期加一天
+       */
+      onDateIncrease() {
+        this.tempDate = addDaysToDate(this.tempDate, 1)
+      },
+
+      /**
+       * 取消日期选择
+       */
+      onCancelDatePicker() {
+        this.showDatePicker = false
+      },
+
+      /**
+       * 确认日期选择
+       */
+      onConfirmDatePicker() {
+        this.sessionDate = this.tempDate
+        this.showDatePicker = false
+      },
+
       /**
        * 加载已有会话数据
        */
@@ -740,6 +822,11 @@
           title: '草稿已保存',
           icon: 'success'
         })
+
+        // 返回首页
+        setTimeout(() => {
+          uni.navigateBack()
+        }, 500)
       },
 
       /**
@@ -1096,5 +1183,120 @@
 
   .btn-text-secondary {
     color: #666666;
+  }
+
+  /* 日期选择弹窗样式 */
+  .picker-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    justify-content: center;
+    align-items: center;
+  }
+
+  .date-picker-container {
+    width: 300px;
+    background-color: #ffffff;
+    border-radius: 12px;
+    padding: 16px;
+  }
+
+  .date-picker-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .date-picker-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333333;
+  }
+
+  .date-picker-close {
+    width: 28px;
+    height: 28px;
+    justify-content: center;
+    align-items: center;
+    background-color: #f0f2f5;
+    border-radius: 14px;
+  }
+
+  .date-picker-close-text {
+    font-size: 14px;
+    color: #666666;
+  }
+
+  .date-picker-content {
+    padding: 16px 0;
+  }
+
+  .date-stepper {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .date-stepper-btn {
+    width: 60px;
+    height: 40px;
+    justify-content: center;
+    align-items: center;
+    background-color: #f0f2f5;
+    border-radius: 8px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+  }
+
+  .date-stepper-btn-text {
+    font-size: 14px;
+    color: #333333;
+  }
+
+  .date-display {
+    font-size: 18px;
+    font-weight: bold;
+    color: #333333;
+  }
+
+  .date-picker-actions {
+    flex-direction: row;
+    justify-content: space-between;
+    margin-top: 16px;
+  }
+
+  .date-picker-btn {
+    flex: 1;
+    height: 40px;
+    justify-content: center;
+    align-items: center;
+    border-radius: 8px;
+    margin: 0 4px;
+  }
+
+  .date-picker-cancel {
+    background-color: #f0f0f0;
+  }
+
+  .date-picker-confirm {
+    background-color: #007aff;
+  }
+
+  .date-picker-btn-text {
+    font-size: 14px;
+    font-weight: bold;
+  }
+
+  .date-picker-cancel-text {
+    color: #666666;
+  }
+
+  .date-picker-confirm-text {
+    color: #ffffff;
   }
 </style>

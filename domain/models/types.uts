@@ -155,3 +155,30 @@ export function getTodayDateString(): DateString {
   const day = now.getDate().toString().padStart(2, '0')
   return `${year}-${month}-${day}`
 }
+
+/**
+ * 日期加减天数
+ * @param dateStr YYYY-MM-DD 格式的日期字符串
+ * @param days 要加减的天数（正数为加，负数为减）
+ * @returns YYYY-MM-DD 格式的日期字符串
+ */
+export function addDaysToDate(dateStr: DateString, days: number): DateString {
+  // 解析日期字符串
+  const parts = dateStr.split('-')
+  if (parts.length != 3) {
+    return dateStr
+  }
+  const year = parseInt(parts[0])
+  const month = parseInt(parts[1]) - 1  // Date 月份从 0 开始
+  const day = parseInt(parts[2])
+
+  // 创建 Date 对象并加减天数
+  const date = new Date(year, month, day)
+  date.setDate(date.getDate() + days)
+
+  // 格式化返回
+  const newYear = date.getFullYear()
+  const newMonth = (date.getMonth() + 1).toString().padStart(2, '0')
+  const newDay = date.getDate().toString().padStart(2, '0')
+  return `${newYear}-${newMonth}-${newDay}`
+}
