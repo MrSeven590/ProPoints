@@ -266,3 +266,306 @@ if (sessionStatus == 'draft') {
 | 硬编码 Storage Key | 使用 storage-keys.uts 定义 |
 | 保存会话数据不包含 `status` 字段 | 必须包含 `status: 'draft' \| 'submitted'` |
 | 查询数据时不检查 `status` | 必须过滤草稿数据 |
+| 自动保存没有防抖 | 使用 1200ms trailing debounce |
+| 自动保存没有版本控制 | 使用 draftRevision/savedRevision |
+| 父子组件各自计算派生数据 | 父组件计算，通过 props 传递 |
+| 保存时重新计算派生数据 | 直接使用父组件已计算的派生数据 |
+
+---
+
+## Auto-Save Pattern
+
+### 自动保存最佳实践
+
+用于防止用户数据丢失的自动保存机制。
+
+#### 核心原则
+
+1. **防抖保存**: 使用 trailing debounce (1200ms) 避免频繁写入
+2. **版本控制**: 使用 `draftRevision` 和 `savedRevision` 避免重复保存
+3. **状态限制**: 仅对 `status == 'draft'` 的会话自动保存
+4. **生命周期刷新**: 在 `onHide/onUnload` 时立即保存
+5. **冲突避免**: 手动保存和提交时取消自动保存定时器
+
+#### 实现示例
+
+```typescript
+data() {
+  return {
+    autoSaveTimer: 0 as number,
+    autoSaveDebounceMs: 1200 as number,
+    draftRevision: 0 as number,
+    savedRevision: 0 as number,
+    isSubmitting: false as boolean,
+    sessionStatus: 'draft' as string,
+    lastAutoSaveErrorTime: 0 as number
+  }
+},
+
+methods: {
+  // 调度自动保存
+  scheduleAutoSave() {
+    if (this.sessionStatus != 'draft' || this.isSubmitting == true) {
+      return
+    }
+
+    this.draftRevision = this.draftRevision + 1
+
+    if (this.autoSaveTimer != 0) {
+      clearTimeout(this.autoSaveTimer)
+    }
+
+    this.autoSaveTimer = setTimeout(() => {
+      this.autoSaveTimer = 0
+      this.doAutoSave()
+    }, this.autoSaveDebounceMs)
+  },
+
+  // 执行自动保存
+  doAutoSave() {
+    if (this.sessionStatus != 'draft' || this.isSubmitting == true) {
+      return
+    }
+    if (this.draftRevision == this.savedRevision) {
+      return
+    }
+
+    try {
+      const sessionData = this.buildSessionData('draft')
+      saveSession(this.sessionDate, this.stageCode, this.roundId, sessionData)
+      this.savedRevision = this.draftRevision
+    } catch (e) {
+      // 失败冷却机制，避免 toast 轰炸
+      const now = Date.now()
+      const cooldownMs = 10000
+      if (now - this.lastAutoSaveErrorTime > cooldownMs) {
+        this.lastAutoSaveErrorTime = now
+        uni.showToast({ title: '自动保存失败', icon: 'none' })
+      }
+    }
+  },
+
+  // 取消自动保存
+  cancelAutoSave() {
+    if (this.autoSaveTimer != 0) {
+      clearTimeout(this.autoSaveTimer)
+      this.autoSaveTimer = 0
+    }
+  }
+},
+
+onHide() {
+  this.cancelAutoSave()
+  if (this.sessionStatus == 'draft' && this.isSubmitting == false) {
+    uni.hideKeyboard()  // 强制触发 blur
+    this.doAutoSave()
+  }
+},
+
+onUnload() {
+  this.cancelAutoSave()
+  if (this.sessionStatus == 'draft' && this.isSubmitting == false) {
+    uni.hideKeyboard()
+    this.doAutoSave()
+  }
+}
+```
+
+#### 触发时机
+
+在数据变更方法末尾调用 `scheduleAutoSave()`:
+
+```typescript
+onDataChange() {
+  // 更新数据
+  this.someData = newValue
+
+  // 触发自动保存
+  this.scheduleAutoSave()
+}
+```
+
+#### 冲突避免
+
+```typescript
+// 手动保存草稿
+saveDraft() {
+  this.cancelAutoSave()  // 取消自动保存
+  // ... 保存逻辑
+}
+
+// 提交
+submit() {
+  this.cancelAutoSave()  // 取消自动保存
+  this.isSubmitting = true
+
+  try {
+    // ... 提交逻辑
+    this.sessionStatus = 'submitted'
+  } finally {
+    this.isSubmitting = false
+  }
+}
+```
+
+---
+
+## Derived Data Pattern
+
+### 派生数据管理
+
+派生数据是从基础数据计算得出的数据，必须保持与基础数据同步。
+
+#### 核心原则
+
+1. **单一数据源**: 父组件是派生数据的唯一计算者
+2. **主动重算**: 基础数据变化时，立即重新计算派生数据
+3. **Props 传递**: 通过 props 将派生数据传递给子组件
+4. **保存一致**: 保存时使用父组件计算的派生数据
+
+#### 反模式：双重计算
+
+❌ **错误**: 父组件和子组件各自计算派生数据
+
+```typescript
+// 父组件
+buildSessionData() {
+  // 保存时重新计算
+  const result = allocateCrossBinPoints(bins, totalUnits)
+  return { sources: result.sources }
+}
+
+// 子组件
+recalculateSources() {
+  // 显示时也计算
+  const result = allocateCrossBinPoints(this.bins, this.pointsUnits)
+  this.sources = result.sources
+}
+```
+
+**问题**:
+- UI 显示的是子组件计算的结果
+- 保存的是父组件计算的结果
+- 两者可能不一致
+
+#### 正确模式：单一计算源
+
+✅ **正确**: 父组件计算，子组件接收
+
+```typescript
+// 父组件
+data() {
+  return {
+    crossBinSources: [] as AssignmentSourceCreateParams[]
+  }
+},
+
+methods: {
+  // 重新计算派生数据
+  recalculateCrossBinSources() {
+    if (this.crossBinPointsUnits <= 0 || this.stageBinInfos.length == 0) {
+      this.crossBinSources = []
+      return
+    }
+
+    const binInfos: BinInfo[] = []
+    for (let i = 0; i < this.stageBinInfos.length; i++) {
+      const bin = this.stageBinInfos[i]
+      binInfos.push({
+        bin_id: bin.bin_id,
+        stage_bin_id: bin.stage_bin_id,
+        koji_count: bin.koji_count
+      } as BinInfo)
+    }
+
+    const result = allocateCrossBinPoints(binInfos, this.crossBinPointsUnits)
+    this.crossBinSources = result.sources
+  },
+
+  // 基础数据变化时重新计算
+  onBinKojiChange() {
+    // 更新基础数据
+    this.stageBinInfos[i].koji_count = newValue
+
+    // 重新计算派生数据
+    this.recalculateCrossBinSources()
+  },
+
+  // 保存时直接使用
+  buildSessionData() {
+    return {
+      cross_bin: {
+        sources: this.crossBinSources  // 使用父组件计算的结果
+      }
+    }
+  }
+}
+```
+
+```vue
+<!-- 通过 props 传递给子组件 -->
+<biz-cross-bin-input
+  :externalSources="crossBinSources"
+  @change="onCrossBinChange"
+/>
+```
+
+```typescript
+// 子组件
+props: {
+  externalSources: {
+    type: Array,
+    default: (): AssignmentSourceCreateParams[] => []
+  }
+},
+
+watch: {
+  externalSources: {
+    handler(newVal: AssignmentSourceCreateParams[]) {
+      // 直接使用父组件传入的派生数据
+      this.sources = newVal
+      this.buildDisplayList()
+    },
+    immediate: true
+  }
+}
+```
+
+#### 重新计算时机
+
+在以下时机调用重新计算方法:
+
+1. **基础数据变更**: 权重、数量等影响派生数据的字段变化
+2. **集合变更**: 添加/删除元素
+3. **加载会话**: 从存储恢复数据后
+
+```typescript
+// 1. 基础数据变更
+onBinKojiChange() {
+  this.stageBinInfos[i].koji_count = newValue
+  this.recalculateCrossBinSources()
+}
+
+// 2. 集合变更
+onAddBin() {
+  this.stageBinInfos.push(newBin)
+  this.recalculateCrossBinSources()
+}
+
+// 3. 加载会话
+loadExistingSession() {
+  // 恢复基础数据
+  this.stageBinInfos = sessionData.bins
+  this.crossBinPointsUnits = sessionData.cross_bin.points_units
+
+  // 重新计算派生数据
+  this.recalculateCrossBinSources()
+}
+```
+
+#### 优势
+
+- ✅ "用户看到的 == 保存的" (数据一致性)
+- ✅ 单一数据源 (避免不同步)
+- ✅ 代码更简洁 (子组件不需要计算逻辑)
+- ✅ 易于维护 (算法只在一处)

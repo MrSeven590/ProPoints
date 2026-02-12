@@ -56,6 +56,7 @@
           :initialPersonId="crossBinPersonId"
           :initialPersonName="crossBinPersonName"
           :initialPointsUnits="crossBinPointsUnits"
+          :externalSources="crossBinSources"
           @change="onCrossBinChange"
         />
       </view>
@@ -202,7 +203,15 @@
         missingAnQuBins: [] as string[],
         // 日期选择弹窗
         showDatePicker: false as boolean,
-        tempDate: '' as string
+        tempDate: '' as string,
+        // 自动保存相关状态
+        autoSaveTimer: 0 as number,
+        autoSaveDebounceMs: 1200 as number,
+        draftRevision: 0 as number,
+        savedRevision: 0 as number,
+        isSubmitting: false as boolean,
+        sessionStatus: 'draft' as string,
+        lastAutoSaveErrorTime: 0 as number
       }
     },
     onLoad(options: UTSJSONObject) {
@@ -239,6 +248,24 @@
       // 如果提供了日期参数，尝试加载已有会话
       if (dateParam != null) {
         this.loadExistingSession()
+      }
+    },
+    onHide() {
+      // 页面隐藏时立即保存草稿
+      this.cancelAutoSave()
+      if (this.sessionStatus == 'draft' && this.isSubmitting == false) {
+        // 强制触发 blur，确保输入框数据已同步
+        uni.hideKeyboard()
+        this.doAutoSave()
+      }
+    },
+    onUnload() {
+      // 页面卸载时立即保存草稿并清理定时器
+      this.cancelAutoSave()
+      if (this.sessionStatus == 'draft' && this.isSubmitting == false) {
+        // 强制触发 blur，确保输入框数据已同步
+        uni.hideKeyboard()
+        this.doAutoSave()
       }
     },
     methods: {
@@ -279,6 +306,8 @@
         this.crossBinPersonName = ''
         this.crossBinPointsUnits = 0
         this.crossBinSources = [] as AssignmentSourceCreateParams[]
+        // 触发自动保存
+        this.scheduleAutoSave()
       },
 
       /**
@@ -298,6 +327,8 @@
         this.crossBinPersonName = ''
         this.crossBinPointsUnits = 0
         this.crossBinSources = [] as AssignmentSourceCreateParams[]
+        // 触发自动保存
+        this.scheduleAutoSave()
       },
 
       /**
@@ -307,6 +338,10 @@
         this.selectedBins = bins
         // 更新 stageBinInfos（用于跨仓组件）
         this.updateStageBinInfos(bins)
+        // 仓集合变更后重新计算跨仓工分分配
+        this.recalculateCrossBinSources()
+        // 触发自动保存
+        this.scheduleAutoSave()
       },
 
       /**
@@ -395,6 +430,10 @@
         if (sources != null) {
           this.crossBinSources = sources as AssignmentSourceCreateParams[]
         }
+        // 跨仓工分变更后重新计算分配
+        this.recalculateCrossBinSources()
+        // 触发自动保存
+        this.scheduleAutoSave()
       },
 
       /**
@@ -480,10 +519,14 @@
 
         // 更新人员互斥列表
         this.updateOccupiedIds()
+        // 触发自动保存
+        this.scheduleAutoSave()
       },
 
       /**
        * 仓曲坯数变更（用于刷新当日安曲总曲坯数）
+       * 注意：biz-bin-card 会同时触发 change 和 kojiChange 事件
+       * 自动保存已在 onBinCardChange 中调度，此处不重复调度
        */
       onBinKojiChange(payload: UTSJSONObject) {
         const stageBinId = payload['stageBinId'] as number
@@ -504,6 +547,11 @@
           cardData.kojiCount = kojiCount
           cardData.totalPointsUnits = totalPointsUnits
         }
+
+        // 曲坯数变更后重新计算跨仓工分分配
+        this.recalculateCrossBinSources()
+        // 不在此处调用 scheduleAutoSave()，避免重复调度
+        // biz-bin-card 会同时触发 change 事件，已在 onBinCardChange 中调度
       },
 
       /**
@@ -588,6 +636,8 @@
       onConfirmDatePicker() {
         this.sessionDate = this.tempDate
         this.showDatePicker = false
+        // 触发自动保存
+        this.scheduleAutoSave()
       },
 
       /**
@@ -713,6 +763,15 @@
 
         // 更新人员互斥列表
         this.updateOccupiedIds()
+
+        // 加载会话后重新计算跨仓工分分配（确保与当前曲坯数一致）
+        this.recalculateCrossBinSources()
+
+        // 恢复会话状态（用于自动保存判断）
+        const status = sessionData['status'] as string | null
+        if (status != null) {
+          this.sessionStatus = status
+        }
       },
 
       /**
@@ -769,20 +828,7 @@
         }
 
         // 构建跨仓岗位数据
-        let crossBinSourcesToSave = [] as AssignmentSourceCreateParams[]
-        if (this.showCrossBinSection == true && this.crossBinPointsUnits > 0 && this.stageBinInfos.length > 0) {
-          const binInfos: BinInfo[] = []
-          for (let i = 0; i < this.stageBinInfos.length; i++) {
-            const bin = this.stageBinInfos[i]
-            binInfos.push({
-              bin_id: bin.bin_id,
-              stage_bin_id: bin.stage_bin_id,
-              koji_count: bin.koji_count
-            } as BinInfo)
-          }
-          const result = allocateCrossBinPoints(binInfos, this.crossBinPointsUnits)
-          crossBinSourcesToSave = result.sources
-        }
+        // 直接使用 this.crossBinSources，确保"用户看到的 == 保存的"
         const crossBinData = {
           enabled: this.showCrossBinSection,
           role_code: this.crossBinRoleCode,
@@ -790,7 +836,7 @@
           person_id: this.crossBinPersonId,
           person_name: this.crossBinPersonName,
           points_units: this.crossBinPointsUnits,
-          sources: crossBinSourcesToSave
+          sources: this.crossBinSources
         } as UTSJSONObject
 
         // 构建完整会话数据
@@ -812,11 +858,17 @@
        * 保存草稿
        */
       saveDraft() {
+        // 取消自动保存定时器
+        this.cancelAutoSave()
+
         // 构建会话数据
         const sessionData = this.buildSessionData('draft')
 
         // 保存到存储
         saveSession(this.sessionDate, this.stageCode, this.roundId, sessionData)
+
+        // 更新已保存版本号（避免自动保存重复保存）
+        this.savedRevision = this.draftRevision
 
         uni.showToast({
           title: '草稿已保存',
@@ -973,22 +1025,164 @@
           content: '确认提交工分录入？',
           success: (res) => {
             if (res.confirm == true) {
-              // 构建会话数据
-              const sessionData = this.buildSessionData('submitted')
+              // 取消自动保存定时器
+              this.cancelAutoSave()
+              this.isSubmitting = true
 
-              // 保存到存储
-              saveSession(this.sessionDate, this.stageCode, this.roundId, sessionData)
+              try {
+                // 构建会话数据
+                const sessionData = this.buildSessionData('submitted')
 
-              uni.showToast({
-                title: '提交成功',
-                icon: 'success'
-              })
-              setTimeout(() => {
-                uni.navigateBack()
-              }, 1500)
+                // 保存到存储
+                saveSession(this.sessionDate, this.stageCode, this.roundId, sessionData)
+
+                // 更新会话状态
+                this.sessionStatus = 'submitted'
+
+                uni.showToast({
+                  title: '提交成功',
+                  icon: 'success'
+                })
+                setTimeout(() => {
+                  uni.navigateBack()
+                }, 1500)
+              } catch (e) {
+                console.error('提交失败:', e)
+                uni.showToast({
+                  title: '提交失败',
+                  icon: 'none'
+                })
+              } finally {
+                this.isSubmitting = false
+              }
             }
           }
         })
+      },
+
+      // ============================================
+      // 自动保存相关方法
+      // ============================================
+
+      /**
+       * 调度自动保存（防抖）
+       * 仅对草稿状态的会话生效
+       */
+      scheduleAutoSave() {
+        // 仅对草稿状态自动保存
+        if (this.sessionStatus != 'draft') {
+          return
+        }
+        // 提交过程中不自动保存
+        if (this.isSubmitting == true) {
+          return
+        }
+
+        // 增加修订版本号
+        this.draftRevision = this.draftRevision + 1
+
+        // 清除之前的定时器
+        if (this.autoSaveTimer != 0) {
+          clearTimeout(this.autoSaveTimer)
+        }
+
+        // 设置防抖定时器
+        this.autoSaveTimer = setTimeout(() => {
+          this.autoSaveTimer = 0
+          this.doAutoSave()
+        }, this.autoSaveDebounceMs)
+      },
+
+      /**
+       * 执行自动保存
+       * 静默保存，不显示 toast
+       */
+      doAutoSave() {
+        // 仅对草稿状态自动保存
+        if (this.sessionStatus != 'draft') {
+          return
+        }
+        // 提交过程中不自动保存
+        if (this.isSubmitting == true) {
+          return
+        }
+        // 如果没有变更，跳过保存
+        if (this.draftRevision == this.savedRevision) {
+          return
+        }
+
+        try {
+          // 构建会话数据
+          const sessionData = this.buildSessionData('draft')
+
+          // 保存到存储
+          saveSession(this.sessionDate, this.stageCode, this.roundId, sessionData)
+
+          // 更新已保存版本号
+          this.savedRevision = this.draftRevision
+        } catch (e) {
+          console.error('自动保存失败:', e)
+          // 失败冷却机制：只在距离上次错误超过 10 秒时才显示 toast
+          const now = Date.now()
+          const cooldownMs = 10000
+          if (now - this.lastAutoSaveErrorTime > cooldownMs) {
+            this.lastAutoSaveErrorTime = now
+            uni.showToast({
+              title: '自动保存失败',
+              icon: 'none'
+            })
+          }
+        }
+      },
+
+      /**
+       * 取消自动保存定时器
+       */
+      cancelAutoSave() {
+        if (this.autoSaveTimer != 0) {
+          clearTimeout(this.autoSaveTimer)
+          this.autoSaveTimer = 0
+        }
+      },
+
+      /**
+       * 重新计算跨仓工分分配
+       * 当曲坯数变更、仓集合变更或跨仓工分变更时调用
+       * 确保 crossBinSources 与当前 stageBinInfos 和 crossBinPointsUnits 一致
+       */
+      recalculateCrossBinSources() {
+        // 如果不显示跨仓区域，清空 sources
+        if (this.showCrossBinSection == false) {
+          this.crossBinSources = [] as AssignmentSourceCreateParams[]
+          return
+        }
+
+        // 如果跨仓工分为 0，清空 sources
+        if (this.crossBinPointsUnits <= 0) {
+          this.crossBinSources = [] as AssignmentSourceCreateParams[]
+          return
+        }
+
+        // 如果没有仓，清空 sources
+        if (this.stageBinInfos.length == 0) {
+          this.crossBinSources = [] as AssignmentSourceCreateParams[]
+          return
+        }
+
+        // 构建 BinInfo 数组
+        const binInfos: BinInfo[] = []
+        for (let i = 0; i < this.stageBinInfos.length; i++) {
+          const bin = this.stageBinInfos[i]
+          binInfos.push({
+            bin_id: bin.bin_id,
+            stage_bin_id: bin.stage_bin_id,
+            koji_count: bin.koji_count
+          } as BinInfo)
+        }
+
+        // 调用分配算法重新计算
+        const result = allocateCrossBinPoints(binInfos, this.crossBinPointsUnits)
+        this.crossBinSources = result.sources
       }
     }
   }

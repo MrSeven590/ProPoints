@@ -79,8 +79,7 @@
 </template>
 
 <script lang="uts">
-	  import { pointsToUnits, PointsUnits, formatPointsUnits } from '../../domain/models/types.uts'
-	  import { allocateCrossBinPoints, BinInfo, CrossBinAllocationResult } from '../../domain/services/ScoreAllocator.uts'
+	  import { PointsUnits, formatPointsUnits, pointsToUnits } from '../../domain/models/types.uts'
 	  import { AssignmentSourceCreateParams } from '../../domain/models/assignment.uts'
 	  import { StageBinInfo } from '../../domain/models/ferment.uts'
 
@@ -130,6 +129,12 @@
       initialPointsUnits: {
         type: Number,
         default: 0
+      },
+      externalSources: {
+        type: Array,
+        default: (): AssignmentSourceCreateParams[] => {
+          return [] as AssignmentSourceCreateParams[]
+        }
       }
     },
     emits: ['change'],
@@ -151,7 +156,6 @@
       bins: {
         handler(newVal: StageBinInfo[]) {
           this.rebuildBinCodeMap(newVal)
-          this.recalculateSources()
         },
         immediate: true
       },
@@ -173,17 +177,24 @@
       },
       initialPointsUnits: {
         handler(newVal: number) {
-          if (newVal > 0) {
-            this.pointsUnits = newVal
-            this.displayPoints = formatPointsUnits(newVal)
-            this.recalculateSources()
-          }
+          this.pointsUnits = newVal
+          this.displayPoints = formatPointsUnits(newVal)
+        },
+        immediate: true
+      },
+      externalSources: {
+        handler(newVal: AssignmentSourceCreateParams[]) {
+          // 直接使用父组件传入的 sources
+          this.sources = newVal
+          this.buildSourceDisplayListFromSources()
         },
         immediate: true
       }
     },
     mounted() {
       this.initData()
+      // 初始化预览显示
+      this.buildSourceDisplayListFromSources()
     },
     methods: {
       initData() {
@@ -200,7 +211,6 @@
         if ((this.initialPointsUnits as number) > 0) {
           this.pointsUnits = this.initialPointsUnits as number
           this.displayPoints = formatPointsUnits(this.pointsUnits)
-          this.recalculateSources()
         }
       },
 
@@ -256,8 +266,7 @@
         this.pointsUnits = pointsToUnits(inputVal)
         // 更新显示值
         this.displayPoints = formatPointsUnits(this.pointsUnits)
-        // 重新计算来源分配
-        this.recalculateSources()
+        // 通知父组件数据变更
         this.emitChange()
       },
 
@@ -265,7 +274,6 @@
         // 增加 0.1 分（即 1 单位）
         this.pointsUnits = this.pointsUnits + 1
         this.displayPoints = formatPointsUnits(this.pointsUnits)
-        this.recalculateSources()
         this.emitChange()
       },
 
@@ -274,44 +282,25 @@
         if (this.pointsUnits > 0) {
           this.pointsUnits = this.pointsUnits - 1
           this.displayPoints = formatPointsUnits(this.pointsUnits)
-          this.recalculateSources()
           this.emitChange()
         }
       },
 
-      recalculateSources() {
-        const binsData = this.bins as StageBinInfo[]
-        if (binsData.length == 0 || this.pointsUnits <= 0) {
-          this.sources = [] as AssignmentSourceCreateParams[]
-          this.sourceDisplayList = [] as SourceDisplayItem[]
-          return
-        }
-
-        // 构建 BinInfo 数组
-        const binInfos: BinInfo[] = []
-        for (let i = 0; i < binsData.length; i++) {
-          const bin = binsData[i]
-          binInfos.push({
-            bin_id: bin.bin_id,
-            stage_bin_id: bin.stage_bin_id,
-            koji_count: bin.koji_count
-          } as BinInfo)
-        }
-
-        // 调用分配算法
-        const result = allocateCrossBinPoints(binInfos, this.pointsUnits)
-        this.sources = result.sources
-
-        // 构建显示列表
-        this.buildSourceDisplayList(result)
-      },
-
-      buildSourceDisplayList(result: CrossBinAllocationResult) {
+      /**
+       * 从 sources 数组构建显示列表
+       * 用于父组件传入 externalSources 时更新预览
+       */
+      buildSourceDisplayListFromSources() {
         const displayList: SourceDisplayItem[] = []
-        const totalUnits = result.totalUnits
+        let totalUnits = 0
 
-        for (let i = 0; i < result.sources.length; i++) {
-          const source = result.sources[i]
+        // 计算总工分
+        for (let i = 0; i < this.sources.length; i++) {
+          totalUnits = totalUnits + this.sources[i].source_points_units
+        }
+
+        for (let i = 0; i < this.sources.length; i++) {
+          const source = this.sources[i]
           // 查找 bin_code
           let binCode = this.binCodeMap.get(source.stage_bin_id)
           if (binCode == null) {
