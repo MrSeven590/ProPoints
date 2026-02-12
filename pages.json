@@ -21,19 +21,19 @@
     {
       "path": "pages/stats/date-detail",
       "style": {
-        "navigationBarTitleText": "日期详情"
+        "navigationBarTitleText": "每日公示"
       }
     },
     {
       "path": "pages/stats/person-detail",
       "style": {
-        "navigationBarTitleText": "人员详情"
+        "navigationBarTitleText": "工资条"
       }
     },
     {
       "path": "pages/stats/bin-detail",
       "style": {
-        "navigationBarTitleText": "发酵仓详情"
+        "navigationBarTitleText": "发酵仓追溯"
       }
     },
     {

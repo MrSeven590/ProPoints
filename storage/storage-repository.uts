@@ -6,6 +6,7 @@
 
 import {
   getSessionKey,
+  getSessionDraftKey,
   getDateIndexKey,
   getDraftIndexKey,
   getPersonIndexKey,
@@ -25,7 +26,6 @@ import {
   getManagerNameKey,
   getBinSeqMaxByFloorKey,
   getOplogKey,
-  isSessionKey,
   parseSessionKey
 } from './storage-keys.uts'
 
@@ -136,52 +136,97 @@ export function getIndexList(indexKey: string): string[] {
   return items as string[]
 }
 
-// ============ 会话数据操作 ============
+// ============ 会话数据操作（草稿/已提交分离） ============
 
 /**
- * 保存会话数据
+ * 保存草稿会话数据（写入 draft key + 全局草稿索引）
  * @param date 日期 YYYY-MM-DD
  * @param stageCode 环节代码
  * @param roundId 轮次ID
- * @param sessionData 会话数据
+ * @param sessionData 会话数据（将强制写入 status='draft'）
  */
-export function saveSession(
+export function saveDraftSession(
   date: string,
   stageCode: string,
   roundId: number | null,
   sessionData: UTSJSONObject
 ): void {
-  const key = getSessionKey(date, stageCode, roundId)
+  // 强制标记为草稿
+  sessionData['status'] = 'draft'
+
+  const key = getSessionDraftKey(date, stageCode, roundId)
   saveData(key, sessionData)
-  // 更新日期索引
-  addToIndex(getDateIndexKey(date), key)
-  // 维护草稿索引
-  const status = sessionData['status'] != null ? (sessionData['status'] as string) : ''
-  if (status == 'draft') {
-    addToIndex(getDraftIndexKey(), key)
-  } else {
-    removeFromIndex(getDraftIndexKey(), key)
-  }
+
+  // 更新全局草稿索引
+  addToIndex(getDraftIndexKey(), key)
 }
 
 /**
- * 加载会话数据
+ * 保存已提交会话数据（写入正式 key + 正式日期索引）
+ * 同时删除对应草稿（draft key + 全局草稿索引）
  * @param date 日期 YYYY-MM-DD
  * @param stageCode 环节代码
  * @param roundId 轮次ID
- * @returns 会话数据
+ * @param sessionData 会话数据（将强制写入 status='submitted'）
  */
-export function loadSession(
+export function saveSubmittedSession(
+  date: string,
+  stageCode: string,
+  roundId: number | null,
+  sessionData: UTSJSONObject
+): void {
+  // 强制标记为已提交
+  sessionData['status'] = 'submitted'
+
+  const key = getSessionKey(date, stageCode, roundId)
+  saveData(key, sessionData)
+
+  // 更新正式日期索引
+  addToIndex(getDateIndexKey(date), key)
+
+  // 删除草稿
+  deleteDraftSession(date, stageCode, roundId)
+}
+
+/**
+ * 加载会话数据用于编辑（draft 优先，不存在则读取 submitted）
+ * @param date 日期 YYYY-MM-DD
+ * @param stageCode 环节代码
+ * @param roundId 轮次ID
+ * @returns 会话数据（草稿或已提交），不存在时返回 null
+ */
+export function loadSessionForEdit(
   date: string,
   stageCode: string,
   roundId: number | null
 ): UTSJSONObject | null {
-  const key = getSessionKey(date, stageCode, roundId)
-  return loadData(key)
+  const draftKey = getSessionDraftKey(date, stageCode, roundId)
+  const draft = loadData(draftKey)
+  if (draft != null) {
+    return draft
+  }
+  const submittedKey = getSessionKey(date, stageCode, roundId)
+  return loadData(submittedKey)
 }
 
 /**
- * 删除会话数据
+ * 删除草稿会话数据
+ * @param date 日期 YYYY-MM-DD
+ * @param stageCode 环节代码
+ * @param roundId 轮次ID
+ */
+export function deleteDraftSession(
+  date: string,
+  stageCode: string,
+  roundId: number | null
+): void {
+  const key = getSessionDraftKey(date, stageCode, roundId)
+  removeData(key)
+  removeFromIndex(getDraftIndexKey(), key)
+}
+
+/**
+ * 删除已提交会话数据
  * @param date 日期 YYYY-MM-DD
  * @param stageCode 环节代码
  * @param roundId 轮次ID
@@ -193,14 +238,11 @@ export function deleteSession(
 ): void {
   const key = getSessionKey(date, stageCode, roundId)
   removeData(key)
-  // 从日期索引移除
   removeFromIndex(getDateIndexKey(date), key)
-  // 从草稿索引移除
-  removeFromIndex(getDraftIndexKey(), key)
 }
 
 /**
- * 获取某日期的所有会话
+ * 获取某日期的所有已提交会话
  * @param date 日期 YYYY-MM-DD
  * @returns 会话数据列表
  */
@@ -217,7 +259,28 @@ export function getSessionsByDate(date: string): UTSJSONObject[] {
 }
 
 /**
- * 获取某日期某环节的会话
+ * 获取所有草稿会话
+ * @returns 草稿会话数据列表
+ */
+export function getAllDraftSessions(): UTSJSONObject[] {
+  const sessions: UTSJSONObject[] = []
+
+  const keys = getIndexList(getDraftIndexKey())
+  for (let i = 0; i < keys.length; i++) {
+    const data = loadData(keys[i])
+    if (data != null) {
+      sessions.push(data)
+    } else {
+      // 自愈：索引存在但数据已被清理，移除幽灵条目
+      removeFromIndex(getDraftIndexKey(), keys[i])
+    }
+  }
+
+  return sessions
+}
+
+/**
+ * 获取某日期某环节的已提交会话
  * @param date 日期 YYYY-MM-DD
  * @param stageCode 环节代码
  * @returns 会话数据列表
@@ -235,14 +298,6 @@ export function getSessionsByDateAndStage(date: string, stageCode: string): UTSJ
     }
   }
   return sessions
-}
-
-/**
- * 获取所有草稿会话的 key 列表
- * @returns 草稿会话 key 列表
- */
-export function getDraftSessionKeys(): string[] {
-  return getIndexList(getDraftIndexKey())
 }
 
 // ============ 配置数据操作 ============

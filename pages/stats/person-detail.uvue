@@ -1,40 +1,303 @@
 <template>
   <view class="page-container">
+    <!-- 人员选择区域 -->
     <view class="section">
       <text class="section-title">选择人员</text>
-      <view class="search-box">
-        <input
-          class="search-input"
-          type="text"
-          placeholder="输入姓名或拼音搜索"
-          :value="searchKeyword"
-          @input="onSearchInput"
-        />
-      </view>
+      <biz-worker-selector-pinyin
+        :selectedPersonId="selectedPersonId"
+        placeholder="搜索姓名或拼音"
+        @select="onPersonSelect"
+        @clear="onPersonClear"
+      />
     </view>
 
-    <view class="section">
-      <text class="section-title">工分记录</text>
-      <text class="placeholder-text">选择人员后显示工分记录</text>
-    </view>
+    <!-- 工分记录 -->
+    <scroll-view class="content" scroll-y="true">
+      <view v-if="selectedPersonId != null" class="records-section">
+        <!-- 汇总信息 -->
+        <view class="summary-card">
+          <text class="summary-name">{{ selectedPersonName }}</text>
+          <view class="summary-row">
+            <view class="summary-item">
+              <text class="summary-value">{{ formatOriginalTotal }}</text>
+              <text class="summary-label">原始工分</text>
+            </view>
+            <view class="summary-item">
+              <text class="summary-value summary-deducted">{{ formatDeductedTotal }}</text>
+              <text class="summary-label">扣分合计</text>
+            </view>
+            <view class="summary-item">
+              <text class="summary-value summary-final">{{ formatFinalTotal }}</text>
+              <text class="summary-label">最终工分</text>
+            </view>
+          </view>
+        </view>
+
+        <!-- 按日期分组的记录 -->
+        <view v-if="dateGroups.length > 0" class="date-groups">
+          <view v-for="group in dateGroups" :key="group.date" class="date-group">
+            <view class="date-header">
+              <text class="date-text">{{ group.date }}</text>
+              <text class="date-total">{{ formatGroupTotal(group) }}</text>
+            </view>
+            <view class="record-list">
+              <view
+                v-for="(record, index) in group.records"
+                :key="index"
+                class="record-item"
+                @click="onRecordClick(record)"
+	              >
+	                <view class="record-main">
+	                  <view class="record-info">
+	                    <text class="record-stage">{{ record.stageName }}</text>
+	                    <text class="record-bin">{{ record.binCode }}</text>
+	                  </view>
+	                  <view class="record-right">
+	                    <view class="record-points">
+	                      <text class="record-original">{{ formatPoints(record.originalUnits) }}</text>
+	                      <text v-if="record.deductedUnits > 0" class="record-deducted">-{{ formatPoints(record.deductedUnits) }}</text>
+	                    </view>
+	                    <view class="record-edit-btn" @click.stop="onEditRecord(record)">
+	                      <text class="record-edit-text">编辑</text>
+	                    </view>
+	                  </view>
+	                </view>
+	                <!-- 扣分明细展开 -->
+	                <view v-if="record.deductedUnits > 0 && record.expanded" class="penalty-detail">
+	                  <text class="penalty-label">扣分原因:</text>
+                  <text class="penalty-reason">{{ record.penaltyReason }}</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+        <view v-else class="empty-hint">
+          <text class="empty-hint-text">暂无工分记录</text>
+        </view>
+      </view>
+      <view v-else class="empty-hint">
+        <text class="empty-hint-text">请选择人员查看工分记录</text>
+      </view>
+    </scroll-view>
   </view>
 </template>
 
 <script lang="uts">
+  import { getTodayDateString, addDaysToDate, formatPointsUnits } from '../../domain/models/types.uts'
+  import type { PointsUnits, StageCode } from '../../domain/models/types.uts'
+  import { getStageName } from '../../domain/models/stage-session.uts'
+  import { calcFinalPoints } from '../../domain/models/assignment.uts'
+  import { getSessionsByDate } from '../../storage/storage-repository.uts'
+
+  type PointsRecord = {
+    date: string
+    stageCode: string
+    stageName: string
+    roundId: number | null
+    binCode: string
+    positionIndex: number
+    originalUnits: PointsUnits
+    deductedUnits: PointsUnits
+    penaltyReason: string
+    expanded: boolean
+  }
+
+  type DateGroup = {
+    date: string
+    records: PointsRecord[]
+    totalOriginal: PointsUnits
+    totalDeducted: PointsUnits
+  }
+
   export default {
     data() {
       return {
-        searchKeyword: '',
-        selectedPerson: null as UTSJSONObject | null
+        selectedPersonId: null as number | null,
+        selectedPersonName: '' as string,
+        dateGroups: [] as DateGroup[],
+        totalOriginal: 0 as PointsUnits,
+        totalDeducted: 0 as PointsUnits
+      }
+    },
+    computed: {
+      formatOriginalTotal(): string {
+        return formatPointsUnits(this.totalOriginal)
+      },
+      formatDeductedTotal(): string {
+        return formatPointsUnits(this.totalDeducted)
+      },
+      formatFinalTotal(): string {
+        return formatPointsUnits(calcFinalPoints(this.totalOriginal, this.totalDeducted))
       }
     },
     methods: {
-      onSearchInput(e: UniInputEvent) {
-        this.searchKeyword = e.detail.value
-        this.searchPerson()
+      onPersonSelect(payload: UTSJSONObject) {
+        const id = payload['id'] as number | null
+        const name = payload['name'] as string | null
+        if (id != null && name != null) {
+          this.selectedPersonId = id
+          this.selectedPersonName = name
+          this.loadPersonRecords()
+        }
       },
-      searchPerson() {
-        // TODO: 实现人员搜索
+      onPersonClear() {
+        this.selectedPersonId = null
+        this.selectedPersonName = ''
+        this.dateGroups = []
+        this.totalOriginal = 0
+        this.totalDeducted = 0
+      },
+      /**
+       * 加载人员工分记录
+       * 查询最近30天的数据
+       */
+      loadPersonRecords() {
+        if (this.selectedPersonId == null) {
+          return
+        }
+        const personId = this.selectedPersonId as number
+
+        const today = getTodayDateString()
+        const groups: DateGroup[] = []
+        let totalOriginal = 0
+        let totalDeducted = 0
+
+        // 查询最近30天
+        for (let d = 0; d < 30; d++) {
+          const date = addDaysToDate(today, -d)
+          const sessions = getSessionsByDate(date)
+          const dayRecords: PointsRecord[] = []
+
+          for (let i = 0; i < sessions.length; i++) {
+            const session = sessions[i]
+            // 过滤草稿数据
+            const status = session['status'] as string | null
+            if (status == 'draft') {
+              continue
+            }
+
+            const stageCode = session['stage_code'] as string | null
+            const roundId = session['round_id'] as number | null
+
+            // 查找仓内人员
+            const binsData = session['bins'] as UTSJSONObject[] | null
+            if (binsData != null) {
+              for (let j = 0; j < binsData.length; j++) {
+                const bin = binsData[j]
+                const binCode = bin['bin_code'] as string | null
+                const workers = bin['workers'] as UTSJSONObject[] | null
+
+                if (workers != null) {
+                  for (let k = 0; k < workers.length; k++) {
+                    const worker = workers[k]
+                    const workerId = worker['personId'] as number | null
+                    if (workerId == personId) {
+                      const pointsUnits = worker['pointsUnits'] as number | null
+                      const deductedUnits = worker['deductedUnits'] as number | null
+                      const positionIndex = worker['positionIndex'] as number | null
+                      const penaltyReason = worker['penaltyReason'] as string | null
+
+                      const original = pointsUnits != null ? pointsUnits : 0
+                      const deducted = deductedUnits != null ? deductedUnits : 0
+
+                      dayRecords.push({
+                        date: date,
+                        stageCode: stageCode != null ? stageCode : '',
+                        stageName: stageCode != null ? getStageName(stageCode as StageCode) : '',
+                        roundId: roundId,
+                        binCode: binCode != null ? binCode : '',
+                        positionIndex: positionIndex != null ? positionIndex : 0,
+                        originalUnits: original,
+                        deductedUnits: deducted,
+                        penaltyReason: penaltyReason != null ? penaltyReason : '',
+                        expanded: false
+                      } as PointsRecord)
+
+                      totalOriginal = totalOriginal + original
+                      totalDeducted = totalDeducted + deducted
+                    }
+                  }
+                }
+              }
+            }
+
+            // 查找跨仓岗位
+            const crossBin = session['cross_bin'] as UTSJSONObject | null
+            if (crossBin != null) {
+              const enabled = crossBin['enabled'] as boolean | null
+              if (enabled == true) {
+                const crossPersonId = crossBin['person_id'] as number | null
+                if (crossPersonId == personId) {
+                  const pointsUnits = crossBin['points_units'] as number | null
+                  const roleName = crossBin['role_name'] as string | null
+
+                  const original = pointsUnits != null ? pointsUnits : 0
+
+                  dayRecords.push({
+                    date: date,
+                    stageCode: stageCode != null ? stageCode : '',
+                    stageName: stageCode != null ? getStageName(stageCode as StageCode) : '',
+                    roundId: roundId,
+                    binCode: roleName != null ? roleName : '跨仓',
+                    positionIndex: 0,
+                    originalUnits: original,
+                    deductedUnits: 0,
+                    penaltyReason: '',
+                    expanded: false
+                  } as PointsRecord)
+
+                  totalOriginal = totalOriginal + original
+                }
+              }
+            }
+          }
+
+          // 如果当天有记录，添加到分组
+          if (dayRecords.length > 0) {
+            let dayOriginal = 0
+            let dayDeducted = 0
+            for (let r = 0; r < dayRecords.length; r++) {
+              dayOriginal = dayOriginal + dayRecords[r].originalUnits
+              dayDeducted = dayDeducted + dayRecords[r].deductedUnits
+            }
+
+            groups.push({
+              date: date,
+              records: dayRecords,
+              totalOriginal: dayOriginal,
+              totalDeducted: dayDeducted
+            } as DateGroup)
+          }
+        }
+
+        this.dateGroups = groups
+        this.totalOriginal = totalOriginal
+        this.totalDeducted = totalDeducted
+      },
+      formatPoints(units: PointsUnits): string {
+        return formatPointsUnits(units)
+      },
+      formatGroupTotal(group: DateGroup): string {
+        return formatPointsUnits(calcFinalPoints(group.totalOriginal, group.totalDeducted))
+      },
+      /**
+       * 点击记录展开/收起扣分明细
+       */
+      onRecordClick(record: PointsRecord) {
+        if (record.deductedUnits > 0) {
+          record.expanded = !record.expanded
+        } else {
+          this.onEditRecord(record)
+        }
+      },
+      /**
+       * 跳转到录入页面编辑
+       */
+      onEditRecord(record: PointsRecord) {
+        const roundIdParam = record.roundId != null ? `&roundId=${record.roundId}` : ''
+        uni.navigateTo({
+          url: `/pages/work/entry?stage=${record.stageCode}&date=${record.date}${roundIdParam}`
+        })
       }
     }
   }
@@ -43,6 +306,7 @@
 <style>
   .page-container {
     flex: 1;
+    flex-direction: column;
     background-color: #f5f5f5;
   }
 
@@ -60,21 +324,188 @@
     margin-bottom: 12px;
   }
 
-  .search-box {
-    background-color: #f5f5f5;
+  .content {
+    flex: 1;
+  }
+
+  .records-section {
+    padding: 0 12px 12px 12px;
+  }
+
+  .summary-card {
+    background-color: #007aff;
     border-radius: 8px;
-    padding: 0 12px;
+    padding: 16px;
+    margin-bottom: 12px;
   }
 
-  .search-input {
-    height: 40px;
+  .summary-name {
+    font-size: 18px;
+    font-weight: bold;
+    color: #ffffff;
+    margin-bottom: 12px;
+  }
+
+  .summary-row {
+    flex-direction: row;
+    justify-content: space-around;
+  }
+
+  .summary-item {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .summary-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #ffffff;
+  }
+
+  .summary-deducted {
+    color: #ffcccc;
+  }
+
+  .summary-final {
+    color: #90ee90;
+  }
+
+  .summary-label {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.8);
+    margin-top: 4px;
+  }
+
+  .date-groups {
+    flex-direction: column;
+  }
+
+  .date-group {
+    background-color: #ffffff;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+
+  .date-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background-color: #f5f7fa;
+  }
+
+  .date-text {
     font-size: 14px;
+    font-weight: bold;
+    color: #333333;
   }
 
-  .placeholder-text {
+  .date-total {
+    font-size: 14px;
+    font-weight: bold;
+    color: #007aff;
+  }
+
+  .record-list {
+    flex-direction: column;
+  }
+
+  .record-item {
+    padding: 12px 16px;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .record-main {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .record-info {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .record-stage {
+    font-size: 14px;
+    color: #333333;
+    margin-right: 8px;
+  }
+
+  .record-bin {
+    font-size: 12px;
+    color: #666666;
+    background-color: #f0f2f5;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  .record-points {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .record-right {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .record-edit-btn {
+    margin-left: 10px;
+    padding: 4px 10px;
+    background-color: #e6f0ff;
+    border-radius: 12px;
+  }
+
+  .record-edit-text {
+    font-size: 12px;
+    color: #007aff;
+  }
+
+  .record-original {
+    font-size: 14px;
+    color: #333333;
+  }
+
+  .record-deducted {
+    font-size: 12px;
+    color: #ff4d4f;
+    margin-left: 8px;
+  }
+
+  .penalty-detail {
+    margin-top: 8px;
+    padding: 8px;
+    background-color: #fff7e6;
+    border-radius: 4px;
+    flex-direction: row;
+  }
+
+  .penalty-label {
+    font-size: 12px;
+    color: #d48806;
+    margin-right: 4px;
+  }
+
+  .penalty-reason {
+    font-size: 12px;
+    color: #d48806;
+    flex: 1;
+  }
+
+  .empty-hint {
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 40px;
+    margin: 12px;
+    align-items: center;
+  }
+
+  .empty-hint-text {
     font-size: 14px;
     color: #999999;
-    text-align: center;
-    padding: 40px 0;
   }
 </style>

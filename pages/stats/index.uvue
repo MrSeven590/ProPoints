@@ -4,62 +4,250 @@
       <text class="header-title">数据统计</text>
     </view>
 
-    <view class="section">
-      <text class="section-title">快捷查询</text>
-      <view class="query-grid">
-        <view class="query-item" @click="goToDateDetail">
-          <text class="query-icon">日</text>
-          <text class="query-name">按日期查询</text>
-        </view>
-        <view class="query-item" @click="goToPersonDetail">
-          <text class="query-icon">人</text>
-          <text class="query-name">按人员查询</text>
-        </view>
-        <view class="query-item" @click="goToBinDetail">
-          <text class="query-icon">仓</text>
-          <text class="query-name">按发酵仓查询</text>
+    <scroll-view class="content" scroll-y="true">
+      <view class="section">
+        <text class="section-title">快捷查询</text>
+        <view class="query-grid">
+          <view class="query-item" @click="goToDateDetail">
+            <text class="query-icon">日</text>
+            <text class="query-name">按日期查询</text>
+          </view>
+          <view class="query-item" @click="goToPersonDetail">
+            <text class="query-icon">人</text>
+            <text class="query-name">按人员查询</text>
+          </view>
+          <view class="query-item" @click="goToBinDetail">
+            <text class="query-icon">仓</text>
+            <text class="query-name">按发酵仓查询</text>
+          </view>
         </view>
       </view>
-    </view>
 
-    <view class="section">
-      <text class="section-title">本月概览</text>
-      <view class="stats-row">
-        <view class="stats-item">
-          <text class="stats-value">0</text>
-          <text class="stats-label">录入次数</text>
-        </view>
-        <view class="stats-item">
-          <text class="stats-value">0</text>
-          <text class="stats-label">总工分</text>
-        </view>
-        <view class="stats-item">
-          <text class="stats-value">0</text>
-          <text class="stats-label">参与人数</text>
+      <view class="section">
+        <text class="section-title">本月概览</text>
+        <view class="stats-row">
+          <view class="stats-item">
+            <text class="stats-value">{{ monthStats.entryCount }}</text>
+            <text class="stats-label">录入次数</text>
+          </view>
+          <view class="stats-item">
+            <text class="stats-value">{{ formatTotalPoints }}</text>
+            <text class="stats-label">总工分</text>
+          </view>
+          <view class="stats-item">
+            <text class="stats-value">{{ monthStats.personCount }}</text>
+            <text class="stats-label">参与人数</text>
+          </view>
         </view>
       </view>
-    </view>
+
+      <view class="section">
+        <text class="section-title">最近录入</text>
+        <view v-if="recentSessions.length > 0" class="recent-list">
+          <view
+            v-for="(session, index) in recentSessions"
+            :key="index"
+            class="recent-item"
+            @click="goToSessionDetail(session)"
+          >
+            <view class="recent-info">
+              <text class="recent-date">{{ session.date }}</text>
+              <text class="recent-stage">{{ session.stageName }}</text>
+            </view>
+            <view class="recent-status" :class="session.status == 'draft' ? 'status-draft' : 'status-submitted'">
+              <text class="recent-status-text">{{ session.status == 'draft' ? '草稿' : '已提交' }}</text>
+            </view>
+          </view>
+        </view>
+        <view v-else class="empty-hint">
+          <text class="empty-hint-text">暂无录入记录</text>
+        </view>
+      </view>
+    </scroll-view>
   </view>
 </template>
 
 <script lang="uts">
+  import { getTodayDateString, addDaysToDate, formatPointsUnits } from '../../domain/models/types.uts'
+  import type { PointsUnits, StageCode } from '../../domain/models/types.uts'
+  import { getStageName } from '../../domain/models/stage-session.uts'
+  import { calcFinalPoints } from '../../domain/models/assignment.uts'
+  import { getSessionsByDate, getIndexList, loadData } from '../../storage/storage-repository.uts'
+  import { getDateIndexKey, parseSessionKey } from '../../storage/storage-keys.uts'
+
+  type MonthStats = {
+    entryCount: number
+    totalPointsUnits: PointsUnits
+    personCount: number
+  }
+
+  type RecentSession = {
+    date: string
+    stageCode: string
+    stageName: string
+    roundId: number | null
+    status: string
+  }
+
   export default {
     data() {
       return {
         monthStats: {
           entryCount: 0,
-          totalPoints: 0,
+          totalPointsUnits: 0,
           personCount: 0
-        }
+        } as MonthStats,
+        recentSessions: [] as RecentSession[]
+      }
+    },
+    computed: {
+      formatTotalPoints(): string {
+        return formatPointsUnits(this.monthStats.totalPointsUnits)
       }
     },
     onShow() {
       this.loadStats()
+      this.loadRecentSessions()
     },
     methods: {
+      /**
+       * 加载本月统计数据
+       * 从日期索引聚合，避免全量扫描
+       */
       loadStats() {
-        // TODO: 从数据库加载统计数据
+        const today = getTodayDateString()
+        // 获取当月第一天
+        const parts = today.split('-')
+        if (parts.length != 3) {
+          return
+        }
+        const year = parts[0]
+        const month = parts[1]
+        const firstDay = `${year}-${month}-01`
+
+        let entryCount = 0
+        let totalPointsUnits = 0
+        const personIdSet = new Map<number, boolean>()
+
+        // 遍历当月每一天
+        let currentDate = firstDay
+        while (currentDate <= today) {
+          const sessions = getSessionsByDate(currentDate)
+          for (let i = 0; i < sessions.length; i++) {
+            const session = sessions[i]
+            // 过滤草稿数据
+            const status = session['status'] as string | null
+            if (status == 'draft') {
+              continue
+            }
+
+            entryCount = entryCount + 1
+
+            // 统计工分
+            const binsData = session['bins'] as UTSJSONObject[] | null
+            if (binsData != null) {
+              for (let j = 0; j < binsData.length; j++) {
+                const bin = binsData[j]
+                const workers = bin['workers'] as UTSJSONObject[] | null
+                if (workers != null) {
+                  for (let k = 0; k < workers.length; k++) {
+                    const worker = workers[k]
+                    const personId = worker['personId'] as number | null
+                    const pointsUnits = worker['pointsUnits'] as number | null
+                    const deductedUnits = worker['deductedUnits'] as number | null
+                    if (personId != null) {
+                      personIdSet.set(personId, true)
+                    }
+                    if (pointsUnits != null) {
+                      const original = pointsUnits
+                      const deducted = deductedUnits != null ? deductedUnits : 0
+                      totalPointsUnits = totalPointsUnits + calcFinalPoints(original, deducted)
+                    }
+                  }
+                }
+              }
+            }
+
+            // 统计跨仓岗位
+            const crossBin = session['cross_bin'] as UTSJSONObject | null
+            if (crossBin != null) {
+              const enabled = crossBin['enabled'] as boolean | null
+              if (enabled == true) {
+                const personId = crossBin['person_id'] as number | null
+                const pointsUnits = crossBin['points_units'] as number | null
+                if (personId != null) {
+                  personIdSet.set(personId, true)
+                }
+                if (pointsUnits != null) {
+                  totalPointsUnits = totalPointsUnits + calcFinalPoints(pointsUnits, 0)
+                }
+              }
+            }
+          }
+
+          // 下一天
+          currentDate = addDaysToDate(currentDate, 1)
+        }
+
+        this.monthStats = {
+          entryCount: entryCount,
+          totalPointsUnits: totalPointsUnits,
+          personCount: personIdSet.size
+        } as MonthStats
       },
+
+      /**
+       * 加载最近录入记录
+       */
+      loadRecentSessions() {
+        const today = getTodayDateString()
+        const sessions: RecentSession[] = []
+        const limit = 10
+
+        // 查询最近7天的数据
+        let reachedLimit = false
+        for (let d = 0; d < 7; d++) {
+          const date = addDaysToDate(today, -d)
+          const dateKeys = getIndexList(getDateIndexKey(date))
+
+          for (let i = 0; i < dateKeys.length; i++) {
+            const key = dateKeys[i]
+            const parsed = parseSessionKey(key)
+            if (parsed != null) {
+              const sessionData = loadData(key)
+              if (sessionData == null) {
+                continue
+              }
+              let status = 'submitted'
+              const statusVal = sessionData['status'] as string | null
+              if (statusVal != null) {
+                status = statusVal
+              }
+
+              sessions.push({
+                date: parsed.date,
+                stageCode: parsed.stageCode,
+                stageName: getStageName(parsed.stageCode as StageCode),
+                roundId: parsed.roundId,
+                status: status
+              } as RecentSession)
+
+              if (sessions.length >= limit) {
+                reachedLimit = true
+                break
+              }
+            }
+          }
+
+          // 最多显示 limit 条
+          if (reachedLimit == true) {
+            break
+          }
+        }
+
+        this.recentSessions = sessions
+      },
+
       goToDateDetail() {
         uni.navigateTo({
           url: '/pages/stats/date-detail'
@@ -74,6 +262,12 @@
         uni.navigateTo({
           url: '/pages/stats/bin-detail'
         })
+      },
+      goToSessionDetail(session: RecentSession) {
+        const roundIdParam = session.roundId != null ? `&roundId=${session.roundId}` : ''
+        uni.navigateTo({
+          url: `/pages/work/entry?stage=${session.stageCode}&date=${session.date}${roundIdParam}`
+        })
       }
     }
   }
@@ -82,6 +276,7 @@
 <style>
   .page-container {
     flex: 1;
+    flex-direction: column;
     background-color: #f5f5f5;
   }
 
@@ -94,6 +289,10 @@
     font-size: 24px;
     font-weight: bold;
     color: #ffffff;
+  }
+
+  .content {
+    flex: 1;
   }
 
   .section {
@@ -160,5 +359,62 @@
     font-size: 12px;
     color: #999999;
     margin-top: 4px;
+  }
+
+  .recent-list {
+    flex-direction: column;
+  }
+
+  .recent-item {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .recent-info {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .recent-date {
+    font-size: 14px;
+    color: #333333;
+    margin-right: 12px;
+  }
+
+  .recent-stage {
+    font-size: 14px;
+    color: #666666;
+  }
+
+  .recent-status {
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+
+  .status-draft {
+    background-color: #fff7e6;
+  }
+
+  .status-submitted {
+    background-color: #e6f7ff;
+  }
+
+  .recent-status-text {
+    font-size: 12px;
+  }
+
+  .empty-hint {
+    padding: 20px;
+    align-items: center;
+  }
+
+  .empty-hint-text {
+    font-size: 14px;
+    color: #999999;
   }
 </style>

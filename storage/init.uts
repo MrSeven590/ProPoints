@@ -163,3 +163,25 @@ export function resetAllStorage(): void {
   initStorage()
   console.log('Storage 已重置')
 }
+
+/**
+ * 重置会话相关存储（仅清理会话数据与索引）
+ * - 会话 key: pp:session:*
+ * - 日期索引: pp:idx:date:*
+ * - 草稿索引: pp:idx:draft
+ *
+ * 开发阶段用于存储结构升级后的数据清理，避免旧数据干扰新逻辑。
+ */
+export function resetSessionStorage(): void {
+  const storageInfo = uni.getStorageInfoSync()
+  const keys = storageInfo.keys
+
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i]
+    if (key.startsWith('pp:session:') || key.startsWith('pp:idx:date:') || key == 'pp:idx:draft') {
+      uni.removeStorageSync(key)
+    }
+  }
+
+  console.log('Session storage 已重置')
+}

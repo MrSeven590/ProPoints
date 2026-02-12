@@ -1,38 +1,266 @@
 <template>
   <view class="page-container">
+    <!-- 发酵仓选择区域 -->
     <view class="section">
       <text class="section-title">选择发酵仓</text>
-      <view class="bin-selector">
+      <view class="bin-selector-simple">
         <view class="selector-row">
           <text class="selector-label">楼层</text>
-          <text class="selector-value">{{ floorNo }}</text>
+          <view class="floor-tabs">
+            <view
+              v-for="floor in floors"
+              :key="floor"
+              class="floor-tab"
+              :class="floor == selectedFloor ? 'floor-tab-active' : ''"
+              @click="onFloorChange(floor)"
+            >
+              <text class="floor-tab-text" :class="floor == selectedFloor ? 'floor-tab-text-active' : ''">{{ floor }}楼</text>
+            </view>
+          </view>
         </view>
         <view class="selector-row">
           <text class="selector-label">序号</text>
-          <text class="selector-value">{{ seqNo }}</text>
+          <view class="seq-input-row">
+            <view class="seq-btn" @click="onSeqDecrease">
+              <text class="seq-btn-text">-</text>
+            </view>
+            <text class="seq-display">{{ selectedSeq }}</text>
+            <view class="seq-btn" @click="onSeqIncrease">
+              <text class="seq-btn-text">+</text>
+            </view>
+          </view>
+        </view>
+        <view class="selected-bin-display">
+          <text class="selected-bin-text">当前选择: {{ binCodeDisplay }}</text>
         </view>
       </view>
     </view>
 
-    <view class="section">
-      <text class="section-title">历史记录</text>
-      <text class="placeholder-text">选择发酵仓后显示历史记录</text>
-    </view>
+    <!-- 历史记录 -->
+    <scroll-view class="content" scroll-y="true">
+	      <view v-if="historyRecords.length > 0" class="history-section">
+	        <view v-for="record in historyRecords" :key="record.date + '-' + record.stageCode + '-' + (record.roundId != null ? record.roundId : 0)" class="history-card">
+          <view class="history-header">
+            <text class="history-date">{{ record.date }}</text>
+            <text class="history-stage">{{ record.stageName }}</text>
+          </view>
+          <!-- 人员站位列表 -->
+          <view class="worker-list">
+            <view class="worker-list-header">
+              <text class="worker-header-cell worker-header-pos">站位</text>
+              <text class="worker-header-cell worker-header-name">姓名</text>
+              <text class="worker-header-cell worker-header-points">工分</text>
+            </view>
+            <view
+              v-for="worker in record.workers"
+              :key="worker.positionIndex"
+              class="worker-row"
+            >
+              <text class="worker-cell worker-pos">{{ getPositionLabel(worker.positionIndex) }}</text>
+              <text class="worker-cell worker-name">{{ worker.personName }}</text>
+              <view class="worker-cell worker-points-cell">
+                <text class="worker-points">{{ formatPoints(worker.originalUnits) }}</text>
+                <text v-if="worker.deductedUnits > 0" class="worker-deducted">-{{ formatPoints(worker.deductedUnits) }}</text>
+              </view>
+            </view>
+          </view>
+          <!-- 扣分记录 -->
+          <view v-if="record.hasPenalty" class="penalty-section">
+            <text class="penalty-title">扣分记录</text>
+            <view v-for="worker in record.workers" :key="'p' + worker.positionIndex">
+              <view v-if="worker.deductedUnits > 0" class="penalty-item">
+                <text class="penalty-person">{{ worker.personName }}</text>
+                <text class="penalty-reason">{{ worker.penaltyReason }}</text>
+                <text class="penalty-amount">-{{ formatPoints(worker.deductedUnits) }}</text>
+              </view>
+            </view>
+          </view>
+          <!-- 跳转编辑 -->
+          <view class="history-footer" @click="goToEdit(record)">
+            <text class="history-footer-text">查看详情 ></text>
+          </view>
+        </view>
+      </view>
+      <view v-else class="empty-hint">
+        <text class="empty-hint-text">{{ emptyHintText }}</text>
+      </view>
+    </scroll-view>
   </view>
 </template>
 
 <script lang="uts">
+  import { getTodayDateString, addDaysToDate, formatPointsUnits } from '../../domain/models/types.uts'
+  import type { PointsUnits, StageCode } from '../../domain/models/types.uts'
+  import { getStageName } from '../../domain/models/stage-session.uts'
+  import { getSessionsByDate } from '../../storage/storage-repository.uts'
+  import { getCurrentClassNo } from '../../domain/stores/AppStore.uts'
+
+  type WorkerInfo = {
+    personId: number
+    personName: string
+    positionIndex: number
+    originalUnits: PointsUnits
+    deductedUnits: PointsUnits
+    penaltyReason: string
+  }
+
+  type HistoryRecord = {
+    date: string
+    stageCode: string
+    stageName: string
+    roundId: number | null
+    workers: WorkerInfo[]
+    hasPenalty: boolean
+  }
+
   export default {
     data() {
       return {
-        classNo: 3,
-        floorNo: 3,
-        seqNo: 1
+        classNo: 3 as number,
+        selectedFloor: 3 as number,
+        selectedSeq: 1 as number,
+        floors: [3, 4, 5] as number[],
+        seqMax: 24 as number,
+        historyRecords: [] as HistoryRecord[]
       }
     },
+    computed: {
+      binCodeDisplay(): string {
+        return `${this.classNo}-${this.selectedFloor}-${this.selectedSeq}`
+      },
+      emptyHintText(): string {
+        return `仓 ${this.binCodeDisplay} 暂无历史记录`
+      }
+    },
+    onLoad() {
+      this.classNo = getCurrentClassNo()
+      this.loadHistory()
+    },
     methods: {
-      selectBin() {
-        // TODO: 实现发酵仓选择
+      onFloorChange(floor: number) {
+        this.selectedFloor = floor
+        this.loadHistory()
+      },
+      onSeqDecrease() {
+        if (this.selectedSeq > 1) {
+          this.selectedSeq = this.selectedSeq - 1
+          this.loadHistory()
+        }
+      },
+      onSeqIncrease() {
+        if (this.selectedSeq < this.seqMax) {
+          this.selectedSeq = this.selectedSeq + 1
+          this.loadHistory()
+        }
+      },
+      /**
+       * 加载发酵仓历史记录
+       * 查询最近30天的数据
+       */
+      loadHistory() {
+        const targetBinCode = this.binCodeDisplay
+        const today = getTodayDateString()
+        const records: HistoryRecord[] = []
+
+        // 查询最近30天
+        for (let d = 0; d < 30; d++) {
+          const date = addDaysToDate(today, -d)
+          const sessions = getSessionsByDate(date)
+
+          for (let i = 0; i < sessions.length; i++) {
+            const session = sessions[i]
+            // 过滤草稿数据
+            const status = session['status'] as string | null
+            if (status == 'draft') {
+              continue
+            }
+
+            const stageCode = session['stage_code'] as string | null
+            const roundId = session['round_id'] as number | null
+
+            // 查找目标仓
+            const binsData = session['bins'] as UTSJSONObject[] | null
+            if (binsData != null) {
+              for (let j = 0; j < binsData.length; j++) {
+                const bin = binsData[j]
+                const binCode = bin['bin_code'] as string | null
+
+                if (binCode == targetBinCode) {
+                  const workers = bin['workers'] as UTSJSONObject[] | null
+                  const workerInfos: WorkerInfo[] = []
+                  let hasPenalty = false
+
+                  if (workers != null) {
+                    for (let k = 0; k < workers.length; k++) {
+                      const worker = workers[k]
+                      const personId = worker['personId'] as number | null
+                      const personName = worker['personName'] as string | null
+                      const positionIndex = worker['positionIndex'] as number | null
+                      const pointsUnits = worker['pointsUnits'] as number | null
+                      const deductedUnits = worker['deductedUnits'] as number | null
+                      const penaltyReason = worker['penaltyReason'] as string | null
+
+                      if (personId != null && personName != null) {
+                        const deducted = deductedUnits != null ? deductedUnits : 0
+                        if (deducted > 0) {
+                          hasPenalty = true
+                        }
+
+                        workerInfos.push({
+                          personId: personId,
+                          personName: personName,
+                          positionIndex: positionIndex != null ? positionIndex : k + 1,
+                          originalUnits: pointsUnits != null ? pointsUnits : 0,
+                          deductedUnits: deducted,
+                          penaltyReason: penaltyReason != null ? penaltyReason : ''
+                        } as WorkerInfo)
+                      }
+                    }
+                  }
+
+                  // 按站位排序（门口→最里面）
+                  workerInfos.sort((a: WorkerInfo, b: WorkerInfo): number => {
+                    return a.positionIndex - b.positionIndex
+                  })
+
+                  if (workerInfos.length > 0) {
+                    records.push({
+                      date: date,
+                      stageCode: stageCode != null ? stageCode : '',
+                      stageName: stageCode != null ? getStageName(stageCode as StageCode) : '',
+                      roundId: roundId,
+                      workers: workerInfos,
+                      hasPenalty: hasPenalty
+                    } as HistoryRecord)
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        this.historyRecords = records
+      },
+      /**
+       * 获取站位标签
+       * position_index: 1=门口, 2=中间, 3=中间, 4=最里面
+       */
+      getPositionLabel(positionIndex: number): string {
+        if (positionIndex == 1) {
+          return '门口'
+        } else if (positionIndex == 4) {
+          return '里面'
+        }
+        return `中${positionIndex - 1}`
+      },
+      formatPoints(units: PointsUnits): string {
+        return formatPointsUnits(units)
+      },
+      goToEdit(record: HistoryRecord) {
+        const roundIdParam = record.roundId != null ? `&roundId=${record.roundId}` : ''
+        uni.navigateTo({
+          url: `/pages/work/entry?stage=${record.stageCode}&date=${record.date}${roundIdParam}`
+        })
       }
     }
   }
@@ -41,6 +269,7 @@
 <style>
   .page-container {
     flex: 1;
+    flex-direction: column;
     background-color: #f5f5f5;
   }
 
@@ -58,13 +287,14 @@
     margin-bottom: 12px;
   }
 
-  .bin-selector {
-    padding: 8px 0;
+  .bin-selector-simple {
+    flex-direction: column;
   }
 
   .selector-row {
     flex-direction: row;
     justify-content: space-between;
+    align-items: center;
     padding: 12px 0;
     border-bottom-width: 1px;
     border-bottom-color: #f0f0f0;
@@ -76,15 +306,237 @@
     color: #666666;
   }
 
-  .selector-value {
+  .floor-tabs {
+    flex-direction: row;
+    background-color: #f0f2f5;
+    border-radius: 6px;
+    padding: 2px;
+  }
+
+  .floor-tab {
+    padding: 6px 12px;
+    border-radius: 4px;
+  }
+
+  .floor-tab-active {
+    background-color: #007aff;
+  }
+
+  .floor-tab-text {
+    font-size: 13px;
+    color: #666666;
+  }
+
+  .floor-tab-text-active {
+    color: #ffffff;
+  }
+
+  .seq-input-row {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .seq-btn {
+    width: 36px;
+    height: 36px;
+    background-color: #f0f2f5;
+    border-radius: 6px;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .seq-btn-text {
+    font-size: 20px;
+    color: #333333;
+  }
+
+  .seq-display {
+    font-size: 18px;
+    font-weight: bold;
+    color: #333333;
+    margin: 0 16px;
+    min-width: 30px;
+    text-align: center;
+  }
+
+  .selected-bin-display {
+    padding: 12px 0;
+    align-items: center;
+  }
+
+  .selected-bin-text {
+    font-size: 14px;
+    color: #007aff;
+    font-weight: bold;
+  }
+
+  .content {
+    flex: 1;
+  }
+
+  .history-section {
+    padding: 0 12px 12px 12px;
+  }
+
+  .history-card {
+    background-color: #ffffff;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+
+  .history-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background-color: #007aff;
+  }
+
+  .history-date {
+    font-size: 14px;
+    font-weight: bold;
+    color: #ffffff;
+  }
+
+  .history-stage {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  .worker-list {
+    padding: 8px 16px;
+  }
+
+  .worker-list-header {
+    flex-direction: row;
+    padding: 8px 0;
+    border-bottom-width: 1px;
+    border-bottom-color: #e8e8e8;
+    border-bottom-style: solid;
+  }
+
+  .worker-header-cell {
+    font-size: 12px;
+    color: #999999;
+  }
+
+  .worker-header-pos {
+    width: 50px;
+  }
+
+  .worker-header-name {
+    flex: 1;
+  }
+
+  .worker-header-points {
+    width: 80px;
+    text-align: right;
+  }
+
+  .worker-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .worker-cell {
     font-size: 14px;
     color: #333333;
   }
 
-  .placeholder-text {
+  .worker-pos {
+    width: 50px;
+    color: #666666;
+  }
+
+  .worker-name {
+    flex: 1;
+  }
+
+  .worker-points-cell {
+    width: 80px;
+    flex-direction: row;
+    justify-content: flex-end;
+    align-items: center;
+  }
+
+  .worker-points {
+    font-size: 14px;
+    color: #333333;
+  }
+
+  .worker-deducted {
+    font-size: 12px;
+    color: #ff4d4f;
+    margin-left: 4px;
+  }
+
+  .penalty-section {
+    padding: 12px 16px;
+    background-color: #fff7e6;
+    border-top-width: 1px;
+    border-top-color: #ffe58f;
+    border-top-style: solid;
+  }
+
+  .penalty-title {
+    font-size: 12px;
+    font-weight: bold;
+    color: #d48806;
+    margin-bottom: 8px;
+  }
+
+  .penalty-item {
+    flex-direction: row;
+    align-items: center;
+    padding: 4px 0;
+  }
+
+  .penalty-person {
+    font-size: 12px;
+    color: #d48806;
+    width: 60px;
+  }
+
+  .penalty-reason {
+    font-size: 12px;
+    color: #d48806;
+    flex: 1;
+  }
+
+  .penalty-amount {
+    font-size: 12px;
+    color: #ff4d4f;
+    font-weight: bold;
+  }
+
+  .history-footer {
+    padding: 12px 16px;
+    border-top-width: 1px;
+    border-top-color: #f0f0f0;
+    border-top-style: solid;
+    align-items: flex-end;
+  }
+
+  .history-footer-text {
+    font-size: 12px;
+    color: #007aff;
+  }
+
+  .empty-hint {
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 40px;
+    margin: 12px;
+    align-items: center;
+  }
+
+  .empty-hint-text {
     font-size: 14px;
     color: #999999;
-    text-align: center;
-    padding: 40px 0;
   }
 </style>

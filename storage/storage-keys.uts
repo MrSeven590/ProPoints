@@ -22,6 +22,15 @@ export function getSessionKey(date: string, stageCode: string, roundId: number |
 }
 
 /**
+ * 草稿会话数据 Key
+ * 格式: pp:session:{YYYY-MM-DD}:{stage}:{roundId}:draft
+ * 存储: 草稿状态的会话数据（与已提交数据分离）
+ */
+export function getSessionDraftKey(date: string, stageCode: string, roundId: number | null): string {
+  return `${getSessionKey(date, stageCode, roundId)}:draft`
+}
+
+/**
  * 解析会话 Key
  */
 export type ParsedSessionKey = {
@@ -46,16 +55,16 @@ export function parseSessionKey(key: string): ParsedSessionKey | null {
 /**
  * 日期索引 Key
  * 格式: pp:idx:date:{YYYY-MM-DD}
- * 存储: 当日所有会话 key 列表
+ * 存储: 当日所有已提交会话 key 列表
  */
 export function getDateIndexKey(date: string): string {
   return `${KEY_PREFIX}:idx:date:${date}`
 }
 
 /**
- * 草稿索引 Key
+ * 草稿索引 Key（全局单一索引）
  * 格式: pp:idx:draft
- * 存储: 所有草稿状态的会话 key 列表
+ * 存储: 所有草稿会话 key 列表（草稿 key）
  */
 export function getDraftIndexKey(): string {
   return `${KEY_PREFIX}:idx:draft`

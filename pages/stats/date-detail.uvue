@@ -1,42 +1,348 @@
 <template>
   <view class="page-container">
-    <view class="section">
-      <text class="section-title">选择日期</text>
-      <view class="date-picker">
-        <text class="date-text">{{ selectedDate }}</text>
+    <!-- 日期选择区域 -->
+    <view class="date-section">
+      <view class="date-nav">
+        <view class="date-btn" @click="onPrevDay">
+          <text class="date-btn-text">前一天</text>
+        </view>
+        <text class="date-display">{{ selectedDate }}</text>
+        <view class="date-btn" @click="onNextDay">
+          <text class="date-btn-text">后一天</text>
+        </view>
       </view>
     </view>
 
-    <view class="section">
-      <text class="section-title">工分明细</text>
-      <text class="placeholder-text">选择日期后显示工分明细</text>
+    <!-- 环节切换 -->
+    <view class="stage-tabs">
+      <view
+        v-for="stage in stageList"
+        :key="stage.code"
+        class="stage-tab"
+        :class="stage.code == currentStage ? 'stage-tab-active' : ''"
+        @click="onStageChange(stage.code)"
+      >
+        <text class="stage-tab-text" :class="stage.code == currentStage ? 'stage-tab-text-active' : ''">{{ stage.name }}</text>
+      </view>
     </view>
 
+    <!-- 显示列切换 -->
+    <view class="column-switch">
+      <view
+        class="column-btn"
+        :class="displayColumn == 'final' ? 'column-btn-active' : ''"
+        @click="onColumnChange('final')"
+      >
+        <text class="column-btn-text" :class="displayColumn == 'final' ? 'column-btn-text-active' : ''">最终分</text>
+      </view>
+      <view
+        class="column-btn"
+        :class="displayColumn == 'original' ? 'column-btn-active' : ''"
+        @click="onColumnChange('original')"
+      >
+        <text class="column-btn-text" :class="displayColumn == 'original' ? 'column-btn-text-active' : ''">原始分</text>
+      </view>
+      <view
+        class="column-btn"
+        :class="displayColumn == 'deducted' ? 'column-btn-active' : ''"
+        @click="onColumnChange('deducted')"
+      >
+        <text class="column-btn-text" :class="displayColumn == 'deducted' ? 'column-btn-text-active' : ''">扣分</text>
+      </view>
+    </view>
+
+    <!-- 公示列表 -->
+    <scroll-view class="content" scroll-y="true">
+      <view v-if="displayList.length > 0" class="list-container">
+        <!-- 表头 -->
+        <view class="list-header">
+          <text class="header-cell header-name">姓名</text>
+          <text class="header-cell header-bin">仓号</text>
+          <text class="header-cell header-points">{{ columnTitle }}</text>
+        </view>
+        <!-- 数据行 -->
+        <view
+          v-for="(item, index) in displayList"
+          :key="index"
+          class="list-row"
+          :class="index % 2 == 0 ? 'row-even' : 'row-odd'"
+        >
+          <text class="row-cell row-name">{{ item.personName }}</text>
+          <text class="row-cell row-bin">{{ item.binCode }}</text>
+          <text class="row-cell row-points" :class="getPointsClass(item)">{{ getDisplayPoints(item) }}</text>
+        </view>
+        <!-- 汇总行 -->
+        <view class="list-footer">
+          <text class="footer-cell footer-label">合计</text>
+          <text class="footer-cell footer-count">{{ displayList.length }}人</text>
+          <text class="footer-cell footer-total">{{ formatTotalPoints }}</text>
+        </view>
+      </view>
+      <view v-else class="empty-hint">
+        <text class="empty-hint-text">{{ emptyHintText }}</text>
+      </view>
+    </scroll-view>
+
+    <!-- 底部操作 -->
     <view class="footer">
-      <view class="btn btn-primary" @click="exportExcel">
-        <text class="btn-text">导出 Excel</text>
+      <view class="btn btn-primary" @click="shareToGroup">
+        <text class="btn-text">分享到群</text>
       </view>
     </view>
   </view>
 </template>
 
 <script lang="uts">
-  import { getTodayDateString } from '../../domain/models/types.uts'
+  import { getTodayDateString, addDaysToDate, formatPointsUnits } from '../../domain/models/types.uts'
+  import type { StageCode, PointsUnits } from '../../domain/models/types.uts'
+  import { getStageName } from '../../domain/models/stage-session.uts'
+  import { calcFinalPoints } from '../../domain/models/assignment.uts'
+  import { getSessionsByDateAndStage } from '../../storage/storage-repository.uts'
+
+  type StageItem = {
+    code: string
+    name: string
+  }
+
+  type DisplayItem = {
+    personId: number
+    personName: string
+    binCode: string
+    positionIndex: number
+    originalUnits: PointsUnits
+    deductedUnits: PointsUnits
+    finalUnits: PointsUnits
+    penaltyReason: string
+  }
+
+  type DisplayColumn = 'original' | 'deducted' | 'final'
 
   export default {
     data() {
       return {
-        selectedDate: ''
+        selectedDate: '',
+        currentStage: 'AN_QU' as string,
+        displayColumn: 'final' as DisplayColumn,
+        stageList: [
+          { code: 'AN_QU', name: '安曲' },
+          { code: 'YI_FAN', name: '一翻' },
+          { code: 'ER_FAN', name: '二翻' },
+          { code: 'CHAI_QU', name: '拆曲' },
+          { code: 'DUI_QU', name: '堆曲' }
+        ] as StageItem[],
+        displayList: [] as DisplayItem[],
+        totalPointsUnits: 0 as PointsUnits
+      }
+    },
+    computed: {
+      columnTitle(): string {
+        if (this.displayColumn == 'original') {
+          return '原始分'
+        } else if (this.displayColumn == 'deducted') {
+          return '扣分'
+        }
+        return '最终分'
+      },
+      formatTotalPoints(): string {
+        return formatPointsUnits(this.totalPointsUnits)
+      },
+      emptyHintText(): string {
+        return `${this.selectedDate} 暂无${getStageName(this.currentStage as StageCode)}记录`
       }
     },
     onLoad() {
       this.selectedDate = getTodayDateString()
+      this.loadData()
     },
     methods: {
-      exportExcel() {
-        uni.showToast({
-          title: '导出功能待实现',
-          icon: 'none'
+      onPrevDay() {
+        this.selectedDate = addDaysToDate(this.selectedDate, -1)
+        this.loadData()
+      },
+      onNextDay() {
+        this.selectedDate = addDaysToDate(this.selectedDate, 1)
+        this.loadData()
+      },
+      onStageChange(stageCode: string) {
+        this.currentStage = stageCode
+        this.loadData()
+      },
+      onColumnChange(column: DisplayColumn) {
+        this.displayColumn = column
+        this.calcTotal()
+      },
+      /**
+       * 加载数据
+       * 过滤草稿数据，只显示已提交的记录
+       */
+      loadData() {
+        const sessions = getSessionsByDateAndStage(this.selectedDate, this.currentStage)
+        const items: DisplayItem[] = []
+
+        for (let i = 0; i < sessions.length; i++) {
+          const session = sessions[i]
+          // 过滤草稿数据
+          const status = session['status'] as string | null
+          if (status == 'draft') {
+            continue
+          }
+
+          // 解析仓内人员
+          const binsData = session['bins'] as UTSJSONObject[] | null
+          if (binsData != null) {
+            for (let j = 0; j < binsData.length; j++) {
+              const bin = binsData[j]
+              const binCode = bin['bin_code'] as string | null
+              const workers = bin['workers'] as UTSJSONObject[] | null
+
+              if (workers != null && binCode != null) {
+                for (let k = 0; k < workers.length; k++) {
+                  const worker = workers[k]
+                  const personId = worker['personId'] as number | null
+                  const personName = worker['personName'] as string | null
+                  const pointsUnits = worker['pointsUnits'] as number | null
+                  const deductedUnits = worker['deductedUnits'] as number | null
+                  const positionIndex = worker['positionIndex'] as number | null
+                  const penaltyReason = worker['penaltyReason'] as string | null
+
+                  if (personId != null && personName != null) {
+                    const original = pointsUnits != null ? pointsUnits : 0
+                    const deducted = deductedUnits != null ? deductedUnits : 0
+                    items.push({
+                      personId: personId,
+                      personName: personName,
+                      binCode: binCode,
+                      positionIndex: positionIndex != null ? positionIndex : 0,
+                      originalUnits: original,
+                      deductedUnits: deducted,
+                      finalUnits: calcFinalPoints(original, deducted),
+                      penaltyReason: penaltyReason != null ? penaltyReason : ''
+                    } as DisplayItem)
+                  }
+                }
+              }
+            }
+          }
+
+          // 解析跨仓岗位
+          const crossBin = session['cross_bin'] as UTSJSONObject | null
+          if (crossBin != null) {
+            const enabled = crossBin['enabled'] as boolean | null
+            if (enabled == true) {
+              const personId = crossBin['person_id'] as number | null
+              const personName = crossBin['person_name'] as string | null
+              const pointsUnits = crossBin['points_units'] as number | null
+              const roleName = crossBin['role_name'] as string | null
+
+              if (personId != null && personName != null) {
+                items.push({
+                  personId: personId,
+                  personName: personName,
+                  binCode: roleName != null ? roleName : '跨仓',
+                  positionIndex: 0,
+                  originalUnits: pointsUnits != null ? pointsUnits : 0,
+                  deductedUnits: 0,
+                  finalUnits: pointsUnits != null ? pointsUnits : 0,
+                  penaltyReason: ''
+                } as DisplayItem)
+              }
+            }
+          }
+        }
+
+        // 按仓号和站位排序 (仓号按 class-floor-seq 数值排序)
+        items.sort((a: DisplayItem, b: DisplayItem): number => {
+          if (a.binCode != b.binCode) {
+            // 解析仓号 "class-floor-seq"
+            const aParts = a.binCode.split('-')
+            const bParts = b.binCode.split('-')
+            if (aParts.length == 3 && bParts.length == 3) {
+              const aClass = parseInt(aParts[0])
+              const aFloor = parseInt(aParts[1])
+              const aSeq = parseInt(aParts[2])
+              const bClass = parseInt(bParts[0])
+              const bFloor = parseInt(bParts[1])
+              const bSeq = parseInt(bParts[2])
+              if (aClass != bClass) return aClass - bClass
+              if (aFloor != bFloor) return aFloor - bFloor
+              return aSeq - bSeq
+            }
+            // 降级为字典序
+            if (a.binCode < b.binCode) return -1
+            return 1
+          }
+          return a.positionIndex - b.positionIndex
+        })
+
+        this.displayList = items
+        this.calcTotal()
+      },
+      /**
+       * 计算合计
+       */
+      calcTotal() {
+        let total = 0
+        for (let i = 0; i < this.displayList.length; i++) {
+          const item = this.displayList[i]
+          if (this.displayColumn == 'original') {
+            total = total + item.originalUnits
+          } else if (this.displayColumn == 'deducted') {
+            total = total + item.deductedUnits
+          } else {
+            total = total + item.finalUnits
+          }
+        }
+        this.totalPointsUnits = total
+      },
+      /**
+       * 获取显示的工分值
+       */
+      getDisplayPoints(item: DisplayItem): string {
+        let units = 0
+        if (this.displayColumn == 'original') {
+          units = item.originalUnits
+        } else if (this.displayColumn == 'deducted') {
+          units = item.deductedUnits
+        } else {
+          units = item.finalUnits
+        }
+        return formatPointsUnits(units)
+      },
+      /**
+       * 获取工分样式类
+       */
+      getPointsClass(item: DisplayItem): string {
+        if (this.displayColumn == 'deducted' && item.deductedUnits > 0) {
+          return 'points-negative'
+        }
+        return ''
+      },
+      /**
+       * 分享到群
+       */
+      shareToGroup() {
+        // 构建分享文本
+        let text = `${this.selectedDate} ${getStageName(this.currentStage as StageCode)} 工分公示\n`
+        text = text + '------------------------\n'
+
+        for (let i = 0; i < this.displayList.length; i++) {
+          const item = this.displayList[i]
+          const points = this.getDisplayPoints(item)
+          text = text + `${item.personName} ${item.binCode} ${points}\n`
+        }
+
+        text = text + '------------------------\n'
+        text = text + `合计: ${this.displayList.length}人 ${this.formatTotalPoints}分`
+
+        // 复制到剪贴板
+        uni.setClipboardData({
+          data: text,
+          success: () => {
+            uni.showToast({
+              title: '已复制到剪贴板',
+              icon: 'success'
+            })
+          }
         })
       }
     }
@@ -50,36 +356,210 @@
     background-color: #f5f5f5;
   }
 
-  .section {
-    margin: 12px;
+  .date-section {
     background-color: #ffffff;
-    border-radius: 8px;
-    padding: 16px;
+    padding: 12px 16px;
   }
 
-  .section-title {
-    font-size: 16px;
+  .date-nav {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .date-btn {
+    padding: 8px 16px;
+    background-color: #f0f2f5;
+    border-radius: 6px;
+  }
+
+  .date-btn-text {
+    font-size: 14px;
+    color: #333333;
+  }
+
+  .date-display {
+    font-size: 18px;
     font-weight: bold;
     color: #333333;
-    margin-bottom: 12px;
   }
 
-  .date-picker {
-    padding: 12px;
-    background-color: #f5f5f5;
+  .stage-tabs {
+    flex-direction: row;
+    background-color: #ffffff;
+    padding: 8px 12px;
+    margin-top: 1px;
+  }
+
+  .stage-tab {
+    flex: 1;
+    padding: 8px 4px;
+    align-items: center;
+    border-radius: 6px;
+    margin: 0 2px;
+  }
+
+  .stage-tab-active {
+    background-color: #007aff;
+  }
+
+  .stage-tab-text {
+    font-size: 13px;
+    color: #666666;
+  }
+
+  .stage-tab-text-active {
+    color: #ffffff;
+  }
+
+  .column-switch {
+    flex-direction: row;
+    background-color: #ffffff;
+    padding: 8px 16px;
+    margin-top: 1px;
+    justify-content: center;
+  }
+
+  .column-btn {
+    padding: 6px 16px;
+    border-radius: 16px;
+    margin: 0 4px;
+    background-color: #f0f2f5;
+  }
+
+  .column-btn-active {
+    background-color: #e6f0ff;
+  }
+
+  .column-btn-text {
+    font-size: 12px;
+    color: #666666;
+  }
+
+  .column-btn-text-active {
+    color: #007aff;
+  }
+
+  .content {
+    flex: 1;
+    margin: 12px;
+  }
+
+  .list-container {
+    background-color: #ffffff;
     border-radius: 8px;
+    padding: 12px;
   }
 
-  .date-text {
-    font-size: 16px;
+  .list-header {
+    flex-direction: row;
+    padding: 8px 0;
+    border-bottom-width: 2px;
+    border-bottom-color: #007aff;
+    border-bottom-style: solid;
+  }
+
+  .header-cell {
+    font-size: 14px;
+    font-weight: bold;
     color: #333333;
   }
 
-  .placeholder-text {
+  .header-name {
+    flex: 2;
+  }
+
+  .header-bin {
+    flex: 2;
+    text-align: center;
+  }
+
+  .header-points {
+    flex: 1;
+    text-align: right;
+  }
+
+  .list-row {
+    flex-direction: row;
+    padding: 10px 0;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .row-even {
+    background-color: #ffffff;
+  }
+
+  .row-odd {
+    background-color: #fafafa;
+  }
+
+  .row-cell {
+    font-size: 14px;
+    color: #333333;
+  }
+
+  .row-name {
+    flex: 2;
+  }
+
+  .row-bin {
+    flex: 2;
+    text-align: center;
+    color: #666666;
+  }
+
+  .row-points {
+    flex: 1;
+    text-align: right;
+  }
+
+  .points-negative {
+    color: #ff4d4f;
+  }
+
+  .list-footer {
+    flex-direction: row;
+    padding: 12px 0;
+    border-top-width: 2px;
+    border-top-color: #007aff;
+    border-top-style: solid;
+    margin-top: 4px;
+  }
+
+  .footer-cell {
+    font-size: 14px;
+    font-weight: bold;
+  }
+
+  .footer-label {
+    flex: 2;
+    color: #333333;
+  }
+
+  .footer-count {
+    flex: 2;
+    text-align: center;
+    color: #666666;
+  }
+
+  .footer-total {
+    flex: 1;
+    text-align: right;
+    color: #007aff;
+  }
+
+  .empty-hint {
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 40px;
+    align-items: center;
+  }
+
+  .empty-hint-text {
     font-size: 14px;
     color: #999999;
-    text-align: center;
-    padding: 40px 0;
   }
 
   .footer {

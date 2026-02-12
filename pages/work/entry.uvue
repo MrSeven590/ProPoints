@@ -143,7 +143,7 @@
   import type { BinInfo } from '../../domain/services/ScoreAllocator.uts'
   import { allocateCrossBinPoints } from '../../domain/services/ScoreAllocator.uts'
   import { getBinKojiCountFromAnQu } from '../../domain/services/DuiQuBaseService.uts'
-  import { saveSession, loadSession } from '../../storage/storage-repository.uts'
+  import { saveDraftSession, saveSubmittedSession, loadSessionForEdit } from '../../storage/storage-repository.uts'
   import { validateBinBalance, validateCrossBinSource, mergeValidationResults } from '../../domain/services/Validator.uts'
   import type { ValidationResult } from '../../domain/services/Validator.uts'
 
@@ -245,10 +245,8 @@
         }
       }
 
-      // 如果提供了日期参数，尝试加载已有会话
-      if (dateParam != null) {
-        this.loadExistingSession()
-      }
+      // 始终尝试加载已存在的会话（draft 优先）
+      this.loadExistingSession()
     },
     onHide() {
       // 页面隐藏时立即保存草稿
@@ -634,17 +632,65 @@
        * 确认日期选择
        */
       onConfirmDatePicker() {
-        this.sessionDate = this.tempDate
         this.showDatePicker = false
-        // 触发自动保存
-        this.scheduleAutoSave()
+        const newDate = this.tempDate
+        if (newDate == this.sessionDate) {
+          return
+        }
+        this.switchSessionDate(newDate)
       },
 
       /**
-       * 加载已有会话数据
+       * 切换会话日期
+       * - 先保存当前草稿（如有变更）
+       * - 再加载目标日期的会话（draft 优先）
+       */
+      switchSessionDate(newDate: string) {
+        // 先保存当前草稿（确保不会把旧数据写到新日期）
+        this.cancelAutoSave()
+        if (this.sessionStatus == 'draft' && this.isSubmitting == false) {
+          uni.hideKeyboard()
+          this.doAutoSave()
+        }
+
+        this.sessionDate = newDate
+        this.tempDate = newDate
+
+        this.loadExistingSession()
+      },
+
+      /**
+       * 重置会话编辑状态（不改变环节配置）
+       */
+      resetSessionState() {
+        this.selectedBins = [] as BinCode[]
+        this.stageBinInfos = [] as StageBinInfo[]
+        this.occupiedIds = [] as number[]
+        this.binCardsData = new Map<number, BinCardData>()
+        this.missingAnQuBins = [] as string[]
+
+        // 重置跨仓岗位为默认状态（由环节决定是否显示）
+        this.showCrossBinSection = stageHasCrossBinRole(this.stageCode)
+        this.initCrossBinRole()
+        this.crossBinPersonId = null
+        this.crossBinPersonName = ''
+        this.crossBinPointsUnits = 0
+        this.crossBinSources = [] as AssignmentSourceCreateParams[]
+
+        // 自动保存相关状态重置
+        this.draftRevision = 0
+        this.savedRevision = 0
+        this.sessionStatus = 'draft'
+      },
+
+      /**
+       * 加载已有会话数据（draft 优先）
        */
       loadExistingSession() {
-        const sessionData = loadSession(this.sessionDate, this.stageCode, this.roundId)
+        // 先重置，避免旧状态残留
+        this.resetSessionState()
+
+        const sessionData = loadSessionForEdit(this.sessionDate, this.stageCode, this.roundId)
         if (sessionData == null) {
           // 无已有数据，使用默认新建流程
           return
@@ -861,11 +907,14 @@
         // 取消自动保存定时器
         this.cancelAutoSave()
 
+        // 进入草稿模式（编辑始终写 draft key）
+        this.sessionStatus = 'draft'
+
         // 构建会话数据
         const sessionData = this.buildSessionData('draft')
 
         // 保存到存储
-        saveSession(this.sessionDate, this.stageCode, this.roundId, sessionData)
+        saveDraftSession(this.sessionDate, this.stageCode, this.roundId, sessionData)
 
         // 更新已保存版本号（避免自动保存重复保存）
         this.savedRevision = this.draftRevision
@@ -1034,7 +1083,7 @@
                 const sessionData = this.buildSessionData('submitted')
 
                 // 保存到存储
-                saveSession(this.sessionDate, this.stageCode, this.roundId, sessionData)
+                saveSubmittedSession(this.sessionDate, this.stageCode, this.roundId, sessionData)
 
                 // 更新会话状态
                 this.sessionStatus = 'submitted'
@@ -1069,9 +1118,9 @@
        * 仅对草稿状态的会话生效
        */
       scheduleAutoSave() {
-        // 仅对草稿状态自动保存
+        // 编辑时始终进入草稿模式（自动保存始终写 draft key）
         if (this.sessionStatus != 'draft') {
-          return
+          this.sessionStatus = 'draft'
         }
         // 提交过程中不自动保存
         if (this.isSubmitting == true) {
@@ -1116,7 +1165,7 @@
           const sessionData = this.buildSessionData('draft')
 
           // 保存到存储
-          saveSession(this.sessionDate, this.stageCode, this.roundId, sessionData)
+          saveDraftSession(this.sessionDate, this.stageCode, this.roundId, sessionData)
 
           // 更新已保存版本号
           this.savedRevision = this.draftRevision

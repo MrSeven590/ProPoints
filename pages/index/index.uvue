@@ -88,8 +88,7 @@
 
 <script lang="uts">
   import { getTodayDateString } from '../../domain/models/types.uts'
-  import { getSessionsByDate, deleteSession, getDraftSessionKeys } from '../../storage/storage-repository.uts'
-  import { parseSessionKey } from '../../storage/storage-keys.uts'
+  import { getSessionsByDate, getAllDraftSessions, deleteDraftSession } from '../../storage/storage-repository.uts'
 
   /**
    * 会话列表项类型
@@ -124,19 +123,21 @@
         const draftList: SessionListItem[] = []
         const submittedList: SessionListItem[] = []
 
-        // 从草稿索引获取草稿 key 列表
-        const draftKeys = getDraftSessionKeys()
-        for (let i = 0; i < draftKeys.length; i++) {
-          const parsed = parseSessionKey(draftKeys[i])
-          if (parsed != null) {
-            const item: SessionListItem = {
-              session_date: parsed.date,
-              stage_code: parsed.stageCode,
-              stage_name: this.getStageName(parsed.stageCode),
-              round_id: parsed.roundId,
+        // 草稿列表：从全局草稿索引读取（全量）
+        const drafts = getAllDraftSessions()
+        for (let i = 0; i < drafts.length; i++) {
+          const sessionData = drafts[i]
+          const dateVal = sessionData['session_date'] as string | null
+          const stageCodeVal = sessionData['stage_code'] as string | null
+          const roundIdVal = sessionData['round_id'] as number | null
+          if (dateVal != null && stageCodeVal != null) {
+            draftList.push({
+              session_date: dateVal,
+              stage_code: stageCodeVal,
+              stage_name: this.getStageName(stageCodeVal),
+              round_id: roundIdVal,
               status: 'draft'
-            }
-            draftList.push(item)
+            } as SessionListItem)
           }
         }
 
@@ -252,8 +253,8 @@
           content: `确定要删除 ${item.session_date} ${item.stage_name} 的草稿吗？`,
           success: (res) => {
             if (res.confirm == true) {
-              // 调用 deleteSession 删除数据和索引
-              deleteSession(item.session_date, item.stage_code, item.round_id)
+              // 删除草稿（draft key + draft 日期索引）
+              deleteDraftSession(item.session_date, item.stage_code, item.round_id)
 
               // 刷新列表
               this.loadSessions()
