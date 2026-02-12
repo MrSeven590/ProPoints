@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 15
-- **Last Active**: 2026-02-11
+- **Total Sessions**: 16
+- **Last Active**: 2026-02-12
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~913 | Active |
+| `journal-1.md` | ~1079 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits |
 |---|------|-------|---------|
+| 16 | 2026-02-12 | 考核数据持久化与提交校验优化 | `1f88f93` |
 | 15 | 2026-02-11 | P5-T02: 实现录入页考核交互功能 | `1fd4575`, `a56ebc3` |
 | 14 | 2026-02-10 | 实现跨仓工分扣除逻辑 | `bea14d0` |
 | 13 | 2026-02-08 | 实现平分按钮、修复草稿功能和发酵仓推测 | `ed10ebd`, `cab0cb4`, `ad01e51` |
