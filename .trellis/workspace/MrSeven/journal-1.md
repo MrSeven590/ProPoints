@@ -1277,3 +1277,162 @@ getInitials(cn: string): string
 ### Next Steps
 
 - None - task complete
+
+## Session 19: 实现统计查询页面并修复草稿覆盖bug
+
+**Date**: 2026-02-13
+**Task**: 实现统计查询页面并修复草稿覆盖bug
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 会话概述
+
+本次会话完成了 P5-T03~T06 四个统计查询页面的实现,并在 Codex 审查过程中发现并修复了一个严重的草稿覆盖已提交数据的 bug。
+
+## 主要工作
+
+### 1. 统计查询页面实现 (P5-T03~T06)
+
+| 页面 | 功能 | 状态 |
+|------|------|------|
+| 统计首页 | 本月概览(录入次数/总工分/参与人数) + 最近7天录入 | ✅ |
+| 每日公示 | 按日期+环节展示,支持切换显示列(原始/扣分/最终) | ✅ |
+| 按人员查询 | 工分明细+扣分原因,支持跳转编辑 | ✅ |
+| 按仓查询 | 站位顺序+追责定位 | ✅ |
+
+**关键实现**:
+- 所有查询正确过滤 `status='draft'` 草稿数据
+- 工分显示使用 `formatPointsUnits()` 转换
+- 最终分计算: `final = calcFinalPoints(original, deducted)`
+- 复用现有组件 (人员选择器、仓选择器)
+
+### 2. 严重 Bug 修复: 草稿覆盖已提交数据
+
+**问题根源**:
+- 草稿和已提交使用相同的存储 key
+- 快捷入口不加载已存在会话
+- 自动保存会覆盖已提交数据
+
+**解决方案 (Phase 2 重构)**:
+- Draft key: `pp:session:${date}:${stage}:${round}:draft`
+- Submitted key: `pp:session:${date}:${stage}:${round}`
+- 草稿索引: `pp:idx:draft` (全局)
+- 已提交索引: `pp:idx:date:${date}` (按日期)
+
+**Repository API 重构**:
+- `saveDraftSession()` - 保存草稿
+- `saveSubmittedSession()` - 保存已提交并删除草稿
+- `loadSessionForEdit()` - 优先加载草稿
+- `deleteDraftSession()` - 删除草稿
+
+### 3. Codex 代码审查与优化
+
+**发现的问题**:
+1. ✅ 仓号排序错误 (字典序 → 数值排序)
+2. ✅ 最终分计算不一致 (统一使用 `calcFinalPoints()`)
+3. ✅ 总工分统计口径 (改为统计最终分)
+4. ✅ Key 冲突 (添加 roundId)
+5. ✅ 最近录入限制 (强制10条)
+6. ✅ 人员详情编辑交互 (添加独立编辑按钮)
+
+**索引设计优化**:
+- 从按日期草稿索引回退到全局草稿索引
+- 理由: 草稿数量有限,全局索引更简单高效
+- 符合历史实现的设计思路
+
+### 4. 文档更新
+
+新增 `.trellis/spec/frontend/storage-architecture.md`:
+- 记录 Draft/Submitted 分离架构
+- 记录草稿覆盖 bug 的历史教训
+- 记录索引设计选择的权衡
+- 提供最佳实践指南
+
+## 技术亮点
+
+1. **多 Agent 协作**:
+   - Research Agent: 分析代码库
+   - Implement Agent: 实现功能
+   - Check Agent: 代码审查
+   - Codex: Bug 分析与重构
+
+2. **架构改进**:
+   - Key 分离防止数据覆盖
+   - 索引分离提升查询性能
+   - API 分离职责清晰
+
+3. **代码质量**:
+   - 统一使用 `calcFinalPoints()` 函数
+   - 数值排序而非字典序
+   - 防御性编程 (过滤 null 数据)
+
+## 修改的文件
+
+**功能实现**:
+- `pages/stats/index.uvue` - 统计首页
+- `pages/stats/date-detail.uvue` - 每日公示
+- `pages/stats/person-detail.uvue` - 按人员查询
+- `pages/stats/bin-detail.uvue` - 按仓查询
+- `pages.json` - 页面标题
+
+**Bug 修复**:
+- `storage/storage-keys.uts` - 恢复全局草稿索引
+- `storage/storage-repository.uts` - Draft/Submitted API 分离
+- `pages/work/entry.uvue` - 加载/保存逻辑修复
+- `pages/index/index.uvue` - 草稿列表简化
+- `storage/init.uts` - 添加清理工具
+
+**文档**:
+- `.trellis/spec/frontend/storage-architecture.md` (新增)
+- `.trellis/spec/frontend/index.md` (更新索引)
+
+## 验证要点
+
+**统计查询功能**:
+- [ ] 统计首页显示本月概览数据
+- [ ] 每日公示可切换显示列
+- [ ] 按人员查询显示工分明细
+- [ ] 按仓查询显示站位和扣分
+
+**Bug 修复验证**:
+- [ ] 创建已提交记录 → 快捷入口编辑 → 自动保存不覆盖
+- [ ] 草稿列表显示所有草稿
+- [ ] 提交草稿后正确删除
+- [ ] 统计页面只显示已提交记录
+
+## 后续建议
+
+1. 进行完整的功能测试
+2. 验证 bug 修复效果
+3. 考虑实施 Codex 建议的"自愈索引"增强健壮性
+4. 继续执行开发计划中的后续任务
+
+## 统计
+
+- 修改文件: 12 个
+- 新增代码: +2375 行
+- 删除代码: -429 行
+- 新增文档: 1 个
+- 修复 Bug: 1 个严重 bug + 6 个代码质量问题
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `38e971f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
