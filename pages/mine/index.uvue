@@ -67,7 +67,7 @@
       clearAllData() {
         uni.showModal({
           title: '警告',
-          content: '此操作将清除所有历史数据，包括：\n• 所有工分录入记录\n• 班级配置\n• 花名册数据\n• 系数配置\n\n此操作不可恢复，确定要继续吗？',
+          content: '此操作将清除所有历史数据，包括：\n\n所有工分录入记录\n班级配置\n花名册数据\n系数配置\n\n此操作不可恢复，确定要继续吗？',
           confirmText: '确定清除',
           confirmColor: '#ff3b30',
           success: (res) => {
