@@ -1165,3 +1165,115 @@ getInitials(cn: string): string
 ### Next Steps
 
 - None - task complete
+
+## Session 18: 实现工分录入自动保存和跨仓工分重新计算
+
+**Date**: 2026-02-13
+**Task**: 实现工分录入自动保存和跨仓工分重新计算
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 实现内容
+
+### 1. 自动保存功能
+- **防抖机制**: 1200ms trailing debounce,避免频繁写入
+- **版本控制**: 使用 draftRevision/savedRevision 避免重复保存
+- **状态限制**: 仅对 status='draft' 的会话自动保存
+- **生命周期处理**: onHide/onUnload 时立即保存并清理定时器
+- **冲突避免**: 手动保存和提交时取消自动保存定时器
+- **失败冷却**: 10秒冷却机制,避免 toast 轰炸
+
+### 2. 跨仓工分重新计算
+- **问题**: 曲坯数量变更后,跨仓工分分配不一致(UI 显示 ≠ 保存数据)
+- **解决方案**: 
+  - 父组件作为单一数据源,计算 crossBinSources
+  - 在曲坯/仓/工分变更时调用 recalculateCrossBinSources()
+  - buildSessionData() 直接使用父组件计算的结果
+  - 子组件通过 externalSources prop 接收派生数据
+
+### 3. 来源预览更新
+- **问题**: 父组件重新计算后,子组件预览不更新
+- **解决方案**:
+  - 子组件添加 externalSources prop
+  - 父组件传递 :externalSources="crossBinSources"
+  - 子组件 watcher 监听 prop 变化,更新预览
+  - 移除子组件内部计算逻辑,简化职责
+
+### 4. 代码优化
+- 移除曲数变更重复调度 (onBinKojiChange 不再调用 scheduleAutoSave)
+- 添加提交失败保护 (try/finally 确保 isSubmitting 重置)
+- 定时器回调中设置 autoSaveTimer = 0 保持状态准确
+- 移除生产环境 console.log
+
+## 技术亮点
+
+### 自动保存模式
+- 事件驱动 + 生命周期刷新的混合策略
+- 版本号机制避免重复保存
+- uni.hideKeyboard() 强制触发 blur 确保数据同步
+
+### 派生数据管理
+- 单一数据源原则 (父组件计算,子组件接收)
+- 确保 "用户看到的 == 保存的"
+- 避免双重计算导致的不一致
+
+## 更新的文件
+
+| 文件 | 变更 | 说明 |
+|------|------|------|
+| pages/work/entry.uvue | +248/-70 | 自动保存 + 跨仓工分重新计算 |
+| components/biz-cross-bin-input/biz-cross-bin-input.uvue | +75/-70 | 添加 externalSources prop,移除内部计算 |
+| .trellis/spec/frontend/state-management.md | +287/-0 | 添加自动保存和派生数据管理文档 |
+
+## 文档更新
+
+在 state-management.md 中添加:
+- **Auto-Save Pattern**: 自动保存最佳实践
+- **Derived Data Pattern**: 派生数据管理模式
+- 更新 Common Mistakes 表格
+
+## 协作过程
+
+1. Codex 提供自动保存实现建议 (混合策略)
+2. Claude 实现自动保存功能
+3. Codex 代码审查,发现 6 个优化点
+4. Claude 执行优化
+5. Codex 分析跨仓工分边界情况
+6. Claude 实现重新计算机制
+7. Codex 分析来源预览不更新问题
+8. Claude 修复并简化组件职责
+
+## 验收标准
+
+- [x] 用户修改数据后 1.2 秒自动保存
+- [x] 页面隐藏/卸载时立即保存
+- [x] 已提交会话不会被自动保存
+- [x] 提交过程中不会触发自动保存
+- [x] 手动保存和提交时取消自动保存定时器
+- [x] 定时器在页面卸载时正确清理
+- [x] 保存失败时显示错误提示(带冷却)
+- [x] 曲坯变更后跨仓工分自动重新计算
+- [x] 来源预览实时更新
+- [x] 保存数据与 UI 显示一致
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `84796ef` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
