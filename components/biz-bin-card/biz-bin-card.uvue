@@ -818,6 +818,8 @@
 
           // 发送扣分变更事件
           this.emitPenaltyChange(index)
+          // 发送整体变更事件，确保父组件更新数据
+          this.emitChange()
           // 收起面板
           this.expandedPenaltyIndex = null
           // 清空草稿
