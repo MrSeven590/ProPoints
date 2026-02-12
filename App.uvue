@@ -1,8 +1,5 @@
 <script lang="uts">
-  import { initStorage, resetAllStorage } from './storage/init.uts'
-
-  // 调试模式：设为 true 时启动自动清除所有历史存储数据
-  const DEBUG_MODE = false
+  import { initStorage } from './storage/init.uts'
 
   // #ifdef APP-ANDROID || APP-HARMONY
   let firstBackTime = 0
@@ -13,12 +10,7 @@
       console.log('App Launch')
       // 初始化存储
       try {
-        if (DEBUG_MODE == true) {
-          console.log('DEBUG_MODE: 清除所有历史存储数据')
-          resetAllStorage()
-        } else {
-          initStorage()
-        }
+        initStorage()
         console.log('Storage 初始化成功')
       } catch (e) {
         console.error('Storage 初始化失败:', e)

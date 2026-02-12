@@ -23,6 +23,14 @@
     </view>
 
     <view class="section">
+      <view class="menu-item danger-item" @click="clearAllData">
+        <text class="menu-icon danger-icon">清</text>
+        <text class="menu-text danger-text">清除所有数据</text>
+        <text class="menu-arrow">></text>
+      </view>
+    </view>
+
+    <view class="section">
       <view class="menu-item" @click="showAbout">
         <text class="menu-icon">关</text>
         <text class="menu-text">关于</text>
@@ -37,6 +45,8 @@
 </template>
 
 <script lang="uts">
+  import { resetAllStorage } from '../../storage/init.uts'
+
   export default {
     methods: {
       goToSettings() {
@@ -52,6 +62,37 @@
       goToRosterImport() {
         uni.navigateTo({
           url: '/pages/mine/roster-import'
+        })
+      },
+      clearAllData() {
+        uni.showModal({
+          title: '警告',
+          content: '此操作将清除所有历史数据，包括：\n• 所有工分录入记录\n• 班级配置\n• 花名册数据\n• 系数配置\n\n此操作不可恢复，确定要继续吗？',
+          confirmText: '确定清除',
+          confirmColor: '#ff3b30',
+          success: (res) => {
+            if (res.confirm == true) {
+              try {
+                resetAllStorage()
+                uni.showToast({
+                  title: '数据已清除',
+                  icon: 'success'
+                })
+                // 延迟重启应用
+                setTimeout(() => {
+                  uni.reLaunch({
+                    url: '/pages/index/index'
+                  })
+                }, 1500)
+              } catch (e) {
+                uni.showToast({
+                  title: '清除失败',
+                  icon: 'none'
+                })
+                console.error('清除数据失败:', e)
+              }
+            }
+          }
         })
       },
       showAbout() {
@@ -119,6 +160,18 @@
   .menu-arrow {
     font-size: 16px;
     color: #cccccc;
+  }
+
+  .danger-item {
+    border-bottom-width: 0;
+  }
+
+  .danger-icon {
+    background-color: #ff3b30;
+  }
+
+  .danger-text {
+    color: #ff3b30;
   }
 
   .version-info {
