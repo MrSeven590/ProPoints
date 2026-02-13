@@ -376,7 +376,7 @@
             }
           } else {
             // 安曲环节：使用默认值，用户可编辑
-            kojiCount = 1200 + (i * 100)
+            kojiCount = 1260
           }
 
           infos.push({

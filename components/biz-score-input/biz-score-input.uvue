@@ -7,6 +7,7 @@
       :class="['points-input', inputClass, disabledInputClass]"
       type="digit"
       :value="displayPoints"
+      placeholder="0.0"
       :disabled="disabled"
       @input="onPointsInput"
       @blur="onPointsBlur"
@@ -71,7 +72,7 @@
         // 内部工分单位值
         internalUnits: 0 as PointsUnits,
         // 显示值（字符串，用于输入框）
-        displayPoints: '0.0' as string
+        displayPoints: '' as string
       }
     },
     computed: {
@@ -103,7 +104,7 @@
           // 外部值变化时同步到内部
           if (newVal != this.internalUnits) {
             this.internalUnits = newVal
-            this.displayPoints = formatPointsUnits(newVal)
+            this.displayPoints = newVal == 0 ? '' : formatPointsUnits(newVal)
           }
         },
         immediate: true
@@ -132,7 +133,7 @@
         units = this.clampValue(units)
         // 更新内部状态
         this.internalUnits = units
-        this.displayPoints = formatPointsUnits(units)
+        this.displayPoints = units == 0 ? '' : formatPointsUnits(units)
         // 发送更新事件
         this.$emit('update:modelValue', units)
       },
@@ -163,7 +164,7 @@
         newUnits = this.clampValue(newUnits)
         // 更新状态
         this.internalUnits = newUnits
-        this.displayPoints = formatPointsUnits(newUnits)
+        this.displayPoints = newUnits == 0 ? '' : formatPointsUnits(newUnits)
         // 发送更新事件
         this.$emit('update:modelValue', newUnits)
       },
@@ -183,7 +184,7 @@
         newUnits = this.clampValue(newUnits)
         // 更新状态
         this.internalUnits = newUnits
-        this.displayPoints = formatPointsUnits(newUnits)
+        this.displayPoints = newUnits == 0 ? '' : formatPointsUnits(newUnits)
         // 发送更新事件
         this.$emit('update:modelValue', newUnits)
       },

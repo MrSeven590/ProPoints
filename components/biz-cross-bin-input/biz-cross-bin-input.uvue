@@ -29,6 +29,7 @@
           class="points-input"
           type="digit"
           :value="displayPoints"
+          placeholder="0.0"
           @input="onPointsInput"
           @blur="onPointsBlur"
         />
@@ -143,7 +144,7 @@
         selectedPersonId: null as number | null,
         selectedPersonName: '' as string,
         pointsUnits: 0 as PointsUnits,
-        displayPoints: '0.0' as string,
+        displayPoints: '' as string,
         sources: [] as AssignmentSourceCreateParams[],
         showPersonPicker: false as boolean,
         // 来源显示列表（预计算）
@@ -178,7 +179,7 @@
       initialPointsUnits: {
         handler(newVal: number) {
           this.pointsUnits = newVal
-          this.displayPoints = formatPointsUnits(newVal)
+          this.displayPoints = newVal == 0 ? '' : formatPointsUnits(newVal)
         },
         immediate: true
       },
@@ -210,7 +211,7 @@
         }
         if ((this.initialPointsUnits as number) > 0) {
           this.pointsUnits = this.initialPointsUnits as number
-          this.displayPoints = formatPointsUnits(this.pointsUnits)
+          this.displayPoints = this.pointsUnits == 0 ? '' : formatPointsUnits(this.pointsUnits)
         }
       },
 
@@ -265,7 +266,7 @@
         // 转换为整数单位（向下取整到 0.1 精度）
         this.pointsUnits = pointsToUnits(inputVal)
         // 更新显示值
-        this.displayPoints = formatPointsUnits(this.pointsUnits)
+        this.displayPoints = this.pointsUnits == 0 ? '' : formatPointsUnits(this.pointsUnits)
         // 通知父组件数据变更
         this.emitChange()
       },
@@ -273,7 +274,7 @@
       onIncrease() {
         // 增加 0.1 分（即 1 单位）
         this.pointsUnits = this.pointsUnits + 1
-        this.displayPoints = formatPointsUnits(this.pointsUnits)
+        this.displayPoints = this.pointsUnits == 0 ? '' : formatPointsUnits(this.pointsUnits)
         this.emitChange()
       },
 
@@ -281,7 +282,7 @@
         // 减少 0.1 分（即 1 单位），最小为 0
         if (this.pointsUnits > 0) {
           this.pointsUnits = this.pointsUnits - 1
-          this.displayPoints = formatPointsUnits(this.pointsUnits)
+          this.displayPoints = this.pointsUnits == 0 ? '' : formatPointsUnits(this.pointsUnits)
           this.emitChange()
         }
       },
