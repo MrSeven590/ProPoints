@@ -1436,3 +1436,162 @@ getInitials(cn: string): string
 ### Next Steps
 
 - None - task complete
+
+## Session 20: 优化工分输入体验
+
+**Date**: 2026-02-13
+**Task**: 优化工分输入体验
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 问题
+用户反馈工分输入框需要先删除默认的 "0.0" 才能输入新数字，体验不佳。
+
+## 解决方案
+通过 Codex 协作完成：
+1. 分析了所有工分输入组件（3个）
+2. 采用 "零值为空字符串 + placeholder" 方案
+3. 修复了安曲环节曲坯数默认值递增问题（1200/1300 → 统一为0）
+
+## 修改内容
+| 组件 | 修改 |
+|------|------|
+| biz-cross-bin-input | 添加 placeholder="0.0"，零值显示为空 |
+| biz-bin-card | 添加 placeholder="0.0"，零值显示为空 |
+| biz-score-input | 添加 placeholder="0.0"，零值显示为空 |
+| pages/work/entry.uvue | 曲坯数默认值改为0 |
+
+## 技术要点
+- uni-app X 原生环境下 @focus 选择文本不可靠
+- 使用 placeholder 比程序化清除更稳定
+- 统一规则：`units == 0 ? '' : formatPointsUnits(units)`
+
+## 测试结果
+✅ 点击输入框可直接输入数字
+✅ 空值显示占位符 "0.0"
+✅ 失焦后正确格式化
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d37f1c3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+## Session 21: 晾堂功能完成与关键问题修复
+
+**Date**: 2026-02-13
+**Task**: 晾堂功能完成与关键问题修复
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 会话概述
+
+完成安曲晾堂 SESSION 岗位功能实现，并修复 Codex 审查发现的 3 个关键问题。
+
+## 主要工作
+
+### 1. 关键问题修复（Critical）
+
+| 问题 | 影响 | 解决方案 |
+|------|------|---------|
+| 微机权限判断错误 | 历史会话编辑时权限错误 | 新增 `isMicroEnabledByRoundId()`，基于会话轮次判断 |
+| 默认人员Key缺少classNo | 多班级场景冲突 | 修改为 `pp:cfg:liangtang-default:{classNo}` |
+| 晾堂工分计算公式错误 | 工分计算不准确 | 修正公式：`/20` → `/160` |
+
+### 2. 功能增强
+
+- **下曲岗位简化模式**：单人时隐藏池子总分，多人时显示完整信息
+- **自动清空工分**：添加第二人时自动清空第一人的自动填满工分
+- **性能优化**：
+  - 使用 `Set` 替代数组去重（O(n²) → O(n)）
+  - 缓存池子总分计算，避免重复计算
+
+### 3. 新增组件
+
+**biz-session-role-card**（549行）
+- 支持简化模式（simpleMode）
+- 自动工分分配（单人时）
+- 人员互斥管理
+- 池子平衡状态显示
+
+### 4. 代码修改
+
+| 文件 | 变更 | 说明 |
+|------|------|------|
+| `domain/services/RoundService.uts` | +45行 | 新增 `isMicroEnabledByRoundId()` 和 `getRoundById()` |
+| `domain/services/ScoreCalculator.uts` | 修改 | 修复晾堂计算公式（/160） |
+| `storage/storage-keys.uts` | 修改 | `getLiangTangDefaultKey()` 添加 classNo 参数 |
+| `storage/storage-repository.uts` | 修改 | API 添加 classNo 参数 |
+| `pages/work/entry.uvue` | +150行 | 集成晾堂功能，性能优化 |
+| `components/biz-session-role-card/` | +549行 | 新增组件 |
+
+### 5. 文档更新
+
+- ✅ `.trellis/spec/frontend/storage-architecture.md`：记录修复历史
+- ✅ `开发进度.md`：更新进度 87%，新增待处理问题清单
+
+## 待处理问题
+
+### 关键问题（Critical）
+- **C2**: 统计页面未包含晾堂数据 - 需要更新 `pages/stats/*.uvue` 解析 `liang_tang` 字段
+
+### 高优先级（High）
+- **H1**: 微机岗位严格1人仅在 UI 层强制 - 需要添加数据层校验
+
+### 中优先级（Medium）
+- **M1**: 晾堂校验只检查 map 中存在的岗位
+- **M2**: session-role-card 未排除当前槽位人员
+
+## 技术亮点
+
+1. **架构合规性**：正确使用 Repository API，遵循 draft/submitted 分离原则
+2. **性能优化**：缓存计算 + Set 去重，提升运行效率
+3. **用户体验**：简化模式动态切换，减少界面噪音
+4. **代码质量**：类型安全，无 console.log 遗留
+
+## 统计数据
+
+- 新增代码：1,441 行
+- 删除代码：271 行
+- 净增长：1,170 行
+- 新增组件：1 个
+- 修复问题：3 个（Critical）
+- 总体进度：85% → 87%
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4c31ce9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

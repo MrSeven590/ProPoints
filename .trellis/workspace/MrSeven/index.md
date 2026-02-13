@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 19
+- **Total Sessions**: 21
 - **Last Active**: 2026-02-13
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1438 | Active |
+| `journal-1.md` | ~1597 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits |
 |---|------|-------|---------|
+| 21 | 2026-02-13 | 晾堂功能完成与关键问题修复 | `4c31ce9` |
+| 20 | 2026-02-13 | 优化工分输入体验 | `d37f1c3` |
 | 19 | 2026-02-13 | 实现统计查询页面并修复草稿覆盖bug | `38e971f` |
 | 18 | 2026-02-13 | 实现工分录入自动保存和跨仓工分重新计算 | `84796ef` |
 | 17 | 2026-02-12 | 工分录入优化和草稿索引重构 | `3599d8c` |
