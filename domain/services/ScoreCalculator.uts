@@ -34,6 +34,7 @@ export function calcSessionTotalPointsUnits(baseKojiCount: number, coef: number)
 
 /**
  * 计算晾堂岗位池子总工分
+ * 公式：floor1(曲坯数量/160 × 岗位系数) × 10
  * 从 StageCoefService 获取岗位系数（优先存储层，回退到硬编码）
  * @param dailyAnQuKojiCount 当日安曲总曲坯数
  * @param roleCode 岗位代码
@@ -41,5 +42,6 @@ export function calcSessionTotalPointsUnits(baseKojiCount: number, coef: number)
  */
 export function calcLiangTangPoolUnits(dailyAnQuKojiCount: number, roleCode: RoleCode): PointsUnits {
   const coef = getLiangTangRoleCoef(roleCode)
-  return calcSessionTotalPointsUnits(dailyAnQuKojiCount, coef)
+  const points = floor1((dailyAnQuKojiCount / 160) * coef)
+  return pointsToUnits(points)
 }

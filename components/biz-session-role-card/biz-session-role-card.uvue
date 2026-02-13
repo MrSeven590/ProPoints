@@ -1,0 +1,548 @@
+<template>
+  <view class="session-role-card">
+    <!-- 标题栏 -->
+    <view class="header">
+      <view class="title-row">
+        <text class="title">{{ roleName }}</text>
+        <view class="scope-badge">
+          <text class="scope-text">晾堂</text>
+        </view>
+      </view>
+      <!-- 池子总分（仅非简化模式显示） -->
+      <view v-if="!simpleMode" class="pool-info">
+        <text class="pool-label">池子总分:</text>
+        <text class="pool-value">{{ displayPoolUnits }}</text>
+      </view>
+    </view>
+
+    <!-- 人员列表 -->
+    <view class="workers-list">
+      <view v-for="(worker, index) in workers" :key="index" class="worker-row">
+        <view class="worker-index">
+          <text class="worker-index-text">{{ index + 1 }}</text>
+        </view>
+        <view class="session-role-worker-selector" @click="onOpenPersonSelector(index)">
+          <text v-if="worker.personId == null" class="placeholder-text">点击选择人员</text>
+          <text v-else class="person-name-text">{{ worker.personName }}</text>
+          <text class="arrow-icon">></text>
+        </view>
+        <!-- 简化模式：只读文本显示工分 -->
+        <view v-if="simpleMode" class="worker-points-readonly">
+          <text class="points-readonly-text">{{ getFormattedPoints(worker.pointsUnits) }}</text>
+        </view>
+        <!-- 正常模式：可编辑输入框 -->
+        <view v-else class="worker-points">
+          <biz-score-input
+            :modelValue="worker.pointsUnits as number"
+            :max="poolUnits"
+            :disabled="isSingleWorker"
+            size="small"
+            @update:modelValue="onWorkerPointsChange(index, $event as number)"
+          />
+        </view>
+        <!-- 删除按钮（非严格1人岗位且人数>1时显示） -->
+        <view v-if="!strictSingle && workers.length > 1" class="remove-worker-btn" @click="onRemoveWorker(index)">
+          <text class="remove-worker-text">×</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 添加人员按钮（非严格1人岗位时显示） -->
+    <view v-if="!strictSingle" class="add-worker-row" @click="onAddWorker">
+      <text class="add-worker-text">+ 添加人员</text>
+    </view>
+
+    <!-- 分配状态提示（仅非简化模式显示） -->
+    <view v-if="!simpleMode" class="status-row">
+      <text :class="['status-text', balanceStatusClass]">{{ balanceStatusText }}</text>
+    </view>
+
+    <!-- 人员选择弹窗 -->
+    <view v-if="showPersonPicker" class="session-picker-mask" @click="onClosePersonSelector">
+      <view class="session-picker-container" @click.stop="">
+        <view class="session-picker-header">
+          <text class="session-picker-title">选择人员</text>
+          <view class="session-picker-close" @click="onClosePersonSelector">
+            <text class="session-picker-close-text">X</text>
+          </view>
+        </view>
+        <biz-worker-selector-pinyin
+          :selectedPersonId="currentEditingPersonId"
+          :occupiedIds="occupiedPersonIds"
+          placeholder="搜索姓名/拼音"
+          @select="onPersonSelect"
+          @clear="onPersonClear"
+        />
+      </view>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+  import { formatPointsUnits } from '../../domain/models/types.uts'
+  import type { PointsUnits, RoleCode } from '../../domain/models/types.uts'
+
+  /**
+   * 岗位工人数据类型
+   */
+  type SessionWorkerData = {
+    personId: number | null
+    personName: string
+    pointsUnits: PointsUnits
+  }
+
+  export default {
+    props: {
+      roleCode: {
+        type: String,
+        default: 'WHEAT_MATERIAL'
+      },
+      roleName: {
+        type: String,
+        default: '麦料'
+      },
+      poolUnits: {
+        type: Number,
+        default: 0
+      },
+      strictSingle: {
+        type: Boolean,
+        default: false
+      },
+      occupiedPersonIds: {
+        type: Array,
+        default: (): number[] => {
+          return [] as number[]
+        }
+      },
+      initialWorkers: {
+        type: Array,
+        default: (): UTSJSONObject[] => {
+          return [] as UTSJSONObject[]
+        }
+      },
+      simpleMode: {
+        type: Boolean,
+        default: false
+      }
+    },
+    emits: ['change'],
+    data() {
+      return {
+        workers: [] as SessionWorkerData[],
+        showPersonPicker: false as boolean,
+        currentEditingIndex: -1 as number,
+        currentEditingPersonId: null as number | null
+      }
+    },
+    computed: {
+      displayPoolUnits(): string {
+        return formatPointsUnits(this.poolUnits as number)
+      },
+      isSingleWorker(): boolean {
+        return this.workers.length == 1
+      },
+      totalAssignedUnits(): PointsUnits {
+        let total = 0
+        for (let i = 0; i < this.workers.length; i++) {
+          total = total + this.workers[i].pointsUnits
+        }
+        return total
+      },
+      balanceStatusClass(): string {
+        const pool = this.poolUnits as number
+        const assigned = this.totalAssignedUnits
+        if (assigned == pool) {
+          return 'status-balanced'
+        } else if (assigned > pool) {
+          return 'status-over'
+        } else {
+          return 'status-under'
+        }
+      },
+      balanceStatusText(): string {
+        const pool = this.poolUnits as number
+        const assigned = this.totalAssignedUnits
+        if (assigned == pool) {
+          return ''
+        } else if (assigned > pool) {
+          const over = assigned - pool
+          return `超出 ${formatPointsUnits(over)} 分`
+        } else {
+          const remain = pool - assigned
+          return `剩余 ${formatPointsUnits(remain)} 分`
+        }
+      }
+    },
+    watch: {
+      initialWorkers: {
+        handler(newVal: UTSJSONObject[]) {
+          this.initWorkersFromProps(newVal)
+        },
+        immediate: true
+      },
+      poolUnits: {
+        handler(newVal: number) {
+          // 池子总分变化时，如果只有1人，自动更新工分
+          if (this.workers.length == 1) {
+            this.workers[0].pointsUnits = newVal
+            this.emitChange()
+          }
+        }
+      }
+    },
+    mounted() {
+      // 如果没有初始数据，添加默认1人
+      if (this.workers.length == 0) {
+        this.addDefaultWorker()
+      }
+    },
+    methods: {
+      initWorkersFromProps(data: UTSJSONObject[]) {
+        if (data.length == 0) {
+          // 无初始数据，添加默认1人
+          this.addDefaultWorker()
+          return
+        }
+        const list: SessionWorkerData[] = []
+        for (let i = 0; i < data.length; i++) {
+          const w = data[i]
+          list.push({
+            personId: w['personId'] != null ? w['personId'] as number : null,
+            personName: w['personName'] != null ? w['personName'] as string : '',
+            pointsUnits: w['pointsUnits'] != null ? w['pointsUnits'] as number : 0
+          } as SessionWorkerData)
+        }
+        this.workers = list
+      },
+
+      addDefaultWorker() {
+        const pool = this.poolUnits as number
+        this.workers = [{
+          personId: null,
+          personName: '',
+          pointsUnits: pool
+        } as SessionWorkerData]
+      },
+
+      onOpenPersonSelector(index: number) {
+        this.currentEditingIndex = index
+        this.currentEditingPersonId = this.workers[index].personId
+        this.showPersonPicker = true
+      },
+
+      onClosePersonSelector() {
+        this.showPersonPicker = false
+        this.currentEditingIndex = -1
+      },
+
+      onPersonSelect(payload: UTSJSONObject) {
+        const id = payload['id']
+        const name = payload['name']
+        if (id != null && name != null && this.currentEditingIndex >= 0) {
+          this.workers[this.currentEditingIndex].personId = id as number
+          this.workers[this.currentEditingIndex].personName = name as string
+          this.showPersonPicker = false
+          this.currentEditingIndex = -1
+          this.emitChange()
+        }
+      },
+
+      onPersonClear() {
+        if (this.currentEditingIndex >= 0 && this.currentEditingIndex < this.workers.length) {
+          this.workers[this.currentEditingIndex].personId = null
+          this.workers[this.currentEditingIndex].personName = ''
+          this.showPersonPicker = false
+          this.currentEditingIndex = -1
+          this.emitChange()
+        }
+      },
+
+      onWorkerPointsChange(index: number, newUnits: number) {
+        this.workers[index].pointsUnits = newUnits
+        this.emitChange()
+      },
+
+      onAddWorker() {
+        // 记录添加前的人数
+        const previousCount = this.workers.length
+
+        this.workers.push({
+          personId: null,
+          personName: '',
+          pointsUnits: 0
+        } as SessionWorkerData)
+
+        // 如果从1人变为2人，清空第一个人的自动填满的工分
+        if (previousCount == 1 && this.workers.length == 2) {
+          this.workers[0].pointsUnits = 0
+        }
+
+        this.emitChange()
+      },
+
+      onRemoveWorker(index: number) {
+        if (this.workers.length > 1) {
+          this.workers.splice(index, 1)
+          // 如果只剩1人，自动填满工分
+          if (this.workers.length == 1) {
+            this.workers[0].pointsUnits = this.poolUnits as number
+          }
+          this.emitChange()
+        }
+      },
+
+      emitChange() {
+        const workersData: UTSJSONObject[] = []
+        for (let i = 0; i < this.workers.length; i++) {
+          const w = this.workers[i]
+          workersData.push({
+            personId: w.personId,
+            personName: w.personName,
+            pointsUnits: w.pointsUnits
+          } as UTSJSONObject)
+        }
+        const payload = {
+          roleCode: this.roleCode,
+          workers: workersData,
+          totalAssignedUnits: this.totalAssignedUnits
+        } as UTSJSONObject
+        this.$emit('change', payload)
+      },
+
+      getFormattedPoints(points: number): string {
+        return formatPointsUnits(points)
+      }
+    }
+  }
+</script>
+
+<style>
+  .session-role-card {
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+  }
+
+  .header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .title-row {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .title {
+    font-size: 15px;
+    font-weight: bold;
+    color: #333333;
+    margin-right: 8px;
+  }
+
+  .scope-badge {
+    background-color: #e6f7ff;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  .scope-text {
+    font-size: 10px;
+    color: #1890ff;
+  }
+
+  .pool-info {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .pool-label {
+    font-size: 12px;
+    color: #999999;
+    margin-right: 4px;
+  }
+
+  .pool-value {
+    font-size: 14px;
+    font-weight: bold;
+    color: #1890ff;
+  }
+
+  .workers-list {
+    margin-bottom: 8px;
+  }
+
+  .worker-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
+    border-bottom-color: #f0f0f0;
+  }
+
+  .worker-index {
+    width: 24px;
+    height: 24px;
+    background-color: #f5f5f5;
+    border-radius: 12px;
+    justify-content: center;
+    align-items: center;
+    margin-right: 8px;
+  }
+
+  .worker-index-text {
+    font-size: 12px;
+    color: #666666;
+  }
+
+  .session-role-worker-selector {
+    flex: 1;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    background-color: #f5f7fa;
+    border-radius: 4px;
+    padding: 6px 10px;
+    margin-right: 8px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+  }
+
+  .placeholder-text {
+    font-size: 13px;
+    color: #999999;
+  }
+
+  .person-name-text {
+    font-size: 13px;
+    color: #333333;
+  }
+
+  .arrow-icon {
+    font-size: 12px;
+    color: #999999;
+  }
+
+  .worker-points {
+    width: 120px;
+  }
+
+  .worker-points-readonly {
+    width: 120px;
+    padding: 6px 10px;
+    background-color: #f5f5f5;
+    border-radius: 4px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .points-readonly-text {
+    font-size: 14px;
+    color: #333333;
+    font-weight: normal;
+  }
+
+  .remove-worker-btn {
+    width: 24px;
+    height: 24px;
+    background-color: #fff0f0;
+    border-radius: 12px;
+    justify-content: center;
+    align-items: center;
+    margin-left: 8px;
+  }
+
+  .remove-worker-text {
+    font-size: 14px;
+    color: #ff4d4f;
+  }
+
+  .add-worker-row {
+    padding: 8px 0;
+    align-items: center;
+  }
+
+  .add-worker-text {
+    font-size: 13px;
+    color: #1890ff;
+  }
+
+  .status-row {
+    padding-top: 8px;
+    border-top-width: 1px;
+    border-top-style: solid;
+    border-top-color: #f0f0f0;
+  }
+
+  .status-text {
+    font-size: 12px;
+  }
+
+  .status-balanced {
+    color: #52c41a;
+  }
+
+  .status-over {
+    color: #ff4d4f;
+  }
+
+  .status-under {
+    color: #faad14;
+  }
+
+  .session-picker-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+  }
+
+  .session-picker-container {
+    width: 320px;
+    max-height: 500px;
+    background-color: #ffffff;
+    border-radius: 12px;
+    padding: 16px;
+  }
+
+  .session-picker-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .session-picker-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333333;
+  }
+
+  .session-picker-close {
+    width: 28px;
+    height: 28px;
+    justify-content: center;
+    align-items: center;
+    background-color: #f0f2f5;
+    border-radius: 14px;
+  }
+
+  .session-picker-close-text {
+    font-size: 14px;
+    color: #666666;
+  }
+</style>

@@ -615,6 +615,44 @@ export function isMicroEnabledForCurrentRound(classNo: number): boolean {
   return false
 }
 
+/**
+ * 根据轮次 ID 获取微机计分权（用于历史会话编辑）
+ * @param roundId 轮次 ID
+ * @returns 是否有计分权，轮次不存在时返回 false
+ */
+export function isMicroEnabledByRoundId(roundId: number | null): boolean {
+  if (roundId == null) {
+    return false
+  }
+
+  const allRounds = loadRounds()
+  for (let i = 0; i < allRounds.length; i++) {
+    const id = allRounds[i]['id'] as number
+    if (id == roundId) {
+      const microEnabled = allRounds[i]['micro_enabled'] as number
+      return microEnabled == 1
+    }
+  }
+
+  return false
+}
+
+/**
+ * 根据轮次 ID 获取轮次对象
+ * @param roundId 轮次 ID
+ * @returns 轮次对象，不存在时返回 null
+ */
+export function getRoundById(roundId: number): FermentRound | null {
+  const allRounds = loadRounds()
+  for (let i = 0; i < allRounds.length; i++) {
+    const id = allRounds[i]['id'] as number
+    if (id == roundId) {
+      return jsonToRound(allRounds[i])
+    }
+  }
+  return null
+}
+
 // ============================================
 // 手动切换轮次
 // ============================================

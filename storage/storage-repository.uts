@@ -370,15 +370,15 @@ export function loadDuiQuRoom(): string | null {
 /**
  * 保存安曲晾堂默认人员
  */
-export function saveLiangTangDefault(defaults: UTSJSONObject): void {
-  saveData(getLiangTangDefaultKey(), defaults)
+export function saveLiangTangDefault(classNo: number, defaults: UTSJSONObject): void {
+  saveData(getLiangTangDefaultKey(classNo), defaults)
 }
 
 /**
  * 加载安曲晾堂默认人员
  */
-export function loadLiangTangDefault(): UTSJSONObject | null {
-  return loadData(getLiangTangDefaultKey())
+export function loadLiangTangDefault(classNo: number): UTSJSONObject | null {
+  return loadData(getLiangTangDefaultKey(classNo))
 }
 
 /**

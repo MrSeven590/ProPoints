@@ -154,6 +154,38 @@ saveSubmittedSession(...) {
 2. 提交草稿 → 草稿正确删除
 3. 统计查询 → 只显示已提交
 
+### Bug: 晾堂功能关键问题修复 (2026-02-13)
+
+**问题 1: 微机权限判断错误**
+- 使用 `isMicroEnabledForCurrentRound()` 基于当前轮次
+- 编辑历史会话时会使用错误的权限状态
+- `microEnabled` 不会在页面显示/轮次变化时刷新
+
+**解决方案**:
+- 添加 `isMicroEnabledByRoundId(roundId)` 方法
+- `initLiangTangSection()` 使用会话的 `roundId` 而非当前轮次
+- `loadExistingSession()` 加载会话后刷新 `microEnabled`
+
+**问题 2: 默认人员 Key 缺少班级号**
+- 使用 `pp:cfg:liangtang-default` (全局)
+- 多班级场景会冲突
+
+**解决方案**:
+- 修改为 `pp:cfg:liangtang-default:{classNo}`
+- 所有调用处传入 `classNo` 参数
+
+**问题 3: 晾堂工分计算公式错误**
+- 使用 `/20` 作为基数
+- 正确公式应为 `/160`
+
+**解决方案**:
+- `calcLiangTangPoolUnits()` 改为 `floor1(曲坯数/160 × 系数) × 10`
+
+**验证要点**:
+1. 编辑历史会话 → 微机权限正确
+2. 多班级场景 → 默认人员不冲突
+3. 晾堂工分计算 → 使用正确公式
+
 ---
 
 ## 性能考虑

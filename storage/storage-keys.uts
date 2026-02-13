@@ -128,11 +128,11 @@ export function getDuiQuRoomKey(): string {
 
 /**
  * 安曲晾堂默认人员 Key
- * 格式: pp:cfg:liangtang-default
+ * 格式: pp:cfg:liangtang-default:{classNo}
  * 存储: 安曲晾堂各岗位默认人员
  */
-export function getLiangTangDefaultKey(): string {
-  return `${KEY_PREFIX}:cfg:liangtang-default`
+export function getLiangTangDefaultKey(classNo: number): string {
+  return `${KEY_PREFIX}:cfg:liangtang-default:${classNo}`
 }
 
 /**

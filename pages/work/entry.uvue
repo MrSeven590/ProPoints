@@ -89,6 +89,70 @@
           />
         </view>
       </view>
+
+      <!-- 晾堂岗位区域（SESSION，仅安曲环节显示，放在最后） -->
+      <view class="section" v-if="showLiangTangSection">
+        <view class="section-header">
+          <text class="section-title section-header-title">晾堂岗位</text>
+          <view class="liangtang-info">
+            <text class="liangtang-info-text">基数: {{ calcDailyAnQuKojiCount() }} 曲坯</text>
+          </view>
+        </view>
+
+        <!-- 麦料参数（严格1人） -->
+        <biz-session-role-card
+          roleCode="WHEAT_MATERIAL"
+          roleName="麦料参数"
+          :poolUnits="calcWheatMaterialPoolUnits()"
+          :strictSingle="true"
+          :simpleMode="true"
+          :occupiedPersonIds="occupiedIds"
+          :initialWorkers="wheatMaterialWorkers"
+          @change="onLiangTangRoleChange"
+        />
+
+        <!-- 守机（严格1人） -->
+        <biz-session-role-card
+          roleCode="MACHINE_GUARD"
+          roleName="守机"
+          :poolUnits="calcMachineGuardPoolUnits()"
+          :strictSingle="true"
+          :simpleMode="true"
+          :occupiedPersonIds="occupiedIds"
+          :initialWorkers="machineGuardWorkers"
+          @change="onLiangTangRoleChange"
+        />
+
+        <!-- 下曲 -->
+        <biz-session-role-card
+          roleCode="KOJI_UNLOADER"
+          roleName="下曲"
+          :poolUnits="calcKojiUnloaderPoolUnits()"
+          :strictSingle="false"
+          :simpleMode="isKojiUnloaderSimpleMode()"
+          :occupiedPersonIds="occupiedIds"
+          :initialWorkers="kojiUnloaderWorkers"
+          @change="onLiangTangRoleChange"
+        />
+
+        <!-- 微机（根据 micro_enabled 显示/隐藏） -->
+        <biz-session-role-card
+          v-if="microEnabled"
+          roleCode="MICRO_OPERATOR"
+          roleName="微机"
+          :poolUnits="calcMicroOperatorPoolUnits()"
+          :strictSingle="true"
+          :simpleMode="true"
+          :occupiedPersonIds="occupiedIds"
+          :initialWorkers="microOperatorWorkers"
+          @change="onLiangTangRoleChange"
+        />
+
+        <!-- 微机禁用提示 -->
+        <view v-if="!microEnabled" class="micro-disabled-hint">
+          <text class="micro-disabled-text">本轮次微机岗位不计分</text>
+        </view>
+      </view>
     </scroll-view>
 
     <view class="footer">
@@ -143,9 +207,12 @@
   import type { BinInfo } from '../../domain/services/ScoreAllocator.uts'
   import { allocateCrossBinPoints } from '../../domain/services/ScoreAllocator.uts'
   import { getBinKojiCountFromAnQu } from '../../domain/services/DuiQuBaseService.uts'
-  import { saveDraftSession, saveSubmittedSession, loadSessionForEdit } from '../../storage/storage-repository.uts'
+  import { saveDraftSession, saveSubmittedSession, loadSessionForEdit, saveLiangTangDefault, loadLiangTangDefault } from '../../storage/storage-repository.uts'
   import { validateBinBalance, validateCrossBinSource, mergeValidationResults } from '../../domain/services/Validator.uts'
   import type { ValidationResult } from '../../domain/services/Validator.uts'
+  import { calcLiangTangPoolUnits } from '../../domain/services/ScoreCalculator.uts'
+  import { isMicroEnabledForCurrentRound, isMicroEnabledByRoundId } from '../../domain/services/RoundService.uts'
+  import { getCurrentClassNo } from '../../domain/stores/AppStore.uts'
 
   /**
    * 仓内工人分配数据类型
@@ -171,6 +238,32 @@
     totalPointsUnits: PointsUnits
     assignedUnits: PointsUnits
     workers: BinWorkerData[]
+  }
+
+  /**
+   * 晾堂岗位工人数据类型
+   */
+  type LiangTangWorkerData = {
+    personId: number | null
+    personName: string
+    pointsUnits: PointsUnits
+  }
+
+  /**
+   * 晾堂岗位数据类型
+   */
+  type LiangTangRoleData = {
+    roleCode: RoleCode
+    workers: LiangTangWorkerData[]
+  }
+
+  /**
+   * 晾堂岗位校验配置类型
+   */
+  type LiangTangRoleValidation = {
+    code: string
+    name: string
+    pool: PointsUnits
   }
 
   export default {
@@ -211,7 +304,23 @@
         savedRevision: 0 as number,
         isSubmitting: false as boolean,
         sessionStatus: 'draft' as string,
-        lastAutoSaveErrorTime: 0 as number
+        lastAutoSaveErrorTime: 0 as number,
+        // 晾堂岗位相关状态（仅安曲环节）
+        showLiangTangSection: false as boolean,
+        microEnabled: false as boolean,
+        // 晾堂岗位数据
+        liangTangRolesData: new Map<string, LiangTangRoleData>(),
+        // 晾堂岗位初始工人数据（用于组件初始化）
+        wheatMaterialWorkers: [] as UTSJSONObject[],
+        machineGuardWorkers: [] as UTSJSONObject[],
+        kojiUnloaderWorkers: [] as UTSJSONObject[],
+        microOperatorWorkers: [] as UTSJSONObject[],
+        // 晾堂池子总分缓存（避免重复计算）
+        dailyKojiCount: 0 as number,
+        wheatMaterialPoolUnits: 0 as PointsUnits,
+        machineGuardPoolUnits: 0 as PointsUnits,
+        kojiUnloaderPoolUnits: 0 as PointsUnits,
+        microOperatorPoolUnits: 0 as PointsUnits
       }
     },
     onLoad(options: UTSJSONObject) {
@@ -228,6 +337,8 @@
         this.initCrossBinRole()
         // 初始化默认仓内工人数
         this.defaultBinWorkerCount = getStageBinWorkerCount(this.stageCode)
+        // 初始化晾堂岗位（仅安曲环节）
+        this.initLiangTangSection()
       }
 
       // 解析日期参数（用于加载已有会话）
@@ -267,6 +378,187 @@
       }
     },
     methods: {
+      /**
+       * 初始化晾堂岗位区域（仅安曲环节）
+       */
+      initLiangTangSection() {
+        // 仅安曲环节显示晾堂岗位
+        this.showLiangTangSection = this.stageCode == 'AN_QU'
+        if (this.showLiangTangSection == false) {
+          return
+        }
+        // 获取微机计分权：如果有 roundId，使用会话的轮次；否则使用当前轮次
+        const classNo = getCurrentClassNo()
+        if (this.roundId != null) {
+          this.microEnabled = isMicroEnabledByRoundId(this.roundId)
+        } else {
+          this.microEnabled = isMicroEnabledForCurrentRound(classNo)
+        }
+        // 加载晾堂默认人员
+        this.loadLiangTangDefaults()
+      },
+
+      /**
+       * 加载晾堂默认人员（从上次安曲会话回填）
+       */
+      loadLiangTangDefaults() {
+        const classNo = getCurrentClassNo()
+        const defaults = loadLiangTangDefault(classNo)
+        if (defaults == null) {
+          return
+        }
+        // 回填各岗位默认人员（仅人员，不回填工分）
+        const wheatMaterial = defaults['WHEAT_MATERIAL'] as UTSJSONObject[] | null
+        if (wheatMaterial != null && wheatMaterial.length > 0) {
+          const workers: UTSJSONObject[] = []
+          for (let i = 0; i < wheatMaterial.length; i++) {
+            const w = wheatMaterial[i]
+            workers.push({
+              personId: w['personId'],
+              personName: w['personName'],
+              pointsUnits: 0
+            } as UTSJSONObject)
+          }
+          this.wheatMaterialWorkers = workers
+        }
+        const machineGuard = defaults['MACHINE_GUARD'] as UTSJSONObject[] | null
+        if (machineGuard != null && machineGuard.length > 0) {
+          const workers: UTSJSONObject[] = []
+          for (let i = 0; i < machineGuard.length; i++) {
+            const w = machineGuard[i]
+            workers.push({
+              personId: w['personId'],
+              personName: w['personName'],
+              pointsUnits: 0
+            } as UTSJSONObject)
+          }
+          this.machineGuardWorkers = workers
+        }
+        const kojiUnloader = defaults['KOJI_UNLOADER'] as UTSJSONObject[] | null
+        if (kojiUnloader != null && kojiUnloader.length > 0) {
+          const workers: UTSJSONObject[] = []
+          for (let i = 0; i < kojiUnloader.length; i++) {
+            const w = kojiUnloader[i]
+            workers.push({
+              personId: w['personId'],
+              personName: w['personName'],
+              pointsUnits: 0
+            } as UTSJSONObject)
+          }
+          this.kojiUnloaderWorkers = workers
+        }
+        const microOperator = defaults['MICRO_OPERATOR'] as UTSJSONObject[] | null
+        if (microOperator != null && microOperator.length > 0) {
+          const workers: UTSJSONObject[] = []
+          for (let i = 0; i < microOperator.length; i++) {
+            const w = microOperator[i]
+            workers.push({
+              personId: w['personId'],
+              personName: w['personName'],
+              pointsUnits: 0
+            } as UTSJSONObject)
+          }
+          this.microOperatorWorkers = workers
+        }
+      },
+
+      /**
+       * 计算当日安曲总曲坯数
+       */
+      calcDailyAnQuKojiCount(): number {
+        return this.dailyKojiCount
+      },
+
+      /**
+       * 更新晾堂池子总分缓存
+       * 在 stageBinInfos 变化时调用
+       */
+      updateLiangTangPoolCache() {
+        // 计算当日安曲总曲坯数
+        let total = 0
+        for (let i = 0; i < this.stageBinInfos.length; i++) {
+          total = total + this.stageBinInfos[i].koji_count
+        }
+        this.dailyKojiCount = total
+
+        // 计算各岗位池子总分
+        this.wheatMaterialPoolUnits = calcLiangTangPoolUnits(this.dailyKojiCount, 'WHEAT_MATERIAL' as RoleCode)
+        this.machineGuardPoolUnits = calcLiangTangPoolUnits(this.dailyKojiCount, 'MACHINE_GUARD' as RoleCode)
+        this.kojiUnloaderPoolUnits = calcLiangTangPoolUnits(this.dailyKojiCount, 'KOJI_UNLOADER' as RoleCode)
+        this.microOperatorPoolUnits = calcLiangTangPoolUnits(this.dailyKojiCount, 'MICRO_OPERATOR' as RoleCode)
+      },
+
+      /**
+       * 计算麦料参数岗位池子总分
+       */
+      calcWheatMaterialPoolUnits(): PointsUnits {
+        return this.wheatMaterialPoolUnits
+      },
+
+      /**
+       * 计算守机岗位池子总分
+       */
+      calcMachineGuardPoolUnits(): PointsUnits {
+        return this.machineGuardPoolUnits
+      },
+
+      /**
+       * 计算下曲岗位池子总分
+       */
+      calcKojiUnloaderPoolUnits(): PointsUnits {
+        return this.kojiUnloaderPoolUnits
+      },
+
+      /**
+       * 计算微机岗位池子总分
+       */
+      calcMicroOperatorPoolUnits(): PointsUnits {
+        return this.microOperatorPoolUnits
+      },
+
+      /**
+       * 判断下曲岗位是否使用简化模式
+       * 简化模式：只有1人或没有人时隐藏池子总分和状态
+       */
+      isKojiUnloaderSimpleMode(): boolean {
+        const roleData = this.liangTangRolesData.get('KOJI_UNLOADER')
+        if (roleData == null) {
+          // 没有数据时，检查初始工人数
+          return this.kojiUnloaderWorkers.length <= 1
+        }
+        return roleData.workers.length <= 1
+      },
+
+      /**
+       * 晾堂岗位数据变更
+       */
+      onLiangTangRoleChange(payload: UTSJSONObject) {
+        const roleCode = payload['roleCode'] as string
+        const workers = payload['workers'] as UTSJSONObject[]
+
+        // 解析工人数据
+        const workerList: LiangTangWorkerData[] = []
+        for (let i = 0; i < workers.length; i++) {
+          const w = workers[i]
+          workerList.push({
+            personId: w['personId'] != null ? w['personId'] as number : null,
+            personName: w['personName'] != null ? w['personName'] as string : '',
+            pointsUnits: w['pointsUnits'] != null ? w['pointsUnits'] as number : 0
+          } as LiangTangWorkerData)
+        }
+
+        // 更新晾堂岗位数据
+        this.liangTangRolesData.set(roleCode, {
+          roleCode: roleCode as RoleCode,
+          workers: workerList
+        } as LiangTangRoleData)
+
+        // 更新人员互斥列表
+        this.updateOccupiedIds()
+        // 触发自动保存
+        this.scheduleAutoSave()
+      },
+
       /**
        * 初始化跨仓岗位配置
        */
@@ -336,6 +628,10 @@
         this.selectedBins = bins
         // 更新 stageBinInfos（用于跨仓组件）
         this.updateStageBinInfos(bins)
+        // 更新晾堂池子总分缓存（仅安曲环节）
+        if (this.showLiangTangSection == true) {
+          this.updateLiangTangPoolCache()
+        }
         // 仓集合变更后重新计算跨仓工分分配
         this.recalculateCrossBinSources()
         // 触发自动保存
@@ -546,6 +842,11 @@
           cardData.totalPointsUnits = totalPointsUnits
         }
 
+        // 更新晾堂池子总分缓存（仅安曲环节）
+        if (this.showLiangTangSection == true) {
+          this.updateLiangTangPoolCache()
+        }
+
         // 曲坯数变更后重新计算跨仓工分分配
         this.recalculateCrossBinSources()
         // 不在此处调用 scheduleAutoSave()，避免重复调度
@@ -556,11 +857,11 @@
        * 更新人员互斥列表
        */
       updateOccupiedIds() {
-        const ids: number[] = []
+        const idsSet = new Set<number>()
 
         // 添加跨仓岗位人员
         if (this.crossBinPersonId != null) {
-          ids.push(this.crossBinPersonId as number)
+          idsSet.add(this.crossBinPersonId as number)
         }
 
         // 添加所有仓卡片中的人员（UTS Map 使用 forEach 遍历）
@@ -568,14 +869,26 @@
           for (let i = 0; i < cardData.workers.length; i++) {
             const worker = cardData.workers[i]
             if (worker.personId != null) {
-              const pid = worker.personId as number
-              if (ids.indexOf(pid) == -1) {
-                ids.push(pid)
-              }
+              idsSet.add(worker.personId as number)
             }
           }
         })
 
+        // 添加晾堂岗位人员
+        this.liangTangRolesData.forEach((roleData: LiangTangRoleData, _key: string) => {
+          for (let i = 0; i < roleData.workers.length; i++) {
+            const worker = roleData.workers[i]
+            if (worker.personId != null) {
+              idsSet.add(worker.personId as number)
+            }
+          }
+        })
+
+        // 转换为数组
+        const ids: number[] = []
+        idsSet.forEach((id: number) => {
+          ids.push(id)
+        })
         this.occupiedIds = ids
       },
 
@@ -677,6 +990,17 @@
         this.crossBinPointsUnits = 0
         this.crossBinSources = [] as AssignmentSourceCreateParams[]
 
+        // 重置晾堂岗位数据
+        this.liangTangRolesData = new Map<string, LiangTangRoleData>()
+        this.wheatMaterialWorkers = [] as UTSJSONObject[]
+        this.machineGuardWorkers = [] as UTSJSONObject[]
+        this.kojiUnloaderWorkers = [] as UTSJSONObject[]
+        this.microOperatorWorkers = [] as UTSJSONObject[]
+        // 重新加载晾堂默认人员
+        if (this.showLiangTangSection == true) {
+          this.loadLiangTangDefaults()
+        }
+
         // 自动保存相关状态重置
         this.draftRevision = 0
         this.savedRevision = 0
@@ -759,6 +1083,11 @@
 
           this.selectedBins = bins
           this.stageBinInfos = infos
+
+          // 更新晾堂池子总分缓存（仅安曲环节）
+          if (this.showLiangTangSection == true) {
+            this.updateLiangTangPoolCache()
+          }
         }
 
         // 恢复跨仓岗位数据
@@ -804,6 +1133,55 @@
             this.crossBinPersonName = ''
             this.crossBinPointsUnits = 0
             this.crossBinSources = [] as AssignmentSourceCreateParams[]
+          }
+        }
+
+        // 恢复晾堂岗位数据（仅安曲环节）
+        if (this.showLiangTangSection == true) {
+          // 刷新微机计分权（基于会话的 roundId）
+          if (this.roundId != null) {
+            this.microEnabled = isMicroEnabledByRoundId(this.roundId)
+          }
+
+          const liangTangData = sessionData['liang_tang'] as UTSJSONObject | null
+          if (liangTangData != null) {
+            // 恢复各岗位数据
+            const roleKeys: string[] = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER', 'MICRO_OPERATOR']
+            for (let k = 0; k < roleKeys.length; k++) {
+              const roleKey = roleKeys[k]
+              const roleWorkersRaw = liangTangData[roleKey] as UTSJSONObject[] | null
+              if (roleWorkersRaw != null && roleWorkersRaw.length > 0) {
+                const workerList: LiangTangWorkerData[] = []
+                const workersForInit: UTSJSONObject[] = []
+                for (let j = 0; j < roleWorkersRaw.length; j++) {
+                  const w = roleWorkersRaw[j]
+                  workerList.push({
+                    personId: w['personId'] != null ? w['personId'] as number : null,
+                    personName: w['personName'] != null ? w['personName'] as string : '',
+                    pointsUnits: w['pointsUnits'] != null ? w['pointsUnits'] as number : 0
+                  } as LiangTangWorkerData)
+                  workersForInit.push({
+                    personId: w['personId'],
+                    personName: w['personName'],
+                    pointsUnits: w['pointsUnits']
+                  } as UTSJSONObject)
+                }
+                this.liangTangRolesData.set(roleKey, {
+                  roleCode: roleKey as RoleCode,
+                  workers: workerList
+                } as LiangTangRoleData)
+                // 更新组件初始数据
+                if (roleKey == 'WHEAT_MATERIAL') {
+                  this.wheatMaterialWorkers = workersForInit
+                } else if (roleKey == 'MACHINE_GUARD') {
+                  this.machineGuardWorkers = workersForInit
+                } else if (roleKey == 'KOJI_UNLOADER') {
+                  this.kojiUnloaderWorkers = workersForInit
+                } else if (roleKey == 'MICRO_OPERATOR') {
+                  this.microOperatorWorkers = workersForInit
+                }
+              }
+            }
           }
         }
 
@@ -885,6 +1263,29 @@
           sources: this.crossBinSources
         } as UTSJSONObject
 
+        // 构建晾堂岗位数据（仅安曲环节）
+        let liangTangData: UTSJSONObject | null = null
+        if (this.showLiangTangSection == true) {
+          liangTangData = {} as UTSJSONObject
+          const roleKeys: string[] = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER', 'MICRO_OPERATOR']
+          for (let k = 0; k < roleKeys.length; k++) {
+            const roleKey = roleKeys[k]
+            const roleData = this.liangTangRolesData.get(roleKey)
+            if (roleData != null) {
+              const workersData: UTSJSONObject[] = []
+              for (let j = 0; j < roleData.workers.length; j++) {
+                const w = roleData.workers[j]
+                workersData.push({
+                  personId: w.personId,
+                  personName: w.personName,
+                  pointsUnits: w.pointsUnits
+                } as UTSJSONObject)
+              }
+              liangTangData[roleKey] = workersData
+            }
+          }
+        }
+
         // 构建完整会话数据
         const sessionData = {
           status: status,
@@ -894,6 +1295,7 @@
           round_id: this.roundId,
           bins: binsData,
           cross_bin: crossBinData,
+          liang_tang: liangTangData,
           timestamp: getCurrentTimestamp()
         } as UTSJSONObject
 
@@ -915,6 +1317,9 @@
 
         // 保存到存储
         saveDraftSession(this.sessionDate, this.stageCode, this.roundId, sessionData)
+
+        // 保存晾堂默认人员配置（仅安曲环节）
+        this.saveLiangTangDefaultPersons()
 
         // 更新已保存版本号（避免自动保存重复保存）
         this.savedRevision = this.draftRevision
@@ -1069,6 +1474,59 @@
           }
         }
 
+        // 校验晾堂岗位（仅安曲环节）
+        if (this.showLiangTangSection == true) {
+          // 校验微机计分权（micro_enabled=0 时不允许有微机记录）
+          if (this.microEnabled == false) {
+            const microData = this.liangTangRolesData.get('MICRO_OPERATOR')
+            if (microData != null && microData.workers.length > 0) {
+              let hasMicroWorker = false
+              for (let i = 0; i < microData.workers.length; i++) {
+                if (microData.workers[i].personId != null) {
+                  hasMicroWorker = true
+                  break
+                }
+              }
+              if (hasMicroWorker == true) {
+                uni.showToast({
+                  title: '本轮次微机岗位不计分',
+                  icon: 'none'
+                })
+                return
+              }
+            }
+          }
+
+          // 校验各晾堂岗位工分平衡
+          const liangTangRoles: LiangTangRoleValidation[] = [
+            { code: 'WHEAT_MATERIAL', name: '麦料参数', pool: this.calcWheatMaterialPoolUnits() } as LiangTangRoleValidation,
+            { code: 'MACHINE_GUARD', name: '守机', pool: this.calcMachineGuardPoolUnits() } as LiangTangRoleValidation,
+            { code: 'KOJI_UNLOADER', name: '下曲', pool: this.calcKojiUnloaderPoolUnits() } as LiangTangRoleValidation
+          ]
+          // 如果微机计分权开启，也校验微机岗位
+          if (this.microEnabled == true) {
+            liangTangRoles.push({ code: 'MICRO_OPERATOR', name: '微机', pool: this.calcMicroOperatorPoolUnits() } as LiangTangRoleValidation)
+          }
+
+          for (let i = 0; i < liangTangRoles.length; i++) {
+            const role = liangTangRoles[i]
+            const roleData = this.liangTangRolesData.get(role.code)
+            if (roleData != null) {
+              let totalAssigned = 0
+              for (let j = 0; j < roleData.workers.length; j++) {
+                totalAssigned = totalAssigned + roleData.workers[j].pointsUnits
+              }
+              if (totalAssigned != role.pool) {
+                uni.showToast({
+                  title: `${role.name}岗位工分未分配完`,
+                  icon: 'none'
+                })
+                return
+              }
+            }
+          }
+        }
+
         uni.showModal({
           title: '提示',
           content: '确认提交工分录入？',
@@ -1084,6 +1542,9 @@
 
                 // 保存到存储
                 saveSubmittedSession(this.sessionDate, this.stageCode, this.roundId, sessionData)
+
+                // 保存晾堂默认人员配置（仅安曲环节）
+                this.saveLiangTangDefaultPersons()
 
                 // 更新会话状态
                 this.sessionStatus = 'submitted'
@@ -1107,6 +1568,39 @@
             }
           }
         })
+      },
+
+      /**
+       * 保存晾堂默认人员配置
+       * 将当前晾堂岗位的人员保存为下次默认值
+       */
+      saveLiangTangDefaultPersons() {
+        if (this.showLiangTangSection == false) {
+          return
+        }
+        const classNo = getCurrentClassNo()
+        const defaults = {} as UTSJSONObject
+        const roleKeys: string[] = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER', 'MICRO_OPERATOR']
+        for (let k = 0; k < roleKeys.length; k++) {
+          const roleKey = roleKeys[k]
+          const roleData = this.liangTangRolesData.get(roleKey)
+          if (roleData != null && roleData.workers.length > 0) {
+            const workersData: UTSJSONObject[] = []
+            for (let j = 0; j < roleData.workers.length; j++) {
+              const w = roleData.workers[j]
+              if (w.personId != null) {
+                workersData.push({
+                  personId: w.personId,
+                  personName: w.personName
+                } as UTSJSONObject)
+              }
+            }
+            if (workersData.length > 0) {
+              defaults[roleKey] = workersData
+            }
+          }
+        }
+        saveLiangTangDefault(classNo, defaults)
       },
 
       // ============================================
@@ -1282,6 +1776,28 @@
 
   .bin-cards {
     margin-top: 4px;
+  }
+
+  .liangtang-info {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .liangtang-info-text {
+    font-size: 12px;
+    color: #666666;
+  }
+
+  .micro-disabled-hint {
+    padding: 12px;
+    background-color: #f5f5f5;
+    border-radius: 8px;
+    align-items: center;
+  }
+
+  .micro-disabled-text {
+    font-size: 13px;
+    color: #999999;
   }
 
   .section-header {
