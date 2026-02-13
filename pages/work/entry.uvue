@@ -16,6 +16,12 @@
           <text class="info-label">环节</text>
           <text class="info-value">{{ stageName }}</text>
         </view>
+        <view class="info-row remark-row" @click="onOpenRemarkPopup">
+          <text class="info-label">备注</text>
+          <text class="info-value remark-value" :class="sessionRemark == '' ? 'remark-placeholder' : ''">
+            {{ sessionRemark == '' ? '点击添加备注' : sessionRemark }}
+          </text>
+        </view>
       </view>
 
       <!-- 发酵仓选择（非堆曲环节） -->
@@ -156,8 +162,8 @@
     </scroll-view>
 
     <view class="footer">
-      <view class="btn btn-secondary" @click="saveDraft">
-        <text class="btn-text btn-text-secondary">保存草稿</text>
+      <view class="btn btn-secondary" @click="onOpenRemarkPopup">
+        <text class="btn-text btn-text-secondary">添加备注</text>
       </view>
       <view class="btn btn-primary" @click="submit">
         <text class="btn-text btn-text-primary">提交确认</text>
@@ -166,11 +172,11 @@
 
     <!-- 日期选择弹窗 -->
     <view v-if="showDatePicker" class="picker-mask" @click="onCloseDatePicker">
-      <view class="date-picker-container" @click.stop="">
-        <view class="date-picker-header">
-          <text class="date-picker-title">选择日期</text>
-          <view class="date-picker-close" @click="onCloseDatePicker">
-            <text class="date-picker-close-text">X</text>
+      <view class="modal-container date-picker-container" @click.stop="">
+        <view class="modal-header">
+          <text class="modal-title">选择日期</text>
+          <view class="modal-close" @click="onCloseDatePicker">
+            <text class="modal-close-text">X</text>
           </view>
         </view>
         <view class="date-picker-content">
@@ -184,12 +190,41 @@
             </view>
           </view>
         </view>
-        <view class="date-picker-actions">
-          <view class="date-picker-btn date-picker-cancel" @click="onCancelDatePicker">
-            <text class="date-picker-btn-text date-picker-cancel-text">取消</text>
+        <view class="modal-actions">
+          <view class="modal-btn modal-btn-cancel" @click="onCancelDatePicker">
+            <text class="modal-btn-text modal-btn-text-cancel">取消</text>
           </view>
-          <view class="date-picker-btn date-picker-confirm" @click="onConfirmDatePicker">
-            <text class="date-picker-btn-text date-picker-confirm-text">确认</text>
+          <view class="modal-btn modal-btn-confirm" @click="onConfirmDatePicker">
+            <text class="modal-btn-text modal-btn-text-confirm">确认</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 备注输入弹窗 -->
+    <view v-if="showRemarkPopup" class="picker-mask" @click="onCloseRemarkPopup">
+      <view class="modal-container remark-popup-container" @click.stop="">
+        <view class="modal-header">
+          <text class="modal-title">添加备注</text>
+          <view class="modal-close" @click="onCloseRemarkPopup">
+            <text class="modal-close-text">X</text>
+          </view>
+        </view>
+        <view class="remark-popup-content">
+          <textarea
+            class="remark-textarea"
+            :value="tempRemark"
+            @input="onRemarkInput"
+            placeholder="请输入备注内容..."
+            :maxlength="500"
+          />
+        </view>
+        <view class="modal-actions">
+          <view class="modal-btn modal-btn-cancel" @click="onCancelRemarkPopup">
+            <text class="modal-btn-text modal-btn-text-cancel">取消</text>
+          </view>
+          <view class="modal-btn modal-btn-confirm" @click="onConfirmRemarkPopup">
+            <text class="modal-btn-text modal-btn-text-confirm">确认</text>
           </view>
         </view>
       </view>
@@ -320,7 +355,11 @@
         wheatMaterialPoolUnits: 0 as PointsUnits,
         machineGuardPoolUnits: 0 as PointsUnits,
         kojiUnloaderPoolUnits: 0 as PointsUnits,
-        microOperatorPoolUnits: 0 as PointsUnits
+        microOperatorPoolUnits: 0 as PointsUnits,
+        // 备注弹窗相关状态
+        showRemarkPopup: false as boolean,
+        tempRemark: '' as string,
+        sessionRemark: '' as string
       }
     },
     onLoad(options: UTSJSONObject) {
@@ -953,6 +992,63 @@
         this.switchSessionDate(newDate)
       },
 
+      // ============================================
+      // 备注弹窗操作
+      // ============================================
+
+      /**
+       * 打开备注弹窗
+       */
+      onOpenRemarkPopup() {
+        this.tempRemark = this.sessionRemark
+        this.showRemarkPopup = true
+      },
+
+      /**
+       * 备注输入处理
+       */
+      onRemarkInput(e: UniInputEvent) {
+        this.tempRemark = e.detail.value
+      },
+
+      /**
+       * 关闭备注弹窗
+       */
+      onCloseRemarkPopup() {
+        this.showRemarkPopup = false
+      },
+
+      /**
+       * 取消备注输入
+       */
+      onCancelRemarkPopup() {
+        this.showRemarkPopup = false
+      },
+
+      /**
+       * 确认备注输入
+       */
+      onConfirmRemarkPopup() {
+        // 检查备注是否真正改变
+        if (this.tempRemark == this.sessionRemark) {
+          this.showRemarkPopup = false
+          return
+        }
+
+        this.sessionRemark = this.tempRemark
+        this.showRemarkPopup = false
+
+        // 立即保存（取消定时器，直接执行保存）
+        this.cancelAutoSave()
+        this.draftRevision = this.draftRevision + 1
+        this.doAutoSave()
+
+        uni.showToast({
+          title: '备注已保存',
+          icon: 'success'
+        })
+      },
+
       /**
        * 切换会话日期
        * - 先保存当前草稿（如有变更）
@@ -1005,6 +1101,11 @@
         this.draftRevision = 0
         this.savedRevision = 0
         this.sessionStatus = 'draft'
+
+        // 重置备注
+        this.sessionRemark = ''
+        this.tempRemark = ''
+        this.showRemarkPopup = false
       },
 
       /**
@@ -1196,6 +1297,12 @@
         if (status != null) {
           this.sessionStatus = status
         }
+
+        // 恢复备注
+        const remark = sessionData['remark'] as string | null
+        if (remark != null) {
+          this.sessionRemark = remark
+        }
       },
 
       /**
@@ -1296,6 +1403,7 @@
           bins: binsData,
           cross_bin: crossBinData,
           liang_tang: liangTangData,
+          remark: this.sessionRemark,
           timestamp: getCurrentTimestamp()
         } as UTSJSONObject
 
@@ -1305,36 +1413,6 @@
       /**
        * 保存草稿
        */
-      saveDraft() {
-        // 取消自动保存定时器
-        this.cancelAutoSave()
-
-        // 进入草稿模式（编辑始终写 draft key）
-        this.sessionStatus = 'draft'
-
-        // 构建会话数据
-        const sessionData = this.buildSessionData('draft')
-
-        // 保存到存储
-        saveDraftSession(this.sessionDate, this.stageCode, this.roundId, sessionData)
-
-        // 保存晾堂默认人员配置（仅安曲环节）
-        this.saveLiangTangDefaultPersons()
-
-        // 更新已保存版本号（避免自动保存重复保存）
-        this.savedRevision = this.draftRevision
-
-        uni.showToast({
-          title: '草稿已保存',
-          icon: 'success'
-        })
-
-        // 返回首页
-        setTimeout(() => {
-          uni.navigateBack()
-        }, 500)
-      },
-
       /**
        * 提交确认
        */
@@ -1898,6 +1976,19 @@
     color: #333333;
   }
 
+  .remark-row {
+    cursor: pointer;
+  }
+
+  .remark-value {
+    flex: 1;
+    text-align: right;
+  }
+
+  .remark-placeholder {
+    color: #999999;
+  }
+
   .placeholder-text {
     font-size: 14px;
     color: #999999;
@@ -1944,7 +2035,7 @@
     color: #666666;
   }
 
-  /* 日期选择弹窗样式 */
+  /* 弹窗遮罩层（共享） */
   .picker-mask {
     position: fixed;
     top: 0;
@@ -1956,27 +2047,27 @@
     align-items: center;
   }
 
-  .date-picker-container {
-    width: 300px;
+  /* 共享 Modal 样式 */
+  .modal-container {
     background-color: #ffffff;
     border-radius: 12px;
     padding: 16px;
   }
 
-  .date-picker-header {
+  .modal-header {
     flex-direction: row;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 16px;
   }
 
-  .date-picker-title {
+  .modal-title {
     font-size: 16px;
     font-weight: bold;
     color: #333333;
   }
 
-  .date-picker-close {
+  .modal-close {
     width: 28px;
     height: 28px;
     justify-content: center;
@@ -1985,9 +2076,50 @@
     border-radius: 14px;
   }
 
-  .date-picker-close-text {
+  .modal-close-text {
     font-size: 14px;
     color: #666666;
+  }
+
+  .modal-actions {
+    flex-direction: row;
+    justify-content: space-between;
+    margin-top: 16px;
+  }
+
+  .modal-btn {
+    flex: 1;
+    height: 40px;
+    justify-content: center;
+    align-items: center;
+    border-radius: 8px;
+    margin: 0 4px;
+  }
+
+  .modal-btn-cancel {
+    background-color: #f0f0f0;
+  }
+
+  .modal-btn-confirm {
+    background-color: #007aff;
+  }
+
+  .modal-btn-text {
+    font-size: 14px;
+    font-weight: bold;
+  }
+
+  .modal-btn-text-cancel {
+    color: #666666;
+  }
+
+  .modal-btn-text-confirm {
+    color: #ffffff;
+  }
+
+  /* 日期选择器特定样式 */
+  .date-picker-container {
+    width: 300px;
   }
 
   .date-picker-content {
@@ -2023,39 +2155,25 @@
     color: #333333;
   }
 
-  .date-picker-actions {
-    flex-direction: row;
-    justify-content: space-between;
-    margin-top: 16px;
+  /* 备注弹窗特定样式 */
+  .remark-popup-container {
+    width: 320px;
   }
 
-  .date-picker-btn {
-    flex: 1;
-    height: 40px;
-    justify-content: center;
-    align-items: center;
-    border-radius: 8px;
-    margin: 0 4px;
+  .remark-popup-content {
+    padding: 8px 0;
   }
 
-  .date-picker-cancel {
-    background-color: #f0f0f0;
-  }
-
-  .date-picker-confirm {
-    background-color: #007aff;
-  }
-
-  .date-picker-btn-text {
+  .remark-textarea {
+    width: 100%;
+    height: 120px;
+    padding: 12px;
     font-size: 14px;
-    font-weight: bold;
-  }
-
-  .date-picker-cancel-text {
-    color: #666666;
-  }
-
-  .date-picker-confirm-text {
-    color: #ffffff;
+    color: #333333;
+    background-color: #f5f5f5;
+    border-radius: 8px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
   }
 </style>

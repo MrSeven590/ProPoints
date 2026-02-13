@@ -64,15 +64,20 @@
               </view>
             </view>
           </view>
-          <!-- 扣分记录 -->
-          <view v-if="record.hasPenalty" class="penalty-section">
-            <text class="penalty-title">扣分记录</text>
+          <!-- 备注区域（包含扣分记录和备注） -->
+          <view v-if="record.hasPenalty || record.remark != ''" class="penalty-section">
+            <text class="penalty-title">备注</text>
+            <!-- 扣分记录 -->
             <view v-for="worker in record.workers" :key="'p' + worker.positionIndex">
               <view v-if="worker.deductedUnits > 0" class="penalty-item">
                 <text class="penalty-person">{{ worker.personName }}</text>
                 <text class="penalty-reason">{{ worker.penaltyReason }}</text>
                 <text class="penalty-amount">-{{ formatPoints(worker.deductedUnits) }}</text>
               </view>
+            </view>
+            <!-- 备注内容 -->
+            <view v-if="record.remark != ''" class="remark-item">
+              <text class="remark-content">{{ record.remark }}</text>
             </view>
           </view>
           <!-- 跳转编辑 -->
@@ -111,6 +116,7 @@
     roundId: number | null
     workers: WorkerInfo[]
     hasPenalty: boolean
+    remark: string
   }
 
   export default {
@@ -223,6 +229,9 @@
                     return a.positionIndex - b.positionIndex
                   })
 
+                  // 读取备注
+                  const remark = session['remark'] as string | null
+
                   if (workerInfos.length > 0) {
                     records.push({
                       date: date,
@@ -230,7 +239,8 @@
                       stageName: stageCode != null ? getStageName(stageCode as StageCode) : '',
                       roundId: roundId,
                       workers: workerInfos,
-                      hasPenalty: hasPenalty
+                      hasPenalty: hasPenalty,
+                      remark: remark != null ? remark : ''
                     } as HistoryRecord)
                   }
                 }
@@ -512,6 +522,16 @@
     font-size: 12px;
     color: #ff4d4f;
     font-weight: bold;
+  }
+
+  .remark-item {
+    padding: 8px 0 4px 0;
+  }
+
+  .remark-content {
+    font-size: 12px;
+    color: #d48806;
+    line-height: 18px;
   }
 
   .history-footer {

@@ -26,6 +26,7 @@
 | [Hook Guidelines](./hook-guidelines.md) | 组合式函数规范 | ✅ Done |
 | [State Management](./state-management.md) | 状态管理方案 | ✅ Done |
 | [Storage Architecture](./storage-architecture.md) | 存储架构与索引策略 | ✅ Done |
+| [Style Guidelines](./style-guidelines.md) | 样式开发规范与共享样式 | ✅ Done |
 | [Quality Guidelines](./quality-guidelines.md) | 代码质量标准 | ✅ Done |
 | [Type Safety](./type-safety.md) | UTS 类型安全规范 | ✅ Done |
 | [Error Handling](./error-handling.md) | 错误处理规范 | ✅ Done |
