@@ -31,6 +31,8 @@
             type="text"
             placeholder="输入姓名"
             :value="newPersonName"
+            :maxlength="20"
+            confirm-type="done"
             @input="onNameInput"
           />
           <view class="btn btn-primary btn-small" @click="addSinglePerson">
@@ -86,6 +88,9 @@
               class="review-input"
               type="text"
               :value="item.name"
+              :maxlength="20"
+              :adjust-position="false"
+              confirm-type="done"
               @input="onEditInput($event as UniInputEvent, index)"
               @blur="finishEdit"
             />
@@ -120,6 +125,7 @@
           type="text"
           placeholder="搜索姓名/拼音"
           :value="searchKeyword"
+          confirm-type="search"
           @input="onSearchInput"
         />
       </view>
@@ -133,6 +139,9 @@
                 class="person-edit-input"
                 type="text"
                 :value="editingPersonName"
+                :maxlength="20"
+                :adjust-position="false"
+                confirm-type="done"
                 @input="onPersonEditInput"
               />
               <text class="action-btn" @click="savePersonEdit(person)">保存</text>
