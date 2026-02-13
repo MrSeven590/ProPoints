@@ -246,6 +246,7 @@
       onPersonClear() {
         this.selectedPersonId = null
         this.selectedPersonName = ''
+        this.showPersonPicker = false
         this.emitChange()
       },
 
