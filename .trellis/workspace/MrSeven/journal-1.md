@@ -1595,3 +1595,125 @@ getInitials(cn: string): string
 ### Next Steps
 
 - None - task complete
+
+## Session 22: 会话备注功能完成与样式重构
+
+**Date**: 2026-02-14
+**Task**: 会话备注功能完成与样式重构
+
+### Summary
+
+完成会话备注功能，包括 Codex 审查修复和样式重构优化
+
+### Main Changes
+
+## 功能实现
+
+| 功能 | 描述 |
+|------|------|
+| 备注输入 | 将"保存草稿"按钮改为"添加备注"，支持多行文本输入（最大500字符） |
+| 数据持久化 | 备注保存到会话数据的 remark 字段 |
+| 基本信息显示 | 工分录入页面基本信息区域显示备注（点击可编辑） |
+| 统计页面显示 | 按发酵仓查询页面在"备注"区域显示扣分记录和备注内容 |
+
+## Codex 审查修复（6项）
+
+| 修复项 | 说明 |
+|--------|------|
+| Toast 时机优化 | 改为立即保存，确保"备注已保存"提示准确 |
+| 变化检测 | 备注未改变时不触发保存，避免无效操作 |
+| 状态重置完善 | 重置 tempRemark 和 showRemarkPopup，避免 UI 状态残留 |
+| 输入处理器一致性 | 改用 :value + @input 模式，保持项目代码一致性 |
+| 删除死代码 | 移除 saveDraft() 方法（28行） |
+| 样式重构 | 提取共享 modal 样式类，消除重复代码 |
+
+## 样式重构
+
+| 改进 | 效果 |
+|------|------|
+| 提取共享样式 | 12 个 .modal-* 共享类（容器、头部、按钮等） |
+| 代码减少 | 删除约 80 行重复样式代码 |
+| 注释更新 | 将"日期选择弹窗样式"改为"弹窗遮罩层（共享）" |
+| 规范文档 | 创建完整的样式开发规范文档 |
+
+## 文档更新
+
+**新增文档**:
+- `.trellis/spec/frontend/style-guidelines.md` - 样式开发规范
+  - ucss 约束说明
+  - 共享 Modal 样式类文档（13个类）
+  - 使用示例和最佳实践
+  - 常见错误对照表
+  - 未来考虑（样式冲突预防、覆盖策略）
+
+**更新文档**:
+- `.trellis/spec/frontend/index.md` - 添加样式规范链接
+- `.trellis/tasks/02-13-session-remark-feature/prd.md` - 任务需求文档
+
+**其他文档**:
+- `数据校验架构.md` - 数据校验架构说明（UI层 + 提交时校验）
+
+## 修改文件
+
+**主要功能**:
+- `pages/work/entry.uvue` (+177, -78)
+  - 添加备注功能（弹窗、数据持久化）
+  - 基本信息区域显示备注
+  - 样式重构（共享 modal 类）
+  - Codex 修复（6项）
+
+- `pages/stats/bin-detail.uvue` (+40, -7)
+  - HistoryRecord 类型添加 remark 字段
+  - 加载历史记录时读取备注
+  - UI 显示备注（与扣分记录合并显示）
+
+**规范文档**:
+- `.trellis/spec/frontend/style-guidelines.md` (新增, 688行)
+- `.trellis/spec/frontend/index.md` (+1行)
+
+**任务文档**:
+- `.trellis/tasks/02-13-session-remark-feature/` (新增)
+  - prd.md, task.json, *.jsonl
+
+## 技术亮点
+
+1. **立即保存机制**: 备注确认后立即保存（取消定时器 → doAutoSave()），确保 Toast 提示准确
+2. **变化检测**: 只在备注真正改变时才保存，避免无效写入
+3. **状态管理**: sessionRemark（已保存）和 tempRemark（编辑中）分离，避免"取消仍保存"的 bug
+4. **样式复用**: 提取共享 modal 样式，未来新增弹窗可直接复用
+5. **代码一致性**: 使用 :value + @input 模式，与项目其他输入组件保持一致
+
+## 验证结果
+
+- ✅ 页面正常加载（352ms）
+- ✅ 无与本次修改相关的错误
+- ✅ 代码质量检查通过（无 console.log、无 any 类型、无非空断言）
+- ✅ 文档同步完成
+- ✅ Codex 审查通过
+
+## 统计
+
+- **提交数**: 3
+- **修改文件**: 4
+- **新增文件**: 6
+- **代码变更**: +490 行, -85 行
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1ed68f1` | (see git log) |
+| `eaa87bf` | (see git log) |
+| `fe5bed2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
