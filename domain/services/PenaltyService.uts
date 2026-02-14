@@ -22,7 +22,7 @@ import {
 import {
   loadData,
   saveData
-} from '../../storage/storage-repository.uts'
+} from '../stores/StorageUnsafe.uts'
 
 // ============================================
 // JSON 转换函数

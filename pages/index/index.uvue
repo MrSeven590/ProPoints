@@ -88,7 +88,7 @@
 
 <script lang="uts">
   import { getTodayDateString } from '../../domain/models/types.uts'
-  import { getSessionsByDate, getAllDraftSessions, deleteDraftSession } from '../../storage/storage-repository.uts'
+  import { getSessionsByDate, getAllDraftSessions, deleteDraftSession } from '../../domain/stores/AppStore.uts'
 
   /**
    * 会话列表项类型

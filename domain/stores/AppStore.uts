@@ -11,8 +11,30 @@ import {
   loadDuiQuRoom,
   saveDuiQuRoom,
   getBinSeqMaxForFloor,
-  setBinSeqMaxForFloor as setBinSeqMaxForFloorInStorage
+  setBinSeqMaxForFloor as setBinSeqMaxForFloorInStorage,
+  saveDraftSession as saveDraftSessionToRepo,
+  saveSubmittedSession as saveSubmittedSessionToRepo,
+  loadSessionForEdit as loadSessionForEditFromRepo,
+  deleteDraftSession as deleteDraftSessionFromRepo,
+  getSessionsByDate as getSessionsByDateFromRepo,
+  getAllDraftSessions as getAllDraftSessionsFromRepo,
+  getSessionsByDateAndStage as getSessionsByDateAndStageFromRepo,
+  saveLiangTangDefault as saveLiangTangDefaultToRepo,
+  loadLiangTangDefault as loadLiangTangDefaultFromRepo,
+  loadPersons as loadPersonsFromRepo,
+  savePersons as savePersonsToRepo,
+  loadRounds as loadRoundsFromRepo,
+  saveRounds as saveRoundsToRepo,
+  loadRoundConfig as loadRoundConfigFromRepo,
+  saveRoundConfig as saveRoundConfigToRepo,
+  loadCoefConfig as loadCoefConfigFromRepo,
+  loadStageRoleDefaults as loadStageRoleDefaultsFromRepo,
+  findAnQuSessionByBinId as findAnQuSessionByBinIdFromRepo,
+  listAllSessionKeys as listAllSessionKeysFromRepo,
+  loadData as loadDataFromRepo
 } from '../../storage/storage-repository.uts'
+
+import { resetAllStorage as resetAllStorageFromInit } from '../../storage/init.uts'
 
 // ============================================
 // 事件名称常量
@@ -150,4 +172,244 @@ export function emitSessionSubmitted(sessionId: string): void {
  */
 export function emitRoundChanged(roundNo: number): void {
   uni.$emit(EVENT_ROUND_CHANGED, { roundNo: roundNo } as UTSJSONObject)
+}
+
+// ============================================
+// 会话操作 (Batch 1)
+// ============================================
+
+/**
+ * 保存草稿会话
+ * @param date 日期 YYYY-MM-DD
+ * @param stageCode 环节代码
+ * @param roundId 轮次ID
+ * @param sessionData 会话数据
+ */
+export function saveDraftSession(
+  date: string,
+  stageCode: string,
+  roundId: number | null,
+  sessionData: UTSJSONObject
+): void {
+  saveDraftSessionToRepo(date, stageCode, roundId, sessionData)
+}
+
+/**
+ * 保存已提交会话
+ * @param date 日期 YYYY-MM-DD
+ * @param stageCode 环节代码
+ * @param roundId 轮次ID
+ * @param sessionData 会话数据
+ */
+export function saveSubmittedSession(
+  date: string,
+  stageCode: string,
+  roundId: number | null,
+  sessionData: UTSJSONObject
+): void {
+  saveSubmittedSessionToRepo(date, stageCode, roundId, sessionData)
+}
+
+/**
+ * 加载会话数据用于编辑（draft 优先）
+ * @param date 日期 YYYY-MM-DD
+ * @param stageCode 环节代码
+ * @param roundId 轮次ID
+ * @returns 会话数据，不存在时返回 null
+ */
+export function loadSessionForEdit(
+  date: string,
+  stageCode: string,
+  roundId: number | null
+): UTSJSONObject | null {
+  return loadSessionForEditFromRepo(date, stageCode, roundId)
+}
+
+/**
+ * 删除草稿会话
+ * @param date 日期 YYYY-MM-DD
+ * @param stageCode 环节代码
+ * @param roundId 轮次ID
+ */
+export function deleteDraftSession(
+  date: string,
+  stageCode: string,
+  roundId: number | null
+): void {
+  deleteDraftSessionFromRepo(date, stageCode, roundId)
+}
+
+/**
+ * 获取某日期的所有已提交会话
+ * @param date 日期 YYYY-MM-DD
+ * @returns 会话数据列表
+ */
+export function getSessionsByDate(date: string): UTSJSONObject[] {
+  return getSessionsByDateFromRepo(date)
+}
+
+/**
+ * 获取所有草稿会话
+ * @returns 草稿会话数据列表
+ */
+export function getAllDraftSessions(): UTSJSONObject[] {
+  return getAllDraftSessionsFromRepo()
+}
+
+/**
+ * 获取某日期某环节的已提交会话
+ * @param date 日期 YYYY-MM-DD
+ * @param stageCode 环节代码
+ * @returns 会话数据列表
+ */
+export function getSessionsByDateAndStage(date: string, stageCode: string): UTSJSONObject[] {
+  return getSessionsByDateAndStageFromRepo(date, stageCode)
+}
+
+// ============================================
+// 晾堂默认值 (Batch 1)
+// ============================================
+
+/**
+ * 保存晾堂默认人员
+ * @param classNo 班级号
+ * @param defaults 默认人员配置
+ */
+export function saveLiangTangDefault(classNo: number, defaults: UTSJSONObject): void {
+  saveLiangTangDefaultToRepo(classNo, defaults)
+}
+
+/**
+ * 加载晾堂默认人员
+ * @param classNo 班级号
+ * @returns 默认人员配置，不存在时返回 null
+ */
+export function loadLiangTangDefault(classNo: number): UTSJSONObject | null {
+  return loadLiangTangDefaultFromRepo(classNo)
+}
+
+// ============================================
+// 人员数据 (Batch 1)
+// ============================================
+
+/**
+ * 加载人员列表
+ * @returns 人员列表
+ */
+export function loadPersons(): UTSJSONObject[] {
+  return loadPersonsFromRepo()
+}
+
+/**
+ * 保存人员列表
+ * @param persons 人员列表
+ */
+export function savePersons(persons: UTSJSONObject[]): void {
+  savePersonsToRepo(persons)
+}
+
+// ============================================
+// 轮次数据 (Batch 2)
+// ============================================
+
+/**
+ * 加载轮次历史
+ * @returns 轮次列表
+ */
+export function loadRounds(): UTSJSONObject[] {
+  return loadRoundsFromRepo()
+}
+
+/**
+ * 保存轮次历史
+ * @param rounds 轮次列表
+ */
+export function saveRounds(rounds: UTSJSONObject[]): void {
+  saveRoundsToRepo(rounds)
+}
+
+/**
+ * 加载轮次配置
+ * @returns 轮次配置，不存在时返回 null
+ */
+export function loadRoundConfig(): UTSJSONObject | null {
+  return loadRoundConfigFromRepo()
+}
+
+/**
+ * 保存轮次配置
+ * @param config 轮次配置
+ */
+export function saveRoundConfig(config: UTSJSONObject): void {
+  saveRoundConfigToRepo(config)
+}
+
+// ============================================
+// 系数与默认值 (Batch 2)
+// ============================================
+
+/**
+ * 加载系数配置
+ * @returns 系数配置，不存在时返回 null
+ */
+export function loadCoefConfig(): UTSJSONObject | null {
+  return loadCoefConfigFromRepo()
+}
+
+/**
+ * 加载环节-岗位默认配置
+ * @returns 环节-岗位默认配置列表
+ */
+export function loadStageRoleDefaults(): UTSJSONObject[] {
+  return loadStageRoleDefaultsFromRepo()
+}
+
+// ============================================
+// 存储扫描 (Storage Scanning)
+// ============================================
+
+/**
+ * 查找指定发酵仓的安曲会话
+ * @param binId 发酵仓ID
+ * @returns 安曲会话数据，不存在时返回 null
+ */
+export function findAnQuSessionByBinId(binId: number): UTSJSONObject | null {
+  return findAnQuSessionByBinIdFromRepo(binId)
+}
+
+/**
+ * 列出所有会话 key
+ * @returns 所有以 'pp:session:' 开头的 key 列表
+ */
+export function listAllSessionKeys(): string[] {
+  return listAllSessionKeysFromRepo()
+}
+
+// ============================================
+// 存储管理 (Storage Management)
+// ============================================
+
+/**
+ * 重置所有存储数据
+ * 清除所有数据并重新初始化默认配置
+ */
+export function resetAllStorage(): void {
+  resetAllStorageFromInit()
+}
+
+// ============================================
+// 通用数据访问 (Generic Data Access)
+// ============================================
+
+/**
+ * 加载存储数据（通用）
+ *
+ * ⚠️ 注意：此方法仅用于需要直接访问存储 key 的特殊场景
+ * 大多数情况应使用上面的专用方法（如 getSessionsByDate 等）
+ *
+ * @param key 存储键
+ * @returns 数据对象，不存在时返回 null
+ */
+export function loadData(key: string): UTSJSONObject | null {
+  return loadDataFromRepo(key)
 }

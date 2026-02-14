@@ -45,7 +45,7 @@
 </template>
 
 <script lang="uts">
-  import { resetAllStorage } from '../../storage/init.uts'
+  import { resetAllStorage } from '../../domain/stores/AppStore.uts'
 
   export default {
     methods: {

@@ -72,7 +72,7 @@
 </template>
 
 <script lang="uts">
-  import { loadPersons } from '../../storage/storage-repository.uts'
+  import { loadPersons } from '../../domain/stores/AppStore.uts'
   import {
     searchPersons,
     groupByPinyinInitial,

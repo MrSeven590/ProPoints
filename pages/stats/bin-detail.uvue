@@ -97,7 +97,7 @@
   import { getTodayDateString, addDaysToDate, formatPointsUnits } from '../../domain/models/types.uts'
   import type { PointsUnits, StageCode } from '../../domain/models/types.uts'
   import { getStageName } from '../../domain/models/stage-session.uts'
-  import { getSessionsByDate } from '../../storage/storage-repository.uts'
+  import { getSessionsByDate } from '../../domain/stores/AppStore.uts'
   import { getCurrentClassNo } from '../../domain/stores/AppStore.uts'
 
   type WorkerInfo = {

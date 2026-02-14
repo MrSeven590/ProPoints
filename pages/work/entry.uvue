@@ -242,7 +242,7 @@
   import type { BinInfo } from '../../domain/services/ScoreAllocator.uts'
   import { allocateCrossBinPoints } from '../../domain/services/ScoreAllocator.uts'
   import { getBinKojiCountFromAnQu } from '../../domain/services/DuiQuBaseService.uts'
-  import { saveDraftSession, saveSubmittedSession, loadSessionForEdit, saveLiangTangDefault, loadLiangTangDefault } from '../../storage/storage-repository.uts'
+  import { saveDraftSession, saveSubmittedSession, loadSessionForEdit, saveLiangTangDefault, loadLiangTangDefault } from '../../domain/stores/AppStore.uts'
   import { validateBinBalance, validateCrossBinSource, mergeValidationResults } from '../../domain/services/Validator.uts'
   import type { ValidationResult } from '../../domain/services/Validator.uts'
   import { calcLiangTangPoolUnits } from '../../domain/services/ScoreCalculator.uts'

@@ -5,7 +5,7 @@
  */
 
 import { StageCode, Scope, RoleCode } from '../models/types.uts'
-import { loadCoefConfig, loadStageRoleDefaults } from '../../storage/storage-repository.uts'
+import { loadCoefConfig, loadStageRoleDefaults } from '../stores/AppStore.uts'
 
 // ============================================
 // 工序系数配置

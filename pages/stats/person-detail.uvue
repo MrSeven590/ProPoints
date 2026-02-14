@@ -87,7 +87,7 @@
   import type { PointsUnits, StageCode } from '../../domain/models/types.uts'
   import { getStageName } from '../../domain/models/stage-session.uts'
   import { calcFinalPoints } from '../../domain/models/assignment.uts'
-  import { getSessionsByDate } from '../../storage/storage-repository.uts'
+  import { getSessionsByDate } from '../../domain/stores/AppStore.uts'
 
   type PointsRecord = {
     date: string

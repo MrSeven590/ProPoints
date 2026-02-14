@@ -18,7 +18,7 @@ import {
   saveRounds,
   loadRoundConfig,
   saveRoundConfig
-} from '../../storage/storage-repository.uts'
+} from '../stores/AppStore.uts'
 
 import {
   emitRoundChanged

@@ -72,8 +72,7 @@
   import type { PointsUnits, StageCode } from '../../domain/models/types.uts'
   import { getStageName } from '../../domain/models/stage-session.uts'
   import { calcFinalPoints } from '../../domain/models/assignment.uts'
-  import { getSessionsByDate, getIndexList, loadData } from '../../storage/storage-repository.uts'
-  import { getDateIndexKey, parseSessionKey } from '../../storage/storage-keys.uts'
+  import { getSessionsByDate } from '../../domain/stores/AppStore.uts'
 
   type MonthStats = {
     entryCount: number
@@ -208,28 +207,22 @@
         let reachedLimit = false
         for (let d = 0; d < 7; d++) {
           const date = addDaysToDate(today, -d)
-          const dateKeys = getIndexList(getDateIndexKey(date))
+          const daySessions = getSessionsByDate(date)
 
-          for (let i = 0; i < dateKeys.length; i++) {
-            const key = dateKeys[i]
-            const parsed = parseSessionKey(key)
-            if (parsed != null) {
-              const sessionData = loadData(key)
-              if (sessionData == null) {
-                continue
-              }
-              let status = 'submitted'
-              const statusVal = sessionData['status'] as string | null
-              if (statusVal != null) {
-                status = statusVal
-              }
+          for (let i = 0; i < daySessions.length; i++) {
+            const sessionData = daySessions[i]
+            const dateVal = sessionData['session_date'] as string | null
+            const stageCodeVal = sessionData['stage_code'] as string | null
+            const roundIdVal = sessionData['round_id'] as number | null
+            const statusVal = sessionData['status'] as string | null
 
+            if (dateVal != null && stageCodeVal != null) {
               sessions.push({
-                date: parsed.date,
-                stageCode: parsed.stageCode,
-                stageName: getStageName(parsed.stageCode as StageCode),
-                roundId: parsed.roundId,
-                status: status
+                date: dateVal,
+                stageCode: stageCodeVal,
+                stageName: getStageName(stageCodeVal as StageCode),
+                roundId: roundIdVal,
+                status: statusVal != null ? statusVal : 'submitted'
               } as RecentSession)
 
               if (sessions.length >= limit) {

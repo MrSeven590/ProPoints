@@ -1,6 +1,127 @@
 # Storage Architecture
 
-> 存储架构设计与索引策略
+> 存储架构设计、分层访问规则与索引策略
+
+---
+
+## 分层访问规则
+
+### 三层架构依赖关系
+
+```
+页面/组件层 (pages/**、components/**)
+  ✅ → AppStore
+  ❌ → storage-repository (禁止)
+  ❌ → storage-keys (禁止)
+
+domain/services 层
+  ✅ → AppStore (推荐)
+  ⚠️ → storage-repository (尽量避免，已有绕过需逐步收敛)
+  ❌ → storage-keys (禁止)
+
+AppStore 层 (domain/stores/AppStore.uts)
+  ✅ → storage-repository (唯一推荐入口)
+
+storage-repository 层
+  ✅ → storage-keys (内部正常引用)
+
+storage 内部模块 (init.uts、oplog.uts)
+  ✅ → storage-repository (内部正常引用)
+```
+
+### 规则说明
+
+| 层级 | 可引用 | 禁止引用 |
+|------|--------|----------|
+| `pages/**`、`components/**` | `AppStore.uts` | `storage-repository.uts`、`storage-keys.uts`、`StorageUnsafe.uts` |
+| `domain/services/**` | `AppStore.uts`（推荐）<br>`StorageUnsafe.uts`（特殊场景） | `storage-keys.uts` |
+| `domain/stores/AppStore.uts` | `storage-repository.uts` | — |
+| `domain/stores/StorageUnsafe.uts` | `storage-repository.uts` | — |
+| `storage/**` 内部 | `storage-repository.uts`、`storage-keys.uts` | — |
+
+### StorageUnsafe 模块
+
+**位置**: `domain/stores/StorageUnsafe.uts`
+
+**用途**: 提供绕过 repository 约束的直接存储访问，仅用于无法通过 repository 标准 API 实现的特殊场景。
+
+**API**:
+- `loadData(key: string): UTSJSONObject | null` — 直接读取存储
+- `saveData(key: string, data: UTSJSONObject): void` — 直接写入存储
+
+**风险**:
+- 绕过索引维护逻辑，可能导致数据不一致
+- 使用错误的 key 可能覆盖或损坏数据
+- 不受三层架构约束保护
+
+**使用场景**:
+- `PenaltyService.uts` — 扣分数据嵌套在 session 内部，需要直接读写 session key
+
+**禁止场景**:
+- 新代码禁止使用此模块
+- pages/components 层禁止引用此模块
+- 能通过 AppStore 标准 API 实现的场景禁止使用
+
+### 历史绕过记录（已修复）
+
+以下文件曾直接绕过架构，现已修复：
+
+**已修复（2026-02-15）：**
+- `DuiQuBaseService.uts` — 使用 `uni.getStorageInfoSync()` 和原始 key 字符串 `:AN_QU:`
+  - 修复：添加 `AppStore.findAnQuSessionByBinId()` 方法
+- `BinService.uts` — 使用 `uni.getStorageInfoSync()` 和原始 key 前缀 `pp:session:`
+  - 修复：添加 `AppStore.listAllSessionKeys()` 方法
+- `AppStore.uts` — 暴露不安全的通用 API `loadData/saveData`
+  - 修复：移动到 `StorageUnsafe.uts` 模块并添加警告文档
+- `PenaltyService.uts` — 使用 `AppStore.loadData/saveData`
+  - 修复：改为从 `StorageUnsafe.uts` 引用
+
+**仍存在的历史遗留（待收敛）：**
+
+**domain/services（绕过 AppStore）：**
+- `RoundService.uts` — loadRounds / saveRounds / loadRoundConfig / saveRoundConfig
+- `StageCoefService.uts` — loadCoefConfig / loadStageRoleDefaults
+
+**pages（绕过 AppStore）：**
+- `pages/work/entry.uvue` — saveDraftSession / saveSubmittedSession 等
+- `pages/stats/index.uvue` — getSessionsByDate / getIndexList / loadData
+- `pages/stats/person-detail.uvue` — getSessionsByDate
+- `pages/stats/date-detail.uvue` — getSessionsByDateAndStage
+- `pages/stats/bin-detail.uvue` — getSessionsByDate
+- `pages/index/index.uvue` — getSessionsByDate / getAllDraftSessions
+- `pages/mine/roster-import.uvue` — loadPersons / savePersons
+
+**components（绕过 AppStore）：**
+- `biz-worker-selector-pinyin.uvue` — loadPersons
+
+**pages 直接引用 storage-keys：**
+- `pages/stats/index.uvue` — getDateIndexKey / parseSessionKey
+
+### 架构检查规则
+
+**新增验证命令（2026-02-15）：**
+
+```bash
+# 禁止在 storage/** 之外直接使用 storage API
+rg "uni\.(getStorageSync|getStorageInfoSync|setStorageSync|removeStorageSync|clearStorageSync)" --glob "!storage/**"
+
+# 禁止在 storage/** 之外使用原始 key 字符串
+rg "pp:(session|idx|cfg|data):" --glob "!storage/**"
+```
+
+**存量检查命令：**
+
+```bash
+# 检查谁引用了 repository（排除 storage 内部和 AppStore）
+rg "storage-repository\.uts" --glob "pages/**" --glob "components/**"
+rg "storage-keys\.uts" --glob "pages/**" --glob "components/**" --glob "domain/services/**"
+```
+
+### 收敛策略
+
+1. **新代码**：严格遵守分层规则，不得新增绕过
+2. **存量代码**：逐步将 services/pages 中的 repository 调用迁移到 AppStore facade 方法
+3. **不安全 API**：仅在无法通过 repository 标准 API 实现的特殊场景使用 `StorageUnsafe.uts`
 
 ---
 

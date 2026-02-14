@@ -1,5 +1,8 @@
 {
   "alwaysApprovedTools": [
-    "ace-text_search"
+    "ace-text_search",
+    "filesystem-read",
+    "terminal-execute",
+    "filesystem-create"
   ]
 }

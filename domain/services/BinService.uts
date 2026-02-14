@@ -7,12 +7,11 @@ import type { BinCode } from '../models/ferment.uts'
 import type { StageCode } from '../models/types.uts'
 import {
   getCurrentClassNo,
-  getBinSeqMaxByFloor
-} from '../stores/AppStore.uts'
-import {
+  getBinSeqMaxByFloor,
   getSessionsByDateAndStage,
+  listAllSessionKeys,
   loadData
-} from '../../storage/storage-repository.uts'
+} from '../stores/AppStore.uts'
 
 // ============================================
 // 历史记录查询
@@ -30,36 +29,31 @@ export function getHistoryMaxSeqNo(
   floorNo: number,
   stageCode: StageCode
 ): number {
-  // 遍历所有存储的会话，查找该楼层的最大 seq_no
-  // 由于 uni.getStorageInfoSync 可以获取所有 key，我们遍历查找
+  // 通过 AppStore 获取所有会话 key，查找该楼层的最大 seq_no
   let maxSeq = 0
 
   try {
-    const info = uni.getStorageInfoSync()
-    const keys = info.keys
+    const keys = listAllSessionKeys()
 
     for (let i = 0; i < keys.length; i++) {
       const key = keys[i]
-      // 只处理会话数据 key
-      if (key.indexOf('pp:session:') == 0) {
-        const sessionData = loadData(key)
-        if (sessionData != null) {
-          // 检查是否匹配环节
-          const sessionStage = sessionData['stage_code'] as string | null
-          if (sessionStage == stageCode) {
-            // 检查 bins 数组
-            const bins = sessionData['bins'] as UTSJSONObject[] | null
-            if (bins != null) {
-              for (let j = 0; j < bins.length; j++) {
-                const bin = bins[j]
-                const binClassNo = bin['class_no'] as number | null
-                const binFloorNo = bin['floor_no'] as number | null
-                const binSeqNo = bin['seq_no'] as number | null
+      const sessionData = loadData(key)
+      if (sessionData != null) {
+        // 检查是否匹配环节
+        const sessionStage = sessionData['stage_code'] as string | null
+        if (sessionStage == stageCode) {
+          // 检查 bins 数组
+          const bins = sessionData['bins'] as UTSJSONObject[] | null
+          if (bins != null) {
+            for (let j = 0; j < bins.length; j++) {
+              const bin = bins[j]
+              const binClassNo = bin['class_no'] as number | null
+              const binFloorNo = bin['floor_no'] as number | null
+              const binSeqNo = bin['seq_no'] as number | null
 
-                if (binClassNo == classNo && binFloorNo == floorNo && binSeqNo != null) {
-                  if (binSeqNo > maxSeq) {
-                    maxSeq = binSeqNo
-                  }
+              if (binClassNo == classNo && binFloorNo == floorNo && binSeqNo != null) {
+                if (binSeqNo > maxSeq) {
+                  maxSeq = binSeqNo
                 }
               }
             }
@@ -122,44 +116,41 @@ export function getLastSubmittedBins(
   let latestBins: BinCode[] = []
 
   try {
-    const info = uni.getStorageInfoSync()
-    const keys = info.keys
+    const keys = listAllSessionKeys()
 
     for (let i = 0; i < keys.length; i++) {
       const key = keys[i]
-      if (key.indexOf('pp:session:') == 0) {
-        const sessionData = loadData(key)
-        if (sessionData != null) {
-          const sessionStage = sessionData['stage_code'] as string | null
-          const sessionDate = sessionData['session_date'] as string | null
-          const sessionStatus = sessionData['status'] as string | null
+      const sessionData = loadData(key)
+      if (sessionData != null) {
+        const sessionStage = sessionData['stage_code'] as string | null
+        const sessionDate = sessionData['session_date'] as string | null
+        const sessionStatus = sessionData['status'] as string | null
 
-          // 只处理已提交的会话，跳过草稿
-          if (sessionStatus != 'submitted') {
-            continue
-          }
+        // 只处理已提交的会话，跳过草稿
+        if (sessionStatus != 'submitted') {
+          continue
+        }
 
-          if (sessionStage == stageCode && sessionDate != null) {
-            // 比较日期，取最新的
-            if (sessionDate > latestDate) {
-              latestDate = sessionDate
-              // 解析 bins
-              const bins = sessionData['bins'] as UTSJSONObject[] | null
-              if (bins != null) {
-                latestBins = []
-                for (let j = 0; j < bins.length; j++) {
-                  const bin = bins[j]
-                  const binClassNo = bin['class_no'] as number | null
-                  const binFloorNo = bin['floor_no'] as number | null
-                  const binSeqNo = bin['seq_no'] as number | null
+        if (sessionStage == stageCode && sessionDate != null) {
+          // 比较日期，取最新的
+          if (sessionDate > latestDate) {
+            latestDate = sessionDate
+            // 解析 bins
+            const bins = sessionData['bins'] as UTSJSONObject[] | null
+            if (bins != null) {
+              latestBins = []
+              for (let j = 0; j < bins.length; j++) {
+                const bin = bins[j]
+                const binClassNo = bin['class_no'] as number | null
+                const binFloorNo = bin['floor_no'] as number | null
+                const binSeqNo = bin['seq_no'] as number | null
 
-                  if (binClassNo == classNo && binFloorNo != null && binSeqNo != null) {
-                    latestBins.push({
-                      class_no: binClassNo,
-                      floor_no: binFloorNo,
-                      seq_no: binSeqNo
-                    } as BinCode)
-                  }
+                if (binClassNo == classNo && binFloorNo != null && binSeqNo != null) {
+                  latestBins.push({
+                    class_no: binClassNo,
+                    floor_no: binFloorNo,
+                    seq_no: binSeqNo
+                  } as BinCode)
                 }
               }
             }

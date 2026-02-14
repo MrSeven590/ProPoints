@@ -4,7 +4,7 @@
  */
 
 import { PointsUnits, RoleCode } from '../models/types.uts'
-import { getSessionsByDateAndStage } from '../../storage/storage-repository.uts'
+import { getSessionsByDateAndStage, findAnQuSessionByBinId } from '../stores/AppStore.uts'
 import { calcSessionTotalPointsUnits } from './ScoreCalculator.uts'
 import { getStageCoef, getLiangTangRoleCoef, getAllLiangTangRoleCoefs } from './StageCoefService.uts'
 
@@ -235,45 +235,41 @@ export type BinKojiCountResult = {
  * @returns 曲坯数量查询结果
  */
 export function getBinKojiCountFromAnQu(binId: number): BinKojiCountResult {
-  // 获取所有存储的会话数据，查找该发酵仓的安曲记录
-  // 注意：这里需要遍历历史数据，实际实现可能需要优化
+  // 通过 AppStore 查找该发酵仓的安曲记录
+  const session = findAnQuSessionByBinId(binId)
 
-  // 由于 uni.getStorageInfoSync 返回所有 key，我们需要遍历查找
-  const storageInfo = uni.getStorageInfoSync()
-  const keys = storageInfo.keys
+  if (session == null) {
+    return {
+      binId: binId,
+      binCode: '',
+      kojiCount: 0,
+      found: false
+    } as BinKojiCountResult
+  }
 
-  for (let i = 0; i < keys.length; i++) {
-    const key = keys[i]
-    // 只处理安曲会话
-    if (key.indexOf(':AN_QU:') == -1) {
-      continue
-    }
+  const bins = session['bins']
+  if (bins == null) {
+    return {
+      binId: binId,
+      binCode: '',
+      kojiCount: 0,
+      found: false
+    } as BinKojiCountResult
+  }
 
-    const data = uni.getStorageSync(key)
-    if (data == null || data == '') {
-      continue
-    }
-
-    const session = data as UTSJSONObject
-    const bins = session['bins']
-    if (bins == null) {
-      continue
-    }
-
-    const binList = bins as UTSJSONObject[]
-    for (let j = 0; j < binList.length; j++) {
-      const bin = binList[j]
-      const id = bin['bin_id']
-      if (id != null && (id as number) == binId) {
-        const kojiCount = bin['koji_count']
-        const binCode = bin['bin_code']
-        return {
-          binId: binId,
-          binCode: binCode != null ? binCode as string : '',
-          kojiCount: kojiCount != null ? kojiCount as number : 0,
-          found: true
-        } as BinKojiCountResult
-      }
+  const binList = bins as UTSJSONObject[]
+  for (let j = 0; j < binList.length; j++) {
+    const bin = binList[j]
+    const id = bin['bin_id']
+    if (id != null && (id as number) == binId) {
+      const kojiCount = bin['koji_count']
+      const binCode = bin['bin_code']
+      return {
+        binId: binId,
+        binCode: binCode != null ? binCode as string : '',
+        kojiCount: kojiCount != null ? kojiCount as number : 0,
+        found: true
+      } as BinKojiCountResult
     }
   }
 

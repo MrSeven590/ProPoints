@@ -730,3 +730,64 @@ export function clearSyncedOplogs(): void {
   const newData = { items: unsynced } as UTSJSONObject
   saveData(getOplogKey(), newData)
 }
+
+// ============ 存储扫描方法（用于替代直接 uni.getStorageInfoSync 调用）============
+
+/**
+ * 查找指定发酵仓的安曲会话
+ * @param binId 发酵仓ID
+ * @returns 安曲会话数据，不存在时返回 null
+ */
+export function findAnQuSessionByBinId(binId: number): UTSJSONObject | null {
+  const info = uni.getStorageInfoSync()
+  const keys = info.keys
+
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i]
+    // 只处理安曲会话
+    if (key.indexOf(':AN_QU:') == -1) {
+      continue
+    }
+
+    const data = uni.getStorageSync(key)
+    if (data == null || data == '') {
+      continue
+    }
+
+    const session = data as UTSJSONObject
+    const bins = session['bins']
+    if (bins == null) {
+      continue
+    }
+
+    const binList = bins as UTSJSONObject[]
+    for (let j = 0; j < binList.length; j++) {
+      const bin = binList[j]
+      const id = bin['bin_id']
+      if (id != null && (id as number) == binId) {
+        return session
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * 列出所有会话 key
+ * @returns 所有以 'pp:session:' 开头的 key 列表
+ */
+export function listAllSessionKeys(): string[] {
+  const info = uni.getStorageInfoSync()
+  const keys = info.keys
+  const sessionKeys: string[] = []
+
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i]
+    if (key.indexOf('pp:session:') == 0) {
+      sessionKeys.push(key)
+    }
+  }
+
+  return sessionKeys
+}

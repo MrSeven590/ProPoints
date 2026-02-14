@@ -180,7 +180,7 @@
 </template>
 
 <script lang="uts">
-  import { loadPersons, savePersons } from '@/storage/storage-repository.uts'
+  import { loadPersons, savePersons } from '@/domain/stores/AppStore.uts'
   import { searchPersons, groupByPinyinInitial, getNonEmptyGroupKeys } from '@/domain/services/PersonSearchService.uts'
   import type { SearchablePerson } from '@/domain/services/PersonSearchService.uts'
 

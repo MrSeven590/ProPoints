@@ -1,0 +1,47 @@
+/**
+ * 不安全的存储访问 API
+ *
+ * ⚠️ 警告：此模块提供绕过 repository 约束的直接存储访问
+ *
+ * 使用场景：
+ * - 仅用于无法通过 repository 标准 API 实现的特殊场景
+ * - 调用者必须完全理解存储架构和 key 命名规则
+ *
+ * 风险：
+ * - 绕过索引维护逻辑，可能导致数据不一致
+ * - 使用错误的 key 可能覆盖或损坏数据
+ * - 不受三层架构约束保护
+ *
+ * 迁移计划：
+ * - 新代码禁止使用此模块
+ * - 存量代码应逐步迁移到 AppStore 标准 API
+ */
+
+import {
+  loadData as loadDataFromRepo,
+  saveData as saveDataToRepo
+} from '../../storage/storage-repository.uts'
+
+/**
+ * 加载存储数据（通用）
+ *
+ * ⚠️ 警告：直接访问存储，绕过 repository 约束
+ *
+ * @param key 存储键（必须是完整的 key，如 'pp:data:penalty'）
+ * @returns 数据对象，不存在时返回 null
+ */
+export function loadData(key: string): UTSJSONObject | null {
+  return loadDataFromRepo(key)
+}
+
+/**
+ * 保存存储数据（通用）
+ *
+ * ⚠️ 警告：直接写入存储，不维护索引
+ *
+ * @param key 存储键（必须是完整的 key，如 'pp:data:penalty'）
+ * @param data 数据对象
+ */
+export function saveData(key: string, data: UTSJSONObject): void {
+  saveDataToRepo(key, data)
+}
