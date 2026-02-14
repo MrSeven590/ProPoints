@@ -4,7 +4,7 @@
  */
 
 import { PointsUnits, RoleCode } from '../models/types.uts'
-import { getSessionsByDateAndStage, findAnQuSessionByBinId } from '../stores/AppStore.uts'
+import { getSessionsByDateAndStage, findAnQuSessionByBinId, findAnQuSessionsByBinIds } from '../stores/AppStore.uts'
 import { calcSessionTotalPointsUnits } from './ScoreCalculator.uts'
 import { getStageCoef, getLiangTangRoleCoef, getAllLiangTangRoleCoefs } from './StageCoefService.uts'
 
@@ -284,13 +284,70 @@ export function getBinKojiCountFromAnQu(binId: number): BinKojiCountResult {
 /**
  * 批量获取发酵仓的曲坯数量
  *
+ * 性能优化：使用批量查询方法，一次扫描返回所有结果
+ *
  * @param binIds 发酵仓ID列表
  * @returns 曲坯数量查询结果列表
  */
 export function getBinKojiCountsFromAnQu(binIds: number[]): BinKojiCountResult[] {
   const results: BinKojiCountResult[] = []
+
+  // 使用批量方法一次性获取所有 session
+  const sessionMap = findAnQuSessionsByBinIds(binIds)
+
   for (let i = 0; i < binIds.length; i++) {
-    results.push(getBinKojiCountFromAnQu(binIds[i]))
+    const binId = binIds[i]
+    const session = sessionMap.get(binId)
+
+    if (session == null) {
+      results.push({
+        binId: binId,
+        binCode: '',
+        kojiCount: 0,
+        found: false
+      } as BinKojiCountResult)
+      continue
+    }
+
+    const bins = session['bins']
+    if (bins == null) {
+      results.push({
+        binId: binId,
+        binCode: '',
+        kojiCount: 0,
+        found: false
+      } as BinKojiCountResult)
+      continue
+    }
+
+    const binList = bins as UTSJSONObject[]
+    let found = false
+    for (let j = 0; j < binList.length; j++) {
+      const bin = binList[j]
+      const id = bin['bin_id']
+      if (id != null && (id as number) == binId) {
+        const kojiCount = bin['koji_count']
+        const binCode = bin['bin_code']
+        results.push({
+          binId: binId,
+          binCode: binCode != null ? binCode as string : '',
+          kojiCount: kojiCount != null ? kojiCount as number : 0,
+          found: true
+        } as BinKojiCountResult)
+        found = true
+        break
+      }
+    }
+
+    if (!found) {
+      results.push({
+        binId: binId,
+        binCode: '',
+        kojiCount: 0,
+        found: false
+      } as BinKojiCountResult)
+    }
   }
+
   return results
 }

@@ -19,7 +19,8 @@
 
 import {
   loadData as loadDataFromRepo,
-  saveData as saveDataToRepo
+  saveData as saveDataToRepo,
+  listAllSessionKeys as listAllSessionKeysFromRepo
 } from '../../storage/storage-repository.uts'
 
 /**
@@ -44,4 +45,15 @@ export function loadData(key: string): UTSJSONObject | null {
  */
 export function saveData(key: string, data: UTSJSONObject): void {
   saveDataToRepo(key, data)
+}
+
+/**
+ * 列出所有会话 key
+ *
+ * ⚠️ 警告：直接扫描存储，绕过索引机制
+ *
+ * @returns 所有以 'pp:session:' 开头的 key 列表
+ */
+export function listAllSessionKeys(): string[] {
+  return listAllSessionKeysFromRepo()
 }

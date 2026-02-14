@@ -735,10 +735,136 @@ export function clearSyncedOplogs(): void {
 
 /**
  * 查找指定发酵仓的安曲会话
+ *
+ * 选择规则（确定性）：
+ * 1. 优先选择 status == 'submitted'
+ * 2. 然后选择最新的 session_date
+ * 3. 最后选择最新的 updated_at（如果存在）
+ *
  * @param binId 发酵仓ID
  * @returns 安曲会话数据，不存在时返回 null
  */
 export function findAnQuSessionByBinId(binId: number): UTSJSONObject | null {
+  const info = uni.getStorageInfoSync()
+  const keys = info.keys
+
+  let bestSession: UTSJSONObject | null = null
+  let bestStatus: string | null = null
+  let bestDate: string | null = null
+  let bestUpdatedAt: number | null = null
+
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i]
+    // 只处理安曲会话
+    if (key.indexOf(':AN_QU:') == -1) {
+      continue
+    }
+
+    const data = uni.getStorageSync(key)
+    if (data == null || data == '') {
+      continue
+    }
+
+    const session = data as UTSJSONObject
+    const bins = session['bins']
+    if (bins == null) {
+      continue
+    }
+
+    // 检查是否包含目标 binId
+    const binList = bins as UTSJSONObject[]
+    let found = false
+    for (let j = 0; j < binList.length; j++) {
+      const bin = binList[j]
+      const id = bin['bin_id']
+      if (id != null && (id as number) == binId) {
+        found = true
+        break
+      }
+    }
+
+    if (!found) {
+      continue
+    }
+
+    // 获取会话属性
+    const status = session['status'] as string | null
+    const sessionDate = session['session_date'] as string | null
+    const updatedAt = session['updated_at'] as number | null
+
+    // 如果是第一个匹配的会话，直接设为最佳
+    if (bestSession == null) {
+      bestSession = session
+      bestStatus = status
+      bestDate = sessionDate
+      bestUpdatedAt = updatedAt
+      continue
+    }
+
+    // 比较规则：
+    // 1. submitted > draft
+    const currentIsSubmitted = status == 'submitted'
+    const bestIsSubmitted = bestStatus == 'submitted'
+
+    if (currentIsSubmitted && !bestIsSubmitted) {
+      // 当前是 submitted，最佳是 draft → 替换
+      bestSession = session
+      bestStatus = status
+      bestDate = sessionDate
+      bestUpdatedAt = updatedAt
+      continue
+    } else if (!currentIsSubmitted && bestIsSubmitted) {
+      // 当前是 draft，最佳是 submitted → 跳过
+      continue
+    }
+
+    // 2. 状态相同，比较日期（最新优先）
+    if (sessionDate != null && bestDate != null) {
+      if (sessionDate > bestDate) {
+        bestSession = session
+        bestStatus = status
+        bestDate = sessionDate
+        bestUpdatedAt = updatedAt
+        continue
+      } else if (sessionDate < bestDate) {
+        continue
+      }
+    }
+
+    // 3. 日期相同，比较 updated_at（最新优先）
+    if (updatedAt != null && bestUpdatedAt != null) {
+      if (updatedAt > bestUpdatedAt) {
+        bestSession = session
+        bestStatus = status
+        bestDate = sessionDate
+        bestUpdatedAt = updatedAt
+      }
+    }
+  }
+
+  return bestSession
+}
+
+/**
+ * 批量查找多个发酵仓的安曲会话
+ *
+ * 性能优化：一次扫描返回所有匹配的 session
+ * 每个 binId 只返回最佳匹配的 session（按照 findAnQuSessionByBinId 的选择规则）
+ *
+ * @param binIds 发酵仓ID列表
+ * @returns Map<binId, session>
+ */
+export function findAnQuSessionsByBinIds(binIds: number[]): Map<number, UTSJSONObject> {
+  const result = new Map<number, UTSJSONObject>()
+
+  // 为每个 binId 初始化最佳匹配记录
+  const bestMatches = new Map<number, {
+    session: UTSJSONObject,
+    status: string | null,
+    date: string | null,
+    updatedAt: number | null
+  }>()
+
   const info = uni.getStorageInfoSync()
   const keys = info.keys
 
@@ -760,17 +886,94 @@ export function findAnQuSessionByBinId(binId: number): UTSJSONObject | null {
       continue
     }
 
+    // 获取会话属性
+    const status = session['status'] as string | null
+    const sessionDate = session['session_date'] as string | null
+    const updatedAt = session['updated_at'] as number | null
+
+    // 检查此会话包含哪些目标 binId
     const binList = bins as UTSJSONObject[]
     for (let j = 0; j < binList.length; j++) {
       const bin = binList[j]
       const id = bin['bin_id']
-      if (id != null && (id as number) == binId) {
-        return session
+      if (id == null) {
+        continue
+      }
+
+      const binId = id as number
+      // 检查是否是目标 binId
+      if (binIds.indexOf(binId) == -1) {
+        continue
+      }
+
+      // 获取当前最佳匹配
+      const currentBest = bestMatches.get(binId)
+
+      if (currentBest == null) {
+        // 第一次匹配，直接设为最佳
+        bestMatches.set(binId, {
+          session: session,
+          status: status,
+          date: sessionDate,
+          updatedAt: updatedAt
+        })
+        continue
+      }
+
+      // 比较规则：
+      // 1. submitted > draft
+      const currentIsSubmitted = status == 'submitted'
+      const bestIsSubmitted = currentBest.status == 'submitted'
+
+      if (currentIsSubmitted && !bestIsSubmitted) {
+        // 当前是 submitted，最佳是 draft → 替换
+        bestMatches.set(binId, {
+          session: session,
+          status: status,
+          date: sessionDate,
+          updatedAt: updatedAt
+        })
+        continue
+      } else if (!currentIsSubmitted && bestIsSubmitted) {
+        // 当前是 draft，最佳是 submitted → 跳过
+        continue
+      }
+
+      // 2. 状态相同，比较日期（最新优先）
+      if (sessionDate != null && currentBest.date != null) {
+        if (sessionDate > currentBest.date) {
+          bestMatches.set(binId, {
+            session: session,
+            status: status,
+            date: sessionDate,
+            updatedAt: updatedAt
+          })
+          continue
+        } else if (sessionDate < currentBest.date) {
+          continue
+        }
+      }
+
+      // 3. 日期相同，比较 updated_at（最新优先）
+      if (updatedAt != null && currentBest.updatedAt != null) {
+        if (updatedAt > currentBest.updatedAt) {
+          bestMatches.set(binId, {
+            session: session,
+            status: status,
+            date: sessionDate,
+            updatedAt: updatedAt
+          })
+        }
       }
     }
   }
 
-  return null
+  // 提取最终结果
+  bestMatches.forEach((value, key) => {
+    result.set(key, value.session)
+  })
+
+  return result
 }
 
 /**

@@ -30,8 +30,7 @@ import {
   loadCoefConfig as loadCoefConfigFromRepo,
   loadStageRoleDefaults as loadStageRoleDefaultsFromRepo,
   findAnQuSessionByBinId as findAnQuSessionByBinIdFromRepo,
-  listAllSessionKeys as listAllSessionKeysFromRepo,
-  loadData as loadDataFromRepo
+  findAnQuSessionsByBinIds as findAnQuSessionsByBinIdsFromRepo
 } from '../../storage/storage-repository.uts'
 
 import { resetAllStorage as resetAllStorageFromInit } from '../../storage/init.uts'
@@ -370,6 +369,12 @@ export function loadStageRoleDefaults(): UTSJSONObject[] {
 
 /**
  * 查找指定发酵仓的安曲会话
+ *
+ * 选择规则（确定性）：
+ * 1. 优先选择 status == 'submitted'
+ * 2. 然后选择最新的 session_date
+ * 3. 最后选择最新的 updated_at（如果存在）
+ *
  * @param binId 发酵仓ID
  * @returns 安曲会话数据，不存在时返回 null
  */
@@ -378,11 +383,15 @@ export function findAnQuSessionByBinId(binId: number): UTSJSONObject | null {
 }
 
 /**
- * 列出所有会话 key
- * @returns 所有以 'pp:session:' 开头的 key 列表
+ * 批量查找多个发酵仓的安曲会话
+ *
+ * 性能优化：一次扫描返回所有匹配的 session
+ *
+ * @param binIds 发酵仓ID列表
+ * @returns Map<binId, session>，每个 binId 只返回最佳匹配的 session
  */
-export function listAllSessionKeys(): string[] {
-  return listAllSessionKeysFromRepo()
+export function findAnQuSessionsByBinIds(binIds: number[]): Map<number, UTSJSONObject> {
+  return findAnQuSessionsByBinIdsFromRepo(binIds)
 }
 
 // ============================================
@@ -395,21 +404,4 @@ export function listAllSessionKeys(): string[] {
  */
 export function resetAllStorage(): void {
   resetAllStorageFromInit()
-}
-
-// ============================================
-// 通用数据访问 (Generic Data Access)
-// ============================================
-
-/**
- * 加载存储数据（通用）
- *
- * ⚠️ 注意：此方法仅用于需要直接访问存储 key 的特殊场景
- * 大多数情况应使用上面的专用方法（如 getSessionsByDate 等）
- *
- * @param key 存储键
- * @returns 数据对象，不存在时返回 null
- */
-export function loadData(key: string): UTSJSONObject | null {
-  return loadDataFromRepo(key)
 }

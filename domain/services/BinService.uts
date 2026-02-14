@@ -8,10 +8,12 @@ import type { StageCode } from '../models/types.uts'
 import {
   getCurrentClassNo,
   getBinSeqMaxByFloor,
-  getSessionsByDateAndStage,
+  getSessionsByDateAndStage
+} from '../stores/AppStore.uts'
+import {
   listAllSessionKeys,
   loadData
-} from '../stores/AppStore.uts'
+} from '../stores/StorageUnsafe.uts'
 
 // ============================================
 // 历史记录查询

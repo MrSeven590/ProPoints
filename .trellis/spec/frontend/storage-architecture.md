@@ -48,6 +48,7 @@ storage 内部模块 (init.uts、oplog.uts)
 **API**:
 - `loadData(key: string): UTSJSONObject | null` — 直接读取存储
 - `saveData(key: string, data: UTSJSONObject): void` — 直接写入存储
+- `listAllSessionKeys(): string[]` — 列出所有会话 key
 
 **风险**:
 - 绕过索引维护逻辑，可能导致数据不一致
@@ -56,6 +57,7 @@ storage 内部模块 (init.uts、oplog.uts)
 
 **使用场景**:
 - `PenaltyService.uts` — 扣分数据嵌套在 session 内部，需要直接读写 session key
+- `BinService.uts` — 需要扫描所有会话 key 进行历史查询
 
 **禁止场景**:
 - 新代码禁止使用此模块
@@ -64,57 +66,34 @@ storage 内部模块 (init.uts、oplog.uts)
 
 ### 历史绕过记录（已修复）
 
-以下文件曾直接绕过架构，现已修复：
+以下文件曾直接绕过架构，现已全部修复（2026-02-15）：
 
-**已修复（2026-02-15）：**
 - `DuiQuBaseService.uts` — 使用 `uni.getStorageInfoSync()` 和原始 key 字符串 `:AN_QU:`
   - 修复：添加 `AppStore.findAnQuSessionByBinId()` 方法
 - `BinService.uts` — 使用 `uni.getStorageInfoSync()` 和原始 key 前缀 `pp:session:`
-  - 修复：添加 `AppStore.listAllSessionKeys()` 方法
+  - 修复：通过 `StorageUnsafe.listAllSessionKeys()` 访问
 - `AppStore.uts` — 暴露不安全的通用 API `loadData/saveData`
   - 修复：移动到 `StorageUnsafe.uts` 模块并添加警告文档
 - `PenaltyService.uts` — 使用 `AppStore.loadData/saveData`
   - 修复：改为从 `StorageUnsafe.uts` 引用
-
-**仍存在的历史遗留（待收敛）：**
-
-**domain/services（绕过 AppStore）：**
-- `RoundService.uts` — loadRounds / saveRounds / loadRoundConfig / saveRoundConfig
-- `StageCoefService.uts` — loadCoefConfig / loadStageRoleDefaults
-
-**pages（绕过 AppStore）：**
-- `pages/work/entry.uvue` — saveDraftSession / saveSubmittedSession 等
-- `pages/stats/index.uvue` — getSessionsByDate / getIndexList / loadData
-- `pages/stats/person-detail.uvue` — getSessionsByDate
-- `pages/stats/date-detail.uvue` — getSessionsByDateAndStage
-- `pages/stats/bin-detail.uvue` — getSessionsByDate
-- `pages/index/index.uvue` — getSessionsByDate / getAllDraftSessions
-- `pages/mine/roster-import.uvue` — loadPersons / savePersons
-
-**components（绕过 AppStore）：**
-- `biz-worker-selector-pinyin.uvue` — loadPersons
-
-**pages 直接引用 storage-keys：**
-- `pages/stats/index.uvue` — getDateIndexKey / parseSessionKey
+- `findAnQuSessionByBinId()` — 缺少确定性的选择规则
+  - 修复：实现确定性选择规则（submitted > draft，最新日期优先，最新 updated_at 优先）
+- `getBinKojiCountsFromAnQu()` — 循环调用导致性能问题
+  - 修复：添加批量方法 `findAnQuSessionsByBinIds()`，一次扫描返回所有结果
 
 ### 架构检查规则
 
-**新增验证命令（2026-02-15）：**
+**加强版验证命令（2026-02-15）：**
 
 ```bash
-# 禁止在 storage/** 之外直接使用 storage API
-rg "uni\.(getStorageSync|getStorageInfoSync|setStorageSync|removeStorageSync|clearStorageSync)" --glob "!storage/**"
+# 规则1：禁止直接使用 storage API（同步+异步）
+rg "uni\.(getStorage|setStorage|removeStorage|clearStorage|getStorageInfo)" --glob "*.uts" --glob "*.uvue" --glob "!storage/**"
 
-# 禁止在 storage/** 之外使用原始 key 字符串
-rg "pp:(session|idx|cfg|data):" --glob "!storage/**"
-```
+# 规则2：禁止使用原始 key 字符串
+rg "pp:(session|idx|cfg|data):" --glob "*.uts" --glob "*.uvue" --glob "!storage/**"
 
-**存量检查命令：**
-
-```bash
-# 检查谁引用了 repository（排除 storage 内部和 AppStore）
-rg "storage-repository\.uts" --glob "pages/**" --glob "components/**"
-rg "storage-keys\.uts" --glob "pages/**" --glob "components/**" --glob "domain/services/**"
+# 规则3：禁止 pages/components 引用 StorageUnsafe
+rg "StorageUnsafe\.uts" --glob "pages/**" --glob "components/**"
 ```
 
 ### 收敛策略
