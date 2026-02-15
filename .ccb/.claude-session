@@ -1,0 +1,14 @@
+{
+  "session_id": "ai-1771144979-3492322",
+  "ccb_project_id": "ae8b147693249bb0fdf18ed84c72158dc511f6f9a3ab16ca2969a109dd5de537",
+  "work_dir": "/home/zhang/HBbuilderProjects/ProPoints",
+  "work_dir_norm": "/home/zhang/HBbuilderProjects/ProPoints",
+  "start_dir": "/home/zhang/HBbuilderProjects/ProPoints",
+  "terminal": "tmux",
+  "active": true,
+  "started_at": "2026-02-01 14:20:54",
+  "updated_at": "2026-02-15 16:42:59",
+  "pane_id": "%0",
+  "pane_title_marker": "CCB-Claude",
+  "ended_at": "2026-02-15 16:40:29"
+}
