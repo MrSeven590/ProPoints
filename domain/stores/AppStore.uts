@@ -28,6 +28,7 @@ import {
   loadRoundConfig as loadRoundConfigFromRepo,
   saveRoundConfig as saveRoundConfigToRepo,
   loadCoefConfig as loadCoefConfigFromRepo,
+  saveCoefConfig as saveCoefConfigToRepo,
   loadStageRoleDefaults as loadStageRoleDefaultsFromRepo,
   findAnQuSessionByBinId as findAnQuSessionByBinIdFromRepo,
   findAnQuSessionsByBinIds as findAnQuSessionsByBinIdsFromRepo
@@ -353,6 +354,14 @@ export function saveRoundConfig(config: UTSJSONObject): void {
  */
 export function loadCoefConfig(): UTSJSONObject | null {
   return loadCoefConfigFromRepo()
+}
+
+/**
+ * 保存系数配置
+ * @param config 系数配置对象
+ */
+export function saveCoefConfig(config: UTSJSONObject): void {
+  saveCoefConfigToRepo(config)
 }
 
 /**

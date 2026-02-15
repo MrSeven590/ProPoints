@@ -1977,7 +1977,6 @@
   }
 
   .remark-row {
-    cursor: pointer;
   }
 
   .remark-value {

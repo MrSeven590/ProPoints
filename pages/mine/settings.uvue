@@ -1,5 +1,5 @@
 <template>
-  <view class="page-container">
+  <scroll-view class="page-container" scroll-y="true">
     <view class="section">
       <text class="section-title">管理员信息</text>
       <view class="form-item">
@@ -10,6 +10,100 @@
           placeholder="请输入管理员姓名"
           :value="managerName"
           @input="onManagerNameInput"
+        />
+      </view>
+    </view>
+
+    <view class="section">
+      <text class="section-title">工序系数</text>
+      <view class="form-item">
+        <text class="form-label">安曲</text>
+        <input
+          class="form-input"
+          type="digit"
+          placeholder="请输入系数"
+          :value="stageCoefs.AN_QU"
+          @input="onCoefInput('AN_QU', $event)"
+        />
+      </view>
+      <view class="form-item">
+        <text class="form-label">一次翻曲</text>
+        <input
+          class="form-input"
+          type="digit"
+          placeholder="请输入系数"
+          :value="stageCoefs.YI_FAN"
+          @input="onCoefInput('YI_FAN', $event)"
+        />
+      </view>
+      <view class="form-item">
+        <text class="form-label">二次翻曲</text>
+        <input
+          class="form-input"
+          type="digit"
+          placeholder="请输入系数"
+          :value="stageCoefs.ER_FAN"
+          @input="onCoefInput('ER_FAN', $event)"
+        />
+      </view>
+      <view class="form-item">
+        <text class="form-label">拆曲</text>
+        <input
+          class="form-input"
+          type="digit"
+          placeholder="请输入系数"
+          :value="stageCoefs.CHAI_QU"
+          @input="onCoefInput('CHAI_QU', $event)"
+        />
+      </view>
+      <view class="form-item">
+        <text class="form-label">堆曲</text>
+        <input
+          class="form-input"
+          type="digit"
+          placeholder="请输入系数"
+          :value="stageCoefs.DUI_QU"
+          @input="onCoefInput('DUI_QU', $event)"
+        />
+      </view>
+      <view class="form-item">
+        <text class="form-label">麦料</text>
+        <input
+          class="form-input"
+          type="digit"
+          placeholder="请输入系数"
+          :value="liangTangCoefs.WHEAT_MATERIAL"
+          @input="onCoefInput('WHEAT_MATERIAL', $event)"
+        />
+      </view>
+      <view class="form-item">
+        <text class="form-label">守机</text>
+        <input
+          class="form-input"
+          type="digit"
+          placeholder="请输入系数"
+          :value="liangTangCoefs.MACHINE_GUARD"
+          @input="onCoefInput('MACHINE_GUARD', $event)"
+        />
+      </view>
+      <view class="form-item">
+        <text class="form-label">下曲</text>
+        <input
+          class="form-input"
+          type="digit"
+          placeholder="请输入系数"
+          :value="liangTangCoefs.KOJI_UNLOADER"
+          @input="onCoefInput('KOJI_UNLOADER', $event)"
+        />
+      </view>
+      <view class="form-item">
+        <text class="form-label">微机</text>
+        <input
+          class="form-input"
+          type="digit"
+          placeholder="请输入系数"
+          :value="liangTangCoefs.MICRO_OPERATOR"
+          @input="onCoefInput('MICRO_OPERATOR', $event)"
         />
       </view>
     </view>
@@ -30,20 +124,50 @@
         <text class="btn-text">保存设置</text>
       </view>
     </view>
-  </view>
+  </scroll-view>
 </template>
 
 <script lang="uts">
   import {
     getManagerName,
-    setManagerName
+    setManagerName,
+    loadCoefConfig,
+    saveCoefConfig
   } from '../../domain/stores/AppStore.uts'
+
+  type StageCoefs = {
+    AN_QU: string
+    YI_FAN: string
+    ER_FAN: string
+    CHAI_QU: string
+    DUI_QU: string
+  }
+
+  type LiangTangCoefs = {
+    WHEAT_MATERIAL: string
+    MACHINE_GUARD: string
+    KOJI_UNLOADER: string
+    MICRO_OPERATOR: string
+  }
 
   export default {
     data() {
       return {
         managerName: '',
-        templateName: '未选择'
+        templateName: '未选择',
+        stageCoefs: {
+          AN_QU: '1.1',
+          YI_FAN: '1.25',
+          ER_FAN: '0.9',
+          CHAI_QU: '1.12',
+          DUI_QU: '0.29'
+        } as StageCoefs,
+        liangTangCoefs: {
+          WHEAT_MATERIAL: '0.85',
+          MACHINE_GUARD: '0.8',
+          KOJI_UNLOADER: '0.8',
+          MICRO_OPERATOR: '0.7'
+        } as LiangTangCoefs
       }
     },
     onLoad() {
@@ -52,9 +176,91 @@
     methods: {
       loadSettings() {
         this.managerName = getManagerName()
+
+        const config = loadCoefConfig()
+        if (config != null) {
+          const stages = config['stages']
+          if (stages != null) {
+            const stagesObj = stages as UTSJSONObject
+            const anQu = stagesObj['AN_QU']
+            if (anQu != null) {
+              this.stageCoefs.AN_QU = (anQu as number).toString()
+            }
+            const yiFan = stagesObj['YI_FAN']
+            if (yiFan != null) {
+              this.stageCoefs.YI_FAN = (yiFan as number).toString()
+            }
+            const erFan = stagesObj['ER_FAN']
+            if (erFan != null) {
+              this.stageCoefs.ER_FAN = (erFan as number).toString()
+            }
+            const chaiQu = stagesObj['CHAI_QU']
+            if (chaiQu != null) {
+              this.stageCoefs.CHAI_QU = (chaiQu as number).toString()
+            }
+            const duiQu = stagesObj['DUI_QU']
+            if (duiQu != null) {
+              this.stageCoefs.DUI_QU = (duiQu as number).toString()
+            }
+          }
+
+          const liangTang = config['liangTang']
+          if (liangTang != null) {
+            const liangTangObj = liangTang as UTSJSONObject
+            const wheatMaterial = liangTangObj['WHEAT_MATERIAL']
+            if (wheatMaterial != null) {
+              this.liangTangCoefs.WHEAT_MATERIAL = (wheatMaterial as number).toString()
+            }
+            const machineGuard = liangTangObj['MACHINE_GUARD']
+            if (machineGuard != null) {
+              this.liangTangCoefs.MACHINE_GUARD = (machineGuard as number).toString()
+            }
+            const kojiUnloader = liangTangObj['KOJI_UNLOADER']
+            if (kojiUnloader != null) {
+              this.liangTangCoefs.KOJI_UNLOADER = (kojiUnloader as number).toString()
+            }
+            const microOperator = liangTangObj['MICRO_OPERATOR']
+            if (microOperator != null) {
+              this.liangTangCoefs.MICRO_OPERATOR = (microOperator as number).toString()
+            }
+          }
+        }
       },
       onManagerNameInput(e: UniInputEvent) {
         this.managerName = e.detail.value
+      },
+      validateAndParseCoef(value: string, fieldName: string): number | null {
+        const numValue = parseFloat(value)
+        if (isNaN(numValue) || numValue < 0.1 || numValue > 5.0) {
+          uni.showToast({
+            title: fieldName + ' 系数必须在 0.1 ~ 5.0 范围内',
+            icon: 'none'
+          })
+          return null
+        }
+        return numValue
+      },
+      onCoefInput(field: string, e: UniInputEvent) {
+        const value = e.detail.value
+        if (field == 'AN_QU') {
+          this.stageCoefs.AN_QU = value
+        } else if (field == 'YI_FAN') {
+          this.stageCoefs.YI_FAN = value
+        } else if (field == 'ER_FAN') {
+          this.stageCoefs.ER_FAN = value
+        } else if (field == 'CHAI_QU') {
+          this.stageCoefs.CHAI_QU = value
+        } else if (field == 'DUI_QU') {
+          this.stageCoefs.DUI_QU = value
+        } else if (field == 'WHEAT_MATERIAL') {
+          this.liangTangCoefs.WHEAT_MATERIAL = value
+        } else if (field == 'MACHINE_GUARD') {
+          this.liangTangCoefs.MACHINE_GUARD = value
+        } else if (field == 'KOJI_UNLOADER') {
+          this.liangTangCoefs.KOJI_UNLOADER = value
+        } else if (field == 'MICRO_OPERATOR') {
+          this.liangTangCoefs.MICRO_OPERATOR = value
+        }
       },
       selectTemplate() {
         uni.showToast({
@@ -64,6 +270,54 @@
       },
       saveSettings() {
         setManagerName(this.managerName)
+
+        const anQu = this.validateAndParseCoef(this.stageCoefs.AN_QU, '安曲')
+        if (anQu == null) return
+        const yiFan = this.validateAndParseCoef(this.stageCoefs.YI_FAN, '一次翻曲')
+        if (yiFan == null) return
+        const erFan = this.validateAndParseCoef(this.stageCoefs.ER_FAN, '二次翻曲')
+        if (erFan == null) return
+        const chaiQu = this.validateAndParseCoef(this.stageCoefs.CHAI_QU, '拆曲')
+        if (chaiQu == null) return
+        const duiQu = this.validateAndParseCoef(this.stageCoefs.DUI_QU, '堆曲')
+        if (duiQu == null) return
+        const wheatMaterial = this.validateAndParseCoef(this.liangTangCoefs.WHEAT_MATERIAL, '麦料')
+        if (wheatMaterial == null) return
+        const machineGuard = this.validateAndParseCoef(this.liangTangCoefs.MACHINE_GUARD, '守机')
+        if (machineGuard == null) return
+        const kojiUnloader = this.validateAndParseCoef(this.liangTangCoefs.KOJI_UNLOADER, '下曲')
+        if (kojiUnloader == null) return
+        const microOperator = this.validateAndParseCoef(this.liangTangCoefs.MICRO_OPERATOR, '微机')
+        if (microOperator == null) return
+
+        const existingConfig = loadCoefConfig()
+        const config: UTSJSONObject = existingConfig != null ? existingConfig : {
+          version: 1,
+          name: '默认系数版本',
+          effectiveFrom: 0,
+          effectiveTo: null
+        } as UTSJSONObject
+
+        const stages = {
+          AN_QU: anQu,
+          YI_FAN: yiFan,
+          ER_FAN: erFan,
+          CHAI_QU: chaiQu,
+          DUI_QU: duiQu
+        } as UTSJSONObject
+
+        const liangTang = {
+          WHEAT_MATERIAL: wheatMaterial,
+          MACHINE_GUARD: machineGuard,
+          KOJI_UNLOADER: kojiUnloader,
+          MICRO_OPERATOR: microOperator
+        } as UTSJSONObject
+
+        config['stages'] = stages
+        config['liangTang'] = liangTang
+
+        saveCoefConfig(config)
+
         uni.showToast({
           title: '设置已保存',
           icon: 'success'
@@ -76,7 +330,6 @@
 <style>
   .page-container {
     flex: 1;
-    flex-direction: column;
     background-color: #f5f5f5;
   }
 
