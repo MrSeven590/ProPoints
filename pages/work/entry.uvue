@@ -1633,7 +1633,7 @@
                 })
                 setTimeout(() => {
                   uni.navigateBack()
-                }, 1500)
+                }, 1000)
               } catch (e) {
                 console.error('提交失败:', e)
                 uni.showToast({
