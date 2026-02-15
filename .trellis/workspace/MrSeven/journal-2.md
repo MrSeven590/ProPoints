@@ -112,3 +112,34 @@ pages/work/entry.uvue         (-1 line)    - 删除不支持的 cursor 属性
 ### Next Steps
 
 - None - task complete
+
+## Session 25: 系数版本化重构 - 防止历史数据漂移
+
+**Date**: 2026-02-16
+**Task**: 系数版本化重构 - 防止历史数据漂移
+
+### Summary
+
+实现系数版本化管理，每次修改生成新版本，会话绑定系数快照，采用 Snapshot-First 策略计算，已提交会话默认只读。Codex 审查通过 9.0 分。
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5cce609` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
