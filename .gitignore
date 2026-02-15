@@ -1,4 +1,6 @@
-.ccb_config/
+.ccb/
 node_modules/
-
+.cursor/
+.snow/
 .ace-tool/
+.trellis/
