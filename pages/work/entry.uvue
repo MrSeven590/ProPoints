@@ -30,6 +30,7 @@
         <biz-bin-selector
           :selectedBins="selectedBins"
           :stageCode="stageCode"
+          :disabled="viewMode == 'view' || isRestoring == true"
           @change="onBinsChange"
         />
       </view>
@@ -49,7 +50,7 @@
       <view class="section" v-if="showCrossBinSection">
         <view class="section-header">
           <text class="section-title section-header-title">跨仓岗位</text>
-          <view class="remove-btn" @click="onRemoveCrossBin">
+          <view class="remove-btn" v-if="viewMode == 'edit' && isRestoring == false" @click="onRemoveCrossBin">
             <text class="remove-btn-text">移除</text>
           </view>
         </view>
@@ -63,12 +64,13 @@
           :initialPersonName="crossBinPersonName"
           :initialPointsUnits="crossBinPointsUnits"
           :externalSources="crossBinSources"
+          :readonly="viewMode == 'view' || isRestoring == true"
           @change="onCrossBinChange"
         />
       </view>
 
-      <!-- 添加跨仓岗位按钮（当未显示跨仓区域且非堆曲时） -->
-      <view class="section add-section" v-if="showBinSection && !showCrossBinSection">
+      <!-- 添加跨仓岗位按钮（当未显示跨仓区域且非堆曲时，仅编辑模式可见） -->
+      <view class="section add-section" v-if="showBinSection && !showCrossBinSection && viewMode == 'edit' && isRestoring == false">
         <view class="add-btn" @click="onAddCrossBin">
           <text class="add-btn-text">+ 添加跨仓岗位</text>
         </view>
@@ -90,6 +92,8 @@
             :occupiedPersonIds="occupiedIds"
             :defaultWorkerCount="defaultBinWorkerCount"
             :crossBinDeduction="getCrossBinDeduction(binInfo.stage_bin_id)"
+            :readonly="viewMode == 'view' || isRestoring == true"
+            :stageCoef="getStageCoefForBin()"
             @change="onBinCardChange"
             @kojiChange="onBinKojiChange"
           />
@@ -114,6 +118,7 @@
           :simpleMode="true"
           :occupiedPersonIds="occupiedIds"
           :initialWorkers="wheatMaterialWorkers"
+          :readonly="viewMode == 'view' || isRestoring == true"
           @change="onLiangTangRoleChange"
         />
 
@@ -126,6 +131,7 @@
           :simpleMode="true"
           :occupiedPersonIds="occupiedIds"
           :initialWorkers="machineGuardWorkers"
+          :readonly="viewMode == 'view' || isRestoring == true"
           @change="onLiangTangRoleChange"
         />
 
@@ -138,6 +144,7 @@
           :simpleMode="isKojiUnloaderSimpleMode()"
           :occupiedPersonIds="occupiedIds"
           :initialWorkers="kojiUnloaderWorkers"
+          :readonly="viewMode == 'view' || isRestoring == true"
           @change="onLiangTangRoleChange"
         />
 
@@ -151,6 +158,7 @@
           :simpleMode="true"
           :occupiedPersonIds="occupiedIds"
           :initialWorkers="microOperatorWorkers"
+          :readonly="viewMode == 'view' || isRestoring == true"
           @change="onLiangTangRoleChange"
         />
 
@@ -162,12 +170,19 @@
     </scroll-view>
 
     <view class="footer">
-      <view class="btn btn-secondary" @click="onOpenRemarkPopup">
-        <text class="btn-text btn-text-secondary">添加备注</text>
+      <!-- 只读模式下显示"进入编辑"按钮 -->
+      <view v-if="viewMode == 'view'" class="btn btn-primary" @click="onEnterEditMode">
+        <text class="btn-text btn-text-primary">进入编辑</text>
       </view>
-      <view class="btn btn-primary" @click="submit">
-        <text class="btn-text btn-text-primary">提交确认</text>
-      </view>
+      <!-- 编辑模式下显示原有按钮 -->
+      <template v-else>
+        <view class="btn btn-secondary" @click="onOpenRemarkPopup">
+          <text class="btn-text btn-text-secondary">添加备注</text>
+        </view>
+        <view class="btn btn-primary" @click="submit">
+          <text class="btn-text btn-text-primary">提交确认</text>
+        </view>
+      </template>
     </view>
 
     <!-- 日期选择弹窗 -->
@@ -236,13 +251,13 @@
   import { getTodayDateString, getCurrentTimestamp, addDaysToDate } from '../../domain/models/types.uts'
   import type { StageCode, PointsUnits, RoleCode } from '../../domain/models/types.uts'
   import { getStageName, stageRequiresBin } from '../../domain/models/stage-session.uts'
-  import { stageHasCrossBinRole, getStageRoleConfigs, getStageBinWorkerCount } from '../../domain/services/StageCoefService.uts'
+  import { stageHasCrossBinRole, getStageRoleConfigs, getStageBinWorkerCount, getStageCoef, getStageCoefFromSnapshot } from '../../domain/services/StageCoefService.uts'
   import type { BinCode, StageBinInfo } from '../../domain/models/ferment.uts'
   import type { AssignmentSourceCreateParams } from '../../domain/models/assignment.uts'
   import type { BinInfo } from '../../domain/services/ScoreAllocator.uts'
   import { allocateCrossBinPoints } from '../../domain/services/ScoreAllocator.uts'
   import { getBinKojiCountFromAnQu } from '../../domain/services/DuiQuBaseService.uts'
-  import { saveDraftSession, saveSubmittedSession, loadSessionForEdit, saveLiangTangDefault, loadLiangTangDefault } from '../../domain/stores/AppStore.uts'
+  import { saveDraftSession, saveSubmittedSession, loadSessionForEdit, saveLiangTangDefault, loadLiangTangDefault, getActiveCoefSetId, loadCoefSetById } from '../../domain/stores/AppStore.uts'
   import { validateBinBalance, validateCrossBinSource, mergeValidationResults } from '../../domain/services/Validator.uts'
   import type { ValidationResult } from '../../domain/services/Validator.uts'
   import { calcLiangTangPoolUnits } from '../../domain/services/ScoreCalculator.uts'
@@ -308,6 +323,7 @@
         stageName: '安曲',
         sessionDate: '',
         roundId: null as number | null,
+        coefSetId: null as number | null,
         showBinSection: true,
         showCrossBinSection: false,
         selectedBins: [] as BinCode[],
@@ -359,7 +375,12 @@
         // 备注弹窗相关状态
         showRemarkPopup: false as boolean,
         tempRemark: '' as string,
-        sessionRemark: '' as string
+        sessionRemark: '' as string,
+        // 只读模式相关状态
+        viewMode: 'edit' as 'edit' | 'view',
+        isRestoring: false as boolean,
+        // 系数快照（持久化到会话数据中）
+        coefSnapshot: null as UTSJSONObject | null
       }
     },
     onLoad(options: UTSJSONObject) {
@@ -417,6 +438,48 @@
       }
     },
     methods: {
+      /**
+       * 获取仓的工序系数（优先使用会话绑定的系数快照）
+       */
+      getStageCoefForBin(): number {
+        // 优先使用 coefSnapshot（不依赖存储层，防止数据丢失导致漂移）
+        if (this.coefSnapshot != null) {
+          return getStageCoefFromSnapshot(this.stageCode, this.coefSnapshot)
+        }
+        // 回退到按版本ID从存储层读取
+        return getStageCoef(this.stageCode, this.coefSetId)
+      },
+
+      /**
+       * 进入编辑模式（从只读模式切换）
+       */
+      onEnterEditMode() {
+        // 读取 submitted 数据，写入 draft
+        const sessionData = loadSessionForEdit(this.sessionDate, this.stageCode, this.roundId)
+        if (sessionData == null) {
+          uni.showToast({
+            title: '无法加载会话数据',
+            icon: 'none'
+          })
+          return
+        }
+
+        // 修改状态为 draft
+        sessionData['status'] = 'draft'
+
+        // 保存为草稿
+        saveDraftSession(this.sessionDate, this.stageCode, this.roundId, sessionData)
+
+        // 切换到编辑模式
+        this.viewMode = 'edit'
+        this.sessionStatus = 'draft'
+
+        uni.showToast({
+          title: '已进入编辑模式',
+          icon: 'success'
+        })
+      },
+
       /**
        * 初始化晾堂岗位区域（仅安曲环节）
        */
@@ -511,6 +574,7 @@
       /**
        * 更新晾堂池子总分缓存
        * 在 stageBinInfos 变化时调用
+       * 优先使用 coefSnapshot 计算系数，回退到版本化存储
        */
       updateLiangTangPoolCache() {
         // 计算当日安曲总曲坯数
@@ -520,11 +584,11 @@
         }
         this.dailyKojiCount = total
 
-        // 计算各岗位池子总分
-        this.wheatMaterialPoolUnits = calcLiangTangPoolUnits(this.dailyKojiCount, 'WHEAT_MATERIAL' as RoleCode)
-        this.machineGuardPoolUnits = calcLiangTangPoolUnits(this.dailyKojiCount, 'MACHINE_GUARD' as RoleCode)
-        this.kojiUnloaderPoolUnits = calcLiangTangPoolUnits(this.dailyKojiCount, 'KOJI_UNLOADER' as RoleCode)
-        this.microOperatorPoolUnits = calcLiangTangPoolUnits(this.dailyKojiCount, 'MICRO_OPERATOR' as RoleCode)
+        // 计算各岗位池子总分（优先使用 coefSnapshot）
+        this.wheatMaterialPoolUnits = calcLiangTangPoolUnits(this.dailyKojiCount, 'WHEAT_MATERIAL' as RoleCode, this.coefSnapshot, this.coefSetId)
+        this.machineGuardPoolUnits = calcLiangTangPoolUnits(this.dailyKojiCount, 'MACHINE_GUARD' as RoleCode, this.coefSnapshot, this.coefSetId)
+        this.kojiUnloaderPoolUnits = calcLiangTangPoolUnits(this.dailyKojiCount, 'KOJI_UNLOADER' as RoleCode, this.coefSnapshot, this.coefSetId)
+        this.microOperatorPoolUnits = calcLiangTangPoolUnits(this.dailyKojiCount, 'MICRO_OPERATOR' as RoleCode, this.coefSnapshot, this.coefSetId)
       },
 
       /**
@@ -572,6 +636,9 @@
        * 晾堂岗位数据变更
        */
       onLiangTangRoleChange(payload: UTSJSONObject) {
+        if (this.isRestoring == true || this.viewMode != 'edit') {
+          return
+        }
         const roleCode = payload['roleCode'] as string
         const workers = payload['workers'] as UTSJSONObject[]
 
@@ -626,6 +693,9 @@
        * 手动添加跨仓岗位
        */
       onAddCrossBin() {
+        if (this.isRestoring == true || this.viewMode != 'edit') {
+          return
+        }
         this.showCrossBinSection = true
         // 设置默认岗位为打杂（用户手动添加时通常是二次翻曲等环节）
         this.crossBinRoleCode = 'HELPER' as RoleCode
@@ -643,6 +713,9 @@
        * 移除跨仓岗位
        */
       onRemoveCrossBin() {
+        if (this.isRestoring == true || this.viewMode != 'edit') {
+          return
+        }
         // 从互斥列表移除跨仓人员
         if (this.crossBinPersonId != null) {
           const idx = this.occupiedIds.indexOf(this.crossBinPersonId as number)
@@ -664,6 +737,9 @@
        * 发酵仓选择变更
        */
       onBinsChange(bins: BinCode[]) {
+        if (this.isRestoring == true || this.viewMode != 'edit') {
+          return
+        }
         this.selectedBins = bins
         // 更新 stageBinInfos（用于跨仓组件）
         this.updateStageBinInfos(bins)
@@ -730,6 +806,9 @@
        * 跨仓岗位分配变更
        */
       onCrossBinChange(payload: UTSJSONObject) {
+        if (this.isRestoring == true || this.viewMode != 'edit') {
+          return
+        }
         const personId = payload['person_id']
         const personName = payload['person_name']
         const pointsUnits = payload['points_units']
@@ -816,6 +895,9 @@
        * 仓卡片数据变更
        */
       onBinCardChange(payload: UTSJSONObject) {
+        if (this.isRestoring == true || this.viewMode != 'edit') {
+          return
+        }
         const stageBinId = payload['stageBinId'] as number
         const binId = payload['binId'] as number
         const binCode = payload['binCode'] as string
@@ -948,6 +1030,10 @@
        * 打开日期选择弹窗
        */
       onOpenDatePicker() {
+        // 只读模式下禁止修改日期
+        if (this.viewMode == 'view') {
+          return
+        }
         this.tempDate = this.sessionDate
         this.showDatePicker = true
       },
@@ -1000,6 +1086,10 @@
        * 打开备注弹窗
        */
       onOpenRemarkPopup() {
+        // 只读模式下禁止修改备注
+        if (this.viewMode == 'view') {
+          return
+        }
         this.tempRemark = this.sessionRemark
         this.showRemarkPopup = true
       },
@@ -1115,10 +1205,43 @@
         // 先重置，避免旧状态残留
         this.resetSessionState()
 
+        // 标记正在恢复数据
+        this.isRestoring = true
+
         const sessionData = loadSessionForEdit(this.sessionDate, this.stageCode, this.roundId)
         if (sessionData == null) {
           // 无已有数据，使用默认新建流程
+          // 绑定当前生效的系数版本
+          this.coefSetId = getActiveCoefSetId()
+          // 加载当前生效版本的完整数据到 coefSnapshot
+          const setData = loadCoefSetById(this.coefSetId as number)
+          if (setData != null) {
+            this.coefSnapshot = setData
+          }
+          this.viewMode = 'edit'
+          this.isRestoring = false
           return
+        }
+
+        // 恢复系数版本ID
+        const coefSetId = sessionData['coef_set_id'] as number | null
+        if (coefSetId != null) {
+          this.coefSetId = coefSetId
+        } else {
+          // 兼容旧数据：如果没有 coef_set_id，使用默认版本
+          this.coefSetId = 1
+        }
+
+        // 恢复系数快照
+        const savedSnapshot = sessionData['coef_snapshot'] as UTSJSONObject | null
+        if (savedSnapshot != null) {
+          this.coefSnapshot = savedSnapshot
+        } else {
+          // 没有快照，从存储加载并缓存
+          const setData = loadCoefSetById(this.coefSetId as number)
+          if (setData != null) {
+            this.coefSnapshot = setData
+          }
         }
 
         // 恢复发酵仓数据
@@ -1298,11 +1421,21 @@
           this.sessionStatus = status
         }
 
+        // 根据状态设置视图模式
+        if (this.sessionStatus == 'submitted') {
+          this.viewMode = 'view'
+        } else {
+          this.viewMode = 'edit'
+        }
+
         // 恢复备注
         const remark = sessionData['remark'] as string | null
         if (remark != null) {
           this.sessionRemark = remark
         }
+
+        // 恢复完成
+        this.isRestoring = false
       },
 
       /**
@@ -1311,6 +1444,14 @@
        * @returns 会话数据对象
        */
       buildSessionData(status: string): UTSJSONObject {
+        // 确保 coefSnapshot 非空（防御性编程）
+        if (this.coefSnapshot == null && this.coefSetId != null) {
+          const setData = loadCoefSetById(this.coefSetId as number)
+          if (setData != null) {
+            this.coefSnapshot = setData
+          }
+        }
+
         // 构建发酵仓数据
         const binsData: UTSJSONObject[] = []
         for (let i = 0; i < this.stageBinInfos.length; i++) {
@@ -1400,6 +1541,8 @@
           stage_code: this.stageCode,
           stage_name: this.stageName,
           round_id: this.roundId,
+          coef_set_id: this.coefSetId,
+          coef_snapshot: this.coefSnapshot,
           bins: binsData,
           cross_bin: crossBinData,
           liang_tang: liangTangData,
@@ -1690,6 +1833,10 @@
        * 仅对草稿状态的会话生效
        */
       scheduleAutoSave() {
+        // 只读模式或数据恢复期间不自动保存
+        if (this.viewMode != 'edit' || this.isRestoring == true) {
+          return
+        }
         // 编辑时始终进入草稿模式（自动保存始终写 draft key）
         if (this.sessionStatus != 'draft') {
           this.sessionStatus = 'draft'

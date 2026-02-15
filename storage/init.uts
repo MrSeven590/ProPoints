@@ -13,6 +13,10 @@ import {
   saveStageRoleDefaults,
   loadCoefConfig,
   saveCoefConfig,
+  saveCoefSet,
+  loadCoefSet,
+  saveActiveCoefSetId,
+  loadActiveCoefSetId,
   loadBinSeqMaxByFloor,
   saveBinSeqMaxByFloor
 } from './storage-repository.uts'
@@ -105,18 +109,20 @@ function initStageRoleDefaults(): void {
 }
 
 /**
- * 初始化系数配置
+ * 初始化系数配置（版本化）
  */
 function initCoefConfig(): void {
-  const existing = loadCoefConfig()
-  if (existing != null) {
-    return
+  // 检查是否已有版本化数据
+  const activeSetId = loadActiveCoefSetId()
+  if (activeSetId != null) {
+    return // 已初始化
   }
 
-  const coefConfig = {
-    version: 1,
-    name: '默认系数版本',
-    effectiveFrom: 0,
+  // 创建默认系数版本（setId=1）
+  const defaultCoefSet = {
+    id: 1,
+    name: '系数版本 v1',
+    effectiveFrom: Date.now(),
     effectiveTo: null,
     stages: {
       AN_QU: 1.1,
@@ -133,7 +139,19 @@ function initCoefConfig(): void {
     } as UTSJSONObject
   } as UTSJSONObject
 
-  saveCoefConfig(coefConfig)
+  saveCoefSet(1, defaultCoefSet)
+  saveActiveCoefSetId(1)
+
+  // 兼容旧版：同时保存到旧的 key（用于数据迁移期间的兼容）
+  const legacyConfig = {
+    version: 1,
+    name: '默认系数版本',
+    effectiveFrom: 0,
+    effectiveTo: null,
+    stages: defaultCoefSet['stages'],
+    liangTang: defaultCoefSet['liangTang']
+  } as UTSJSONObject
+  saveCoefConfig(legacyConfig)
 }
 
 /**

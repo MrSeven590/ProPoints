@@ -29,6 +29,11 @@ import {
   saveRoundConfig as saveRoundConfigToRepo,
   loadCoefConfig as loadCoefConfigFromRepo,
   saveCoefConfig as saveCoefConfigToRepo,
+  saveCoefSet as saveCoefSetToRepo,
+  loadCoefSet as loadCoefSetFromRepo,
+  getAllCoefSetIds as getAllCoefSetIdsFromRepo,
+  saveActiveCoefSetId as saveActiveCoefSetIdToRepo,
+  loadActiveCoefSetId as loadActiveCoefSetIdFromRepo,
   loadStageRoleDefaults as loadStageRoleDefaultsFromRepo,
   findAnQuSessionByBinId as findAnQuSessionByBinIdFromRepo,
   findAnQuSessionsByBinIds as findAnQuSessionsByBinIdsFromRepo
@@ -349,7 +354,7 @@ export function saveRoundConfig(config: UTSJSONObject): void {
 // ============================================
 
 /**
- * 加载系数配置
+ * 加载系数配置（已废弃，保留用于兼容）
  * @returns 系数配置，不存在时返回 null
  */
 export function loadCoefConfig(): UTSJSONObject | null {
@@ -357,11 +362,98 @@ export function loadCoefConfig(): UTSJSONObject | null {
 }
 
 /**
- * 保存系数配置
+ * 保存系数配置（已废弃，保留用于兼容）
  * @param config 系数配置对象
  */
 export function saveCoefConfig(config: UTSJSONObject): void {
   saveCoefConfigToRepo(config)
+}
+
+/**
+ * 创建新的系数版本
+ * @param name 版本名称
+ * @param coefData 系数数据（包含 stages 和 liangTang）
+ * @returns 新版本ID
+ */
+export function createCoefSetVersion(name: string, coefData: UTSJSONObject): number {
+  // 获取所有现有版本ID
+  const existingIds = getAllCoefSetIdsFromRepo()
+
+  // 计算新版本ID（最大ID + 1）
+  let newId = 1
+  for (let i = 0; i < existingIds.length; i++) {
+    if (existingIds[i] >= newId) {
+      newId = existingIds[i] + 1
+    }
+  }
+
+  // 自动生成名称（如果传入空字符串）
+  const finalName = name != '' ? name : '系数版本 v' + newId.toString()
+
+  // 构造版本数据
+  const coefSet = {
+    id: newId,
+    name: finalName,
+    effectiveFrom: Date.now(),
+    effectiveTo: null,
+    stages: coefData['stages'],
+    liangTang: coefData['liangTang']
+  } as UTSJSONObject
+
+  // 保存版本
+  saveCoefSetToRepo(newId, coefSet)
+
+  // 设置为当前生效版本
+  saveActiveCoefSetIdToRepo(newId)
+
+  return newId
+}
+
+/**
+ * 获取当前生效的系数版本ID
+ * @returns 版本ID，不存在时返回 1（默认版本）
+ */
+export function getActiveCoefSetId(): number {
+  const setId = loadActiveCoefSetIdFromRepo()
+  if (setId != null) {
+    return setId
+  }
+  return 1 // 默认版本
+}
+
+/**
+ * 设置当前生效的系数版本
+ * @param setId 版本ID
+ */
+export function setActiveCoefSet(setId: number): void {
+  saveActiveCoefSetIdToRepo(setId)
+}
+
+/**
+ * 获取所有系数版本
+ * @returns 系数版本列表
+ */
+export function getAllCoefSets(): UTSJSONObject[] {
+  const ids = getAllCoefSetIdsFromRepo()
+  const sets: UTSJSONObject[] = []
+
+  for (let i = 0; i < ids.length; i++) {
+    const coefSet = loadCoefSetFromRepo(ids[i])
+    if (coefSet != null) {
+      sets.push(coefSet)
+    }
+  }
+
+  return sets
+}
+
+/**
+ * 加载指定版本的系数配置
+ * @param setId 版本ID
+ * @returns 系数配置，不存在时返回 null
+ */
+export function loadCoefSetById(setId: number): UTSJSONObject | null {
+  return loadCoefSetFromRepo(setId)
 }
 
 /**

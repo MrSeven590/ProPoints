@@ -100,12 +100,39 @@ export function getClassConfigKey(): string {
 }
 
 /**
- * 系数版本 Key
+ * 系数版本 Key（已废弃，保留用于兼容）
  * 格式: pp:cfg:coef
- * 存储: 当前生效的系数版本
+ * 存储: 旧版系数配置
  */
 export function getCoefConfigKey(): string {
   return `${KEY_PREFIX}:cfg:coef`
+}
+
+/**
+ * 单个系数版本 Key
+ * 格式: pp:cfg:coef-set:{setId}
+ * 存储: CoefSet 数据（包含 stages 和 liangTang 系数）
+ */
+export function getCoefSetKey(setId: number): string {
+  return `${KEY_PREFIX}:cfg:coef-set:${setId}`
+}
+
+/**
+ * 系数版本索引 Key
+ * 格式: pp:idx:coef-sets
+ * 存储: 所有系数版本 ID 列表
+ */
+export function getCoefSetsIndexKey(): string {
+  return `${KEY_PREFIX}:idx:coef-sets`
+}
+
+/**
+ * 当前生效系数版本 Key
+ * 格式: pp:cfg:active-coef-set
+ * 存储: 当前生效的系数版本 ID
+ */
+export function getActiveCoefSetKey(): string {
+  return `${KEY_PREFIX}:cfg:active-coef-set`
 }
 
 /**

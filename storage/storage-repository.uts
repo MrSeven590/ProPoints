@@ -20,6 +20,9 @@ import {
   getSkillCoeffsKey,
   getClassConfigKey,
   getCoefConfigKey,
+  getCoefSetKey,
+  getCoefSetsIndexKey,
+  getActiveCoefSetKey,
   getRoundConfigKey,
   getDuiQuRoomKey,
   getLiangTangDefaultKey,
@@ -317,17 +320,79 @@ export function loadClassConfig(): UTSJSONObject | null {
 }
 
 /**
- * 保存系数配置
+ * 保存系数配置（已废弃，保留用于兼容）
  */
 export function saveCoefConfig(config: UTSJSONObject): void {
   saveData(getCoefConfigKey(), config)
 }
 
 /**
- * 加载系数配置
+ * 加载系数配置（已废弃，保留用于兼容）
  */
 export function loadCoefConfig(): UTSJSONObject | null {
   return loadData(getCoefConfigKey())
+}
+
+// ============ 系数版本化存储 ============
+
+/**
+ * 保存系数版本
+ * @param setId 版本ID
+ * @param coefSet 系数版本数据
+ */
+export function saveCoefSet(setId: number, coefSet: UTSJSONObject): void {
+  saveData(getCoefSetKey(setId), coefSet)
+  addToIndex(getCoefSetsIndexKey(), setId.toString())
+}
+
+/**
+ * 加载系数版本
+ * @param setId 版本ID
+ * @returns 系数版本数据，不存在时返回 null
+ */
+export function loadCoefSet(setId: number): UTSJSONObject | null {
+  return loadData(getCoefSetKey(setId))
+}
+
+/**
+ * 获取所有系数版本ID列表
+ * @returns 版本ID列表
+ */
+export function getAllCoefSetIds(): number[] {
+  const keys = getIndexList(getCoefSetsIndexKey())
+  const ids: number[] = []
+  for (let i = 0; i < keys.length; i++) {
+    const id = parseInt(keys[i])
+    if (!isNaN(id)) {
+      ids.push(id)
+    }
+  }
+  return ids
+}
+
+/**
+ * 保存当前生效系数版本ID
+ * @param setId 版本ID
+ */
+export function saveActiveCoefSetId(setId: number): void {
+  const data = { setId: setId } as UTSJSONObject
+  saveData(getActiveCoefSetKey(), data)
+}
+
+/**
+ * 加载当前生效系数版本ID
+ * @returns 版本ID，不存在时返回 null
+ */
+export function loadActiveCoefSetId(): number | null {
+  const data = loadData(getActiveCoefSetKey())
+  if (data == null) {
+    return null
+  }
+  const setId = data['setId']
+  if (setId == null) {
+    return null
+  }
+  return setId as number
 }
 
 /**

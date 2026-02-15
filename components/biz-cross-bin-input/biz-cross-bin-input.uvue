@@ -136,6 +136,10 @@
         default: (): AssignmentSourceCreateParams[] => {
           return [] as AssignmentSourceCreateParams[]
         }
+      },
+      readonly: {
+        type: Boolean,
+        default: false
       }
     },
     emits: ['change'],
@@ -225,6 +229,7 @@
       },
 
       onOpenPersonSelector() {
+        if (this.readonly == true) return
         this.showPersonPicker = true
       },
 
@@ -251,10 +256,12 @@
       },
 
       onPointsInput(e: UniInputEvent) {
+        if (this.readonly == true) return
         this.displayPoints = e.detail.value
       },
 
       onPointsBlur() {
+        if (this.readonly == true) return
         // 解析输入值
         let inputVal = parseFloat(this.displayPoints)
         if (isNaN(inputVal)) {
@@ -273,6 +280,7 @@
       },
 
       onIncrease() {
+        if (this.readonly == true) return
         // 增加 0.1 分（即 1 单位）
         this.pointsUnits = this.pointsUnits + 1
         this.displayPoints = this.pointsUnits == 0 ? '' : formatPointsUnits(this.pointsUnits)
@@ -280,6 +288,7 @@
       },
 
       onDecrease() {
+        if (this.readonly == true) return
         // 减少 0.1 分（即 1 单位），最小为 0
         if (this.pointsUnits > 0) {
           this.pointsUnits = this.pointsUnits - 1

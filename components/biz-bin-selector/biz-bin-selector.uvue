@@ -82,6 +82,10 @@
       autoInfer: {
         type: Boolean,
         default: true
+      },
+      disabled: {
+        type: Boolean,
+        default: false
       }
     },
     emits: ['change', 'update:selectedBins'],
@@ -151,6 +155,10 @@
 	      },
 
 	      onFloorChange(floor: number) {
+	        // 禁用状态下不响应楼层切换
+	        if (this.disabled == true) {
+	          return
+	        }
 	        if (floor == this.currentFloor) {
 	          return
 	        }
@@ -183,6 +191,10 @@
       },
 
       onBinClick(seq: number) {
+        // 禁用状态下不响应点击
+        if (this.disabled == true) {
+          return
+        }
         const newBins = [...(this.selectedBins as BinCode[])]
         const index = this.findBinIndex(seq)
 
@@ -204,16 +216,20 @@
       },
 
 	      onBinLongPress(seq: number) {
+	        // 禁用状态下不响应长按
+	        if (this.disabled == true) {
+	          return
+	        }
 	        // 长按连续范围选择
 	        if (this.lastSelectedSeq == 0) {
 	          // 没有上次选中位置，当作普通点击
           this.onBinClick(seq)
           return
         }
-	
+
 	        const startSeq = this.lastSelectedSeq < seq ? this.lastSelectedSeq : seq
 	        const endSeq = this.lastSelectedSeq > seq ? this.lastSelectedSeq : seq
-	
+
 	        const newBins = [...(this.selectedBins as BinCode[])]
 	        const existSeqSet = new Map<number, boolean>()
 	        for (let i = 0; i < newBins.length; i++) {
@@ -222,7 +238,7 @@
 	            existSeqSet.set(bin.seq_no, true)
 	          }
 	        }
-	
+
 	        // 添加范围内所有未选中的仓
 	        for (let s = startSeq; s <= endSeq; s++) {
 	          if (!existSeqSet.has(s)) {
@@ -235,12 +251,16 @@
 	            existSeqSet.set(s, true)
 	          }
 	        }
-	
+
 	        this.lastSelectedSeq = seq
 	        this.emitChange(newBins)
 	      },
 
       onClearAll() {
+        // 禁用状态下不响应清空
+        if (this.disabled == true) {
+          return
+        }
         this.lastSelectedSeq = 0
         this.emitChange([] as BinCode[])
       },

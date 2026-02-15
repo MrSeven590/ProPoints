@@ -198,7 +198,6 @@
 	  import { pointsToUnits, PointsUnits, formatPointsUnits } from '../../domain/models/types.uts'
 	  import type { StageCode } from '../../domain/models/types.uts'
 	  import { calcBinTotalPointsUnits } from '../../domain/services/ScoreCalculator.uts'
-	  import { getStageCoef } from '../../domain/services/StageCoefService.uts'
 	  import { calcFinalPoints } from '../../domain/models/assignment.uts'
 
   /**
@@ -275,6 +274,14 @@
       stageSessionId: {
         type: Number,
         default: 0
+      },
+      readonly: {
+        type: Boolean,
+        default: false
+      },
+      stageCoef: {
+        type: Number,
+        default: 1.0
       }
     },
     emits: ['change', 'kojiChange', 'penaltyChange'],
@@ -501,8 +508,8 @@
       },
 
       recalculateTotalPoints() {
-        const stageCode = this.stageCode as StageCode
-        const coef = getStageCoef(stageCode)
+        // 使用 prop 传入的 stageCoef，避免组件内部读取 active 系数
+        const coef = this.stageCoef as number
         this.totalPointsUnits = calcBinTotalPointsUnits(this.kojiCount, coef)
       },
 
@@ -511,10 +518,18 @@
       // ============================================
 
       onKojiInput(e: UniInputEvent) {
+        // 只读模式下禁止编辑
+        if (this.readonly == true) {
+          return
+        }
         this.kojiCountStr = e.detail.value
       },
 
       onKojiBlur() {
+        // 只读模式下禁止编辑
+        if (this.readonly == true) {
+          return
+        }
         let inputVal = parseInt(this.kojiCountStr)
         if (isNaN(inputVal)) {
           inputVal = 0
@@ -530,6 +545,10 @@
       },
 
       onKojiIncrease() {
+        // 只读模式下禁止编辑
+        if (this.readonly == true) {
+          return
+        }
         this.kojiCount = this.kojiCount + 100
         this.kojiCountStr = this.kojiCount.toString()
         this.recalculateTotalPoints()
@@ -538,6 +557,10 @@
       },
 
       onKojiDecrease() {
+        // 只读模式下禁止编辑
+        if (this.readonly == true) {
+          return
+        }
         if (this.kojiCount >= 100) {
           this.kojiCount = this.kojiCount - 100
           this.kojiCountStr = this.kojiCount.toString()
@@ -552,6 +575,10 @@
       // ============================================
 
       onOpenWorkerSelector(index: number) {
+        // 只读模式下禁止打开人员选择
+        if (this.readonly == true) {
+          return
+        }
         this.currentWorkerIndex = index
         this.showWorkerPicker = true
       },
@@ -590,12 +617,20 @@
       // ============================================
 
       onWorkerPointsInput(index: number, e: UniInputEvent) {
+        // 只读模式下禁止编辑
+        if (this.readonly == true) {
+          return
+        }
         if (index >= 0 && index < this.workerList.length) {
           this.workerList[index].displayPoints = e.detail.value
         }
       },
 
       onWorkerPointsBlur(index: number) {
+        // 只读模式下禁止编辑
+        if (this.readonly == true) {
+          return
+        }
         if (index >= 0 && index < this.workerList.length) {
           const worker = this.workerList[index]
           let inputVal = parseFloat(worker.displayPoints)
@@ -614,6 +649,10 @@
       },
 
       onWorkerPointsIncrease(index: number) {
+        // 只读模式下禁止编辑
+        if (this.readonly == true) {
+          return
+        }
         if (index >= 0 && index < this.workerList.length) {
           const worker = this.workerList[index]
           worker.pointsUnits = worker.pointsUnits + 1
@@ -624,6 +663,10 @@
       },
 
       onWorkerPointsDecrease(index: number) {
+        // 只读模式下禁止编辑
+        if (this.readonly == true) {
+          return
+        }
         if (index >= 0 && index < this.workerList.length) {
           const worker = this.workerList[index]
           if (worker.pointsUnits > 0) {
@@ -641,6 +684,10 @@
       // ============================================
 
       onAddWorker() {
+        // 只读模式下禁止添加
+        if (this.readonly == true) {
+          return
+        }
         this.workerList.push({
           personId: null,
           personName: '',
@@ -654,6 +701,10 @@
       },
 
       onRemoveWorker() {
+        // 只读模式下禁止删除
+        if (this.readonly == true) {
+          return
+        }
         if (this.workerList.length > 1) {
           this.workerList.pop()
           this.emitChange()
@@ -665,6 +716,10 @@
        * 使用最大余数法将扣除跨仓工分后的剩余总分平均分配给所有人员
        */
       onEqualSplit() {
+        // 只读模式下禁止平分
+        if (this.readonly == true) {
+          return
+        }
         const workerCount = this.workerList.length
         if (workerCount == 0) {
           return
@@ -702,6 +757,10 @@
        * 切换考核面板展开/收起
        */
       onTogglePenalty(index: number) {
+        // 只读模式下禁止考核
+        if (this.readonly == true) {
+          return
+        }
         if (index < 0 || index >= this.workerList.length) {
           return
         }

@@ -313,6 +313,117 @@ saveSubmittedSession(...) {
 
 ---
 
+## 系数版本化存储 (2026-02-15)
+
+### 背景
+
+系数配置需要版本化管理，防止修改系数导致历史数据漂移。每个会话绑定创建时的系数快照，确保历史数据永远使用当时的系数。
+
+### Key 设计
+
+| Key | 用途 | 示例 |
+|-----|------|------|
+| `pp:cfg:coef-set:{setId}` | 单个系数版本数据 | `pp:cfg:coef-set:1` |
+| `pp:idx:coef-sets` | 所有版本 ID 列表 | `[1, 2, 3]` |
+| `pp:cfg:active-coef-set` | 当前生效版本 ID | `{ setId: 2 }` |
+| `pp:cfg:coef` | 旧版配置（兼容） | 已废弃，保留用于迁移 |
+
+### CoefSet 数据结构
+
+```typescript
+type CoefSet = {
+  id: number
+  name: string                    // 如 "系数版本 v1"
+  effectiveFrom: number           // 生效时间戳
+  effectiveTo: number | null      // 失效时间戳（null 表示当前生效）
+  stages: UTSJSONObject           // 工序系数 { AN_QU: 1.1, ... }
+  liangTang: UTSJSONObject        // 晾堂岗位系数 { WHEAT_MATERIAL: 0.85, ... }
+}
+```
+
+### Repository API
+
+```typescript
+// 保存系数版本
+saveCoefSet(setId: number, coefSet: UTSJSONObject): void
+
+// 加载系数版本
+loadCoefSet(setId: number): UTSJSONObject | null
+
+// 获取所有版本 ID
+getAllCoefSetIds(): number[]
+
+// 保存/加载当前生效版本 ID
+saveActiveCoefSetId(setId: number): void
+loadActiveCoefSetId(): number | null
+```
+
+### AppStore API
+
+```typescript
+// 创建新版本（自动生成 ID 和名称）
+createCoefSetVersion(name: string, coefData: UTSJSONObject): number
+
+// 获取当前生效版本 ID
+getActiveCoefSetId(): number
+
+// 设置生效版本
+setActiveCoefSet(setId: number): void
+
+// 获取所有版本
+getAllCoefSets(): UTSJSONObject[]
+
+// 加载指定版本
+loadCoefSetById(setId: number): UTSJSONObject | null
+```
+
+### Snapshot-First 策略
+
+系数计算采用 **snapshot-first** 策略，优先从会话绑定的快照读取：
+
+```typescript
+// StageCoefService 新增函数
+getStageCoefFromSnapshot(stageCode, snapshot)        // 从快照读取工序系数
+getLiangTangRoleCoefFromSnapshot(roleCode, snapshot) // 从快照读取晾堂系数
+
+// ScoreCalculator 支持 snapshot 参数
+calcLiangTangPoolUnits(dailyCount, roleCode, coefSnapshot, coefSetId)
+```
+
+**优先级**：
+1. `coefSnapshot` (会话绑定的快照)
+2. `coefSetId` (版本化存储)
+3. 硬编码默认值
+
+### 会话数据结构变更
+
+```typescript
+// StageSession 新增字段
+{
+  coef_set_id: number | null      // 系数版本 ID
+  coef_snapshot: UTSJSONObject | null  // 完整系数快照
+}
+```
+
+### 只读模式
+
+已提交会话默认进入只读模式，防止"回看就生成草稿"：
+
+- `viewMode: 'view' | 'edit'` - 视图模式
+- `isRestoring: boolean` - 数据恢复期间标志
+- 子组件通过 `readonly` prop 禁用交互
+- 点击"进入编辑"显式生成草稿
+
+### 验证要点
+
+1. **修改系数** → 生成新版本，历史数据不变
+2. **新建会话** → 绑定当前生效版本 + 保存快照
+3. **回看历史** → 使用会话绑定的快照计算
+4. **只读模式** → 无法编辑，不生成草稿
+5. **进入编辑** → 显式生成草稿
+
+---
+
 ## 最佳实践
 
 1. **始终使用 Repository API**: 不要直接操作 storage
@@ -320,3 +431,4 @@ saveSubmittedSession(...) {
 3. **加载时优先草稿**: 支持"编辑已提交"场景
 4. **索引与数据同步**: 维护索引时同步更新数据
 5. **防御性编程**: 读取索引时过滤 null 数据
+6. **系数 Snapshot-First**: 计算时优先使用会话绑定的快照，防止历史漂移

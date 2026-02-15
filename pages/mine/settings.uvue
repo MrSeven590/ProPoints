@@ -132,7 +132,9 @@
     getManagerName,
     setManagerName,
     loadCoefConfig,
-    saveCoefConfig
+    createCoefSetVersion,
+    getActiveCoefSetId,
+    loadCoefSetById
   } from '../../domain/stores/AppStore.uts'
 
   type StageCoefs = {
@@ -177,7 +179,18 @@
       loadSettings() {
         this.managerName = getManagerName()
 
-        const config = loadCoefConfig()
+        // 优先从版本化存储读取
+        const activeSetId = getActiveCoefSetId()
+        const coefSet = loadCoefSetById(activeSetId)
+
+        let config: UTSJSONObject | null = null
+        if (coefSet != null) {
+          config = coefSet
+        } else {
+          // 回退到旧版配置
+          config = loadCoefConfig()
+        }
+
         if (config != null) {
           const stages = config['stages']
           if (stages != null) {
@@ -290,14 +303,6 @@
         const microOperator = this.validateAndParseCoef(this.liangTangCoefs.MICRO_OPERATOR, '微机')
         if (microOperator == null) return
 
-        const existingConfig = loadCoefConfig()
-        const config: UTSJSONObject = existingConfig != null ? existingConfig : {
-          version: 1,
-          name: '默认系数版本',
-          effectiveFrom: 0,
-          effectiveTo: null
-        } as UTSJSONObject
-
         const stages = {
           AN_QU: anQu,
           YI_FAN: yiFan,
@@ -313,13 +318,16 @@
           MICRO_OPERATOR: microOperator
         } as UTSJSONObject
 
-        config['stages'] = stages
-        config['liangTang'] = liangTang
+        const coefData = {
+          stages: stages,
+          liangTang: liangTang
+        } as UTSJSONObject
 
-        saveCoefConfig(config)
+        // 创建新版本（使用返回的实际版本ID）
+        const newId = createCoefSetVersion('', coefData)
 
         uni.showToast({
-          title: '设置已保存',
+          title: '设置已保存（新版本 v' + newId.toString() + '）',
           icon: 'success'
         })
       }

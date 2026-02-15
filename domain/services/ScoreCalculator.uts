@@ -4,7 +4,7 @@
  */
 
 import { PointsUnits, floor1, pointsToUnits, RoleCode } from '../models/types.uts'
-import { getLiangTangRoleCoef } from './StageCoefService.uts'
+import { getLiangTangRoleCoef, getLiangTangRoleCoefFromSnapshot } from './StageCoefService.uts'
 
 /**
  * 计算发酵仓总工分（整数单位）
@@ -35,13 +35,21 @@ export function calcSessionTotalPointsUnits(baseKojiCount: number, coef: number)
 /**
  * 计算晾堂岗位池子总工分
  * 公式：floor1(曲坯数量/160 × 岗位系数) × 10
- * 从 StageCoefService 获取岗位系数（优先存储层，回退到硬编码）
+ * 优先从 coefSnapshot 获取岗位系数，回退到版本化存储
  * @param dailyAnQuKojiCount 当日安曲总曲坯数
  * @param roleCode 岗位代码
+ * @param coefSnapshot 系数快照（来自会话绑定，优先使用）
+ * @param coefSetId 系数版本ID（可选，coefSnapshot 为 null 时回退使用）
  * @returns 工分单位
  */
-export function calcLiangTangPoolUnits(dailyAnQuKojiCount: number, roleCode: RoleCode): PointsUnits {
-  const coef = getLiangTangRoleCoef(roleCode)
+export function calcLiangTangPoolUnits(dailyAnQuKojiCount: number, roleCode: RoleCode, coefSnapshot: UTSJSONObject | null = null, coefSetId: number | null = null): PointsUnits {
+  // 优先使用 snapshot
+  let coef: number
+  if (coefSnapshot != null) {
+    coef = getLiangTangRoleCoefFromSnapshot(roleCode, coefSnapshot)
+  } else {
+    coef = getLiangTangRoleCoef(roleCode, coefSetId)
+  }
   const points = floor1((dailyAnQuKojiCount / 160) * coef)
   return pointsToUnits(points)
 }

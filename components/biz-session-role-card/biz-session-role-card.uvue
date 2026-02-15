@@ -124,6 +124,10 @@
       simpleMode: {
         type: Boolean,
         default: false
+      },
+      readonly: {
+        type: Boolean,
+        default: false
       }
     },
     emits: ['change'],
@@ -183,6 +187,10 @@
       },
       poolUnits: {
         handler(newVal: number) {
+          // 只读模式下禁止自动更新
+          if (this.readonly == true) {
+            return
+          }
           // 池子总分变化时，如果只有1人，自动更新工分
           if (this.workers.length == 1) {
             this.workers[0].pointsUnits = newVal
@@ -226,6 +234,10 @@
       },
 
       onOpenPersonSelector(index: number) {
+        // 只读模式下禁止打开人员选择
+        if (this.readonly == true) {
+          return
+        }
         this.currentEditingIndex = index
         this.currentEditingPersonId = this.workers[index].personId
         this.showPersonPicker = true
@@ -259,11 +271,19 @@
       },
 
       onWorkerPointsChange(index: number, newUnits: number) {
+        // 只读模式下禁止编辑
+        if (this.readonly == true) {
+          return
+        }
         this.workers[index].pointsUnits = newUnits
         this.emitChange()
       },
 
       onAddWorker() {
+        // 只读模式下禁止添加
+        if (this.readonly == true) {
+          return
+        }
         // 记录添加前的人数
         const previousCount = this.workers.length
 
@@ -282,6 +302,10 @@
       },
 
       onRemoveWorker(index: number) {
+        // 只读模式下禁止删除
+        if (this.readonly == true) {
+          return
+        }
         if (this.workers.length > 1) {
           this.workers.splice(index, 1)
           // 如果只剩1人，自动填满工分

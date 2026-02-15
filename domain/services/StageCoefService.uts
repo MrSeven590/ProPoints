@@ -1,11 +1,11 @@
 /**
  * 工序系数配置服务
  * 管理各环节的工序系数
- * 优先从存储层读取配置，硬编码作为默认值
+ * 支持按版本ID读取系数
  */
 
 import { StageCode, Scope, RoleCode } from '../models/types.uts'
-import { loadCoefConfig, loadStageRoleDefaults } from '../stores/AppStore.uts'
+import { loadCoefConfig, loadCoefSetById, getActiveCoefSetId, loadStageRoleDefaults } from '../stores/AppStore.uts'
 
 // ============================================
 // 工序系数配置
@@ -33,13 +33,64 @@ const DEFAULT_STAGE_COEFS: StageCoefConfig[] = [
 ]
 
 /**
- * 获取工序系数
- * 优先从存储层读取，未找到则使用硬编码默认值
+ * 获取工序系数的硬编码默认值
  * @param stageCode 工序代码
  * @returns 工序系数，未找到返回 1.0
  */
-export function getStageCoef(stageCode: StageCode): number {
-  // 尝试从存储层读取
+export function getDefaultStageCoef(stageCode: StageCode): number {
+  for (let i = 0; i < DEFAULT_STAGE_COEFS.length; i++) {
+    if (DEFAULT_STAGE_COEFS[i].stage_code == stageCode) {
+      return DEFAULT_STAGE_COEFS[i].coef
+    }
+  }
+  return 1.0
+}
+
+/**
+ * 从系数快照获取工序系数
+ * 优先使用快照数据，回退到硬编码默认值
+ * @param stageCode 工序代码
+ * @param snapshot 系数快照（来自会话绑定的 coef_snapshot）
+ * @returns 工序系数
+ */
+export function getStageCoefFromSnapshot(stageCode: StageCode, snapshot: UTSJSONObject | null): number {
+  if (snapshot != null) {
+    const stages = snapshot['stages'] as UTSJSONObject | null
+    if (stages != null) {
+      const coef = stages[stageCode]
+      if (coef != null) {
+        return coef as number
+      }
+    }
+  }
+  return getDefaultStageCoef(stageCode)
+}
+
+/**
+ * 获取工序系数
+ * 支持按版本ID读取，未指定则使用当前生效版本
+ * @param stageCode 工序代码
+ * @param coefSetId 系数版本ID（可选）
+ * @returns 工序系数，未找到返回 1.0
+ */
+export function getStageCoef(stageCode: StageCode, coefSetId: number | null = null): number {
+  // 确定要使用的版本ID
+  const setId = coefSetId != null ? coefSetId : getActiveCoefSetId()
+
+  // 尝试从版本化存储读取
+  const coefSet = loadCoefSetById(setId)
+  if (coefSet != null) {
+    const stages = coefSet['stages']
+    if (stages != null) {
+      const stagesObj = stages as UTSJSONObject
+      const coef = stagesObj[stageCode]
+      if (coef != null) {
+        return coef as number
+      }
+    }
+  }
+
+  // 回退到旧版配置（兼容）
   const config = loadCoefConfig()
   if (config != null) {
     const stages = config['stages']
@@ -53,12 +104,7 @@ export function getStageCoef(stageCode: StageCode): number {
   }
 
   // 回退到硬编码默认值
-  for (let i = 0; i < DEFAULT_STAGE_COEFS.length; i++) {
-    if (DEFAULT_STAGE_COEFS[i].stage_code == stageCode) {
-      return DEFAULT_STAGE_COEFS[i].coef
-    }
-  }
-  return 1.0
+  return getDefaultStageCoef(stageCode)
 }
 
 /**
@@ -117,13 +163,64 @@ const LIANG_TANG_ROLE_COEFS: LiangTangRoleCoefConfig[] = [
 ]
 
 /**
- * 获取晾堂岗位系数
- * 优先从存储层读取，未找到则使用硬编码默认值
+ * 获取晾堂岗位系数的硬编码默认值
  * @param roleCode 岗位代码
  * @returns 岗位系数，未找到返回 0
  */
-export function getLiangTangRoleCoef(roleCode: RoleCode): number {
-  // 尝试从存储层读取
+export function getDefaultLiangTangRoleCoef(roleCode: RoleCode): number {
+  for (let i = 0; i < LIANG_TANG_ROLE_COEFS.length; i++) {
+    if (LIANG_TANG_ROLE_COEFS[i].role_code == roleCode) {
+      return LIANG_TANG_ROLE_COEFS[i].coef
+    }
+  }
+  return 0
+}
+
+/**
+ * 从系数快照获取晾堂岗位系数
+ * 优先使用快照数据，回退到硬编码默认值
+ * @param roleCode 岗位代码
+ * @param snapshot 系数快照（来自会话绑定的 coef_snapshot）
+ * @returns 岗位系数
+ */
+export function getLiangTangRoleCoefFromSnapshot(roleCode: RoleCode, snapshot: UTSJSONObject | null): number {
+  if (snapshot != null) {
+    const liangTang = snapshot['liangTang'] as UTSJSONObject | null
+    if (liangTang != null) {
+      const coef = liangTang[roleCode]
+      if (coef != null) {
+        return coef as number
+      }
+    }
+  }
+  return getDefaultLiangTangRoleCoef(roleCode)
+}
+
+/**
+ * 获取晾堂岗位系数
+ * 支持按版本ID读取，未指定则使用当前生效版本
+ * @param roleCode 岗位代码
+ * @param coefSetId 系数版本ID（可选）
+ * @returns 岗位系数，未找到返回 0
+ */
+export function getLiangTangRoleCoef(roleCode: RoleCode, coefSetId: number | null = null): number {
+  // 确定要使用的版本ID
+  const setId = coefSetId != null ? coefSetId : getActiveCoefSetId()
+
+  // 尝试从版本化存储读取
+  const coefSet = loadCoefSetById(setId)
+  if (coefSet != null) {
+    const liangTang = coefSet['liangTang']
+    if (liangTang != null) {
+      const liangTangObj = liangTang as UTSJSONObject
+      const coef = liangTangObj[roleCode]
+      if (coef != null) {
+        return coef as number
+      }
+    }
+  }
+
+  // 回退到旧版配置（兼容）
   const config = loadCoefConfig()
   if (config != null) {
     const liangTang = config['liangTang']
@@ -137,12 +234,7 @@ export function getLiangTangRoleCoef(roleCode: RoleCode): number {
   }
 
   // 回退到硬编码默认值
-  for (let i = 0; i < LIANG_TANG_ROLE_COEFS.length; i++) {
-    if (LIANG_TANG_ROLE_COEFS[i].role_code == roleCode) {
-      return LIANG_TANG_ROLE_COEFS[i].coef
-    }
-  }
-  return 0
+  return getDefaultLiangTangRoleCoef(roleCode)
 }
 
 /**
