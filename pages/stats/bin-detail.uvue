@@ -58,7 +58,7 @@
             >
               <text class="worker-cell worker-pos">{{ getPositionLabel(worker.positionIndex) }}</text>
               <text class="worker-cell worker-name">{{ worker.personName }}</text>
-              <view class="worker-cell worker-points-cell">
+              <view class="worker-points-cell">
                 <text class="worker-points">{{ formatPoints(worker.originalUnits) }}</text>
                 <text v-if="worker.deductedUnits > 0" class="worker-deducted">-{{ formatPoints(worker.deductedUnits) }}</text>
               </view>
