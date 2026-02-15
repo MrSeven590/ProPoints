@@ -846,6 +846,16 @@ export function findAnQuSessionByBinId(binId: number): UTSJSONObject | null {
 }
 
 /**
+ * 批量匹配记录类型
+ */
+type BestMatchRecord = {
+  session: UTSJSONObject,
+  status: string | null,
+  date: string | null,
+  updatedAt: number | null
+}
+
+/**
  * 批量查找多个发酵仓的安曲会话
  *
  * 性能优化：一次扫描返回所有匹配的 session
@@ -858,12 +868,7 @@ export function findAnQuSessionsByBinIds(binIds: number[]): Map<number, UTSJSONO
   const result = new Map<number, UTSJSONObject>()
 
   // 为每个 binId 初始化最佳匹配记录
-  const bestMatches = new Map<number, {
-    session: UTSJSONObject,
-    status: string | null,
-    date: string | null,
-    updatedAt: number | null
-  }>()
+  const bestMatches = new Map<number, BestMatchRecord>()
 
   const info = uni.getStorageInfoSync()
   const keys = info.keys
