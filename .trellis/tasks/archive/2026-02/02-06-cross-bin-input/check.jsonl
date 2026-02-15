@@ -1,6 +1,0 @@
-{"file": ".claude/commands/trellis/finish-work.md", "reason": "Finish work checklist"}
-{"file": ".trellis/spec/shared/index.md", "reason": "Shared coding standards"}
-{"file": ".claude/commands/trellis/check-frontend.md", "reason": "Frontend check spec"}
-{"file": ".claude/rules/uts.md", "reason": "UTS 类型系统规范"}
-{"file": "domain/services/ScoreAllocator.uts", "reason": "跨仓抽取算法参考"}
-{"file": "domain/models/assignment.uts", "reason": "Assignment 类型定义"}

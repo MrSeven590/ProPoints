@@ -1,7 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/shared/index.md", "reason": "Shared coding standards"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/components.md", "reason": "Component conventions"}
-{"file": "domain/services/PenaltyService.uts", "reason": "扣分服务的使用方式和API"}
-{"file": "components/biz-score-input/biz-score-input.uvue", "reason": "工分输入控件的使用方式"}
-{"file": "components/biz-bin-card/biz-bin-card.uvue", "reason": "仓卡片组件的实现模式,需要在此添加考核按钮"}

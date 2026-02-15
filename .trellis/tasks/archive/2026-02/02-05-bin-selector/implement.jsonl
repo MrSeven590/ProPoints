@@ -1,8 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/shared/index.md", "reason": "Shared coding standards"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/components.md", "reason": "Component conventions"}
-{"file": "domain/models/ferment.uts", "reason": "发酵仓类型定义和格式化函数"}
-{"file": "domain/stores/AppStore.uts", "reason": "班级和楼层配置读取函数"}
-{"file": "pages/mine/class-config.uvue", "reason": "网格选择器UI模式参考"}
-{"file": ".claude/rules/uts.md", "reason": "UTS语言约束规范"}

@@ -1,7 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/shared/index.md", "reason": "Shared coding standards"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/components.md", "reason": "Component conventions"}
-{"file": "domain/models/person.uts", "reason": "人员模型定义，包含拼音字段"}
-{"file": "storage/storage-repository.uts", "reason": "存储层，已有 savePersons/loadPersons"}
-{"file": "storage/storage-keys.uts", "reason": "存储 key 定义"}

@@ -1,8 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/shared/index.md", "reason": "Shared coding standards"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/components.md", "reason": "Component conventions"}
-{"file": ".trellis/spec/frontend/storage-architecture.md", "reason": "存储架构规范 - 页面层必须通过 AppStore 访问存储"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "状态管理规范 - 如何添加新存储项"}
-{"file": "pages/mine/settings.uvue", "reason": "现有设置页面 - 单字段编辑模式参考"}
-{"file": "domain/services/StageCoefService.uts", "reason": "系数服务 - 了解系数结构和使用方式"}

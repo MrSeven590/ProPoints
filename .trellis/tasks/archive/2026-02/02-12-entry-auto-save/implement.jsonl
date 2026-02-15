@@ -1,6 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/shared/index.md", "reason": "Shared coding standards"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/components.md", "reason": "Component conventions"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "定义了会话数据保存模式和 saveSession 使用方式"}
-{"file": ".claude/rules/uts.md", "reason": "UTS 语言约束,包括定时器使用规范"}

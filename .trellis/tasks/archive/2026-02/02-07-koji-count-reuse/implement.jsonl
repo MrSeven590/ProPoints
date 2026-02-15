@@ -1,6 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/shared/index.md", "reason": "Shared coding standards"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/components.md", "reason": "Component conventions"}
-{"file": "domain/services/DuiQuBaseService.uts", "reason": "曲坯数查询服务，已有 getBinKojiCountFromAnQu 实现"}
-{"file": "pages/work/entry.uvue", "reason": "录入页面，需要修改 updateStageBinInfos 方法"}

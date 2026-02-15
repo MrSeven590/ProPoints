@@ -1,7 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/shared/index.md", "reason": "Shared coding standards"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/components.md", "reason": "Component conventions"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件开发规范"}
-{"file": "components/biz-score-input/biz-score-input.uvue", "reason": "步进器实现参考"}
-{"file": "components/biz-bin-card/biz-bin-card.uvue", "reason": "弹窗实现参考"}

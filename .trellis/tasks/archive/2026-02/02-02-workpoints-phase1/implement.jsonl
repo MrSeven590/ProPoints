@@ -1,6 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/shared/index.md", "reason": "Shared coding standards"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/components.md", "reason": "Component conventions"}
-{"file": ".claude/rules/uts.md", "reason": "UTS 与 TypeScript 差异详解"}
-{"file": ".claude/方案总结.md", "reason": "数据库设计和业务逻辑"}

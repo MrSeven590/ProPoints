@@ -1,6 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/shared/index.md", "reason": "Shared coding standards"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/components.md", "reason": "Component conventions"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "查询数据时必须检查status字段过滤草稿"}
-{"file": "storage/storage-repository.uts", "reason": "会话查询函数示例"}

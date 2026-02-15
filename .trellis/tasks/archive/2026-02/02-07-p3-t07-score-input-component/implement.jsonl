@@ -1,6 +1,0 @@
-{"file": ".trellis/workflow.md", "reason": "Project workflow and conventions"}
-{"file": ".trellis/spec/shared/index.md", "reason": "Shared coding standards"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend development guide"}
-{"file": ".trellis/spec/frontend/components.md", "reason": "Component conventions"}
-{"file": "components/biz-cross-bin-input/biz-cross-bin-input.uvue", "reason": "工分输入参考实现"}
-{"file": "domain/models/types.uts", "reason": "工分单位转换函数"}
