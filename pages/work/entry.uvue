@@ -15,7 +15,7 @@
       </view>
 
       <view class="nav-right">
-        <view class="nav-today" @click="onToday">
+        <view class="nav-today" v-if="sessionDate != getTodayDateString()" @click="onToday">
           <text class="nav-today-text">返回今天</text>
         </view>
         <view class="nav-calendar" @click="onOpenDatePicker">
@@ -726,96 +726,100 @@ export default {
         | null;
       if (wheatMaterial != null && wheatMaterial.length > 0) {
         const workers: UTSJSONObject[] = [];
-        const roleData: LiangTangRoleData = {
-          roleCode: "WHEAT_MATERIAL",
-          workers: [] as LiangTangWorker[],
-        };
-        for (let i = 0; i < wheatMaterial.length; i++) {
+        const roleWorkers: LiangTangWorkerData[] = [];
+        const len = wheatMaterial.length;
+        for (let i = 0; i < len; i++) {
           const w = wheatMaterial[i];
           workers.push({
             personId: w["personId"],
             personName: w["personName"],
             pointsUnits: 0,
           } as UTSJSONObject);
-          roleData.workers.push({
-            personId: w["personId"] as number,
+          roleWorkers.push({
+            personId: w["personId"] as number | null,
             personName: w["personName"] as string,
             pointsUnits: 0,
-          });
+          } as LiangTangWorkerData);
         }
         this.wheatMaterialWorkers = workers;
-        this.liangTangRolesData.set("WHEAT_MATERIAL", roleData);
+        this.liangTangRolesData.set("WHEAT_MATERIAL", {
+          roleCode: "WHEAT_MATERIAL",
+          workers: roleWorkers,
+        } as LiangTangRoleData);
       }
       const machineGuard = defaults["MACHINE_GUARD"] as UTSJSONObject[] | null;
       if (machineGuard != null && machineGuard.length > 0) {
         const workers: UTSJSONObject[] = [];
-        const roleData: LiangTangRoleData = {
-          roleCode: "MACHINE_GUARD",
-          workers: [] as LiangTangWorker[],
-        };
-        for (let i = 0; i < machineGuard.length; i++) {
+        const roleWorkers: LiangTangWorkerData[] = [];
+        const len = machineGuard.length;
+        for (let i = 0; i < len; i++) {
           const w = machineGuard[i];
           workers.push({
             personId: w["personId"],
             personName: w["personName"],
             pointsUnits: 0,
           } as UTSJSONObject);
-          roleData.workers.push({
-            personId: w["personId"] as number,
+          roleWorkers.push({
+            personId: w["personId"] as number | null,
             personName: w["personName"] as string,
             pointsUnits: 0,
-          });
+          } as LiangTangWorkerData);
         }
         this.machineGuardWorkers = workers;
-        this.liangTangRolesData.set("MACHINE_GUARD", roleData);
+        this.liangTangRolesData.set("MACHINE_GUARD", {
+          roleCode: "MACHINE_GUARD",
+          workers: roleWorkers,
+        } as LiangTangRoleData);
       }
       const kojiUnloader = defaults["KOJI_UNLOADER"] as UTSJSONObject[] | null;
       if (kojiUnloader != null && kojiUnloader.length > 0) {
         const workers: UTSJSONObject[] = [];
-        const roleData: LiangTangRoleData = {
-          roleCode: "KOJI_UNLOADER",
-          workers: [] as LiangTangWorker[],
-        };
-        for (let i = 0; i < kojiUnloader.length; i++) {
+        const roleWorkers: LiangTangWorkerData[] = [];
+        const len = kojiUnloader.length;
+        for (let i = 0; i < len; i++) {
           const w = kojiUnloader[i];
           workers.push({
             personId: w["personId"],
             personName: w["personName"],
             pointsUnits: 0,
           } as UTSJSONObject);
-          roleData.workers.push({
-            personId: w["personId"] as number,
+          roleWorkers.push({
+            personId: w["personId"] as number | null,
             personName: w["personName"] as string,
             pointsUnits: 0,
-          });
+          } as LiangTangWorkerData);
         }
         this.kojiUnloaderWorkers = workers;
-        this.liangTangRolesData.set("KOJI_UNLOADER", roleData);
+        this.liangTangRolesData.set("KOJI_UNLOADER", {
+          roleCode: "KOJI_UNLOADER",
+          workers: roleWorkers,
+        } as LiangTangRoleData);
       }
       const microOperator = defaults["MICRO_OPERATOR"] as
         | UTSJSONObject[]
         | null;
       if (microOperator != null && microOperator.length > 0) {
         const workers: UTSJSONObject[] = [];
-        const roleData: LiangTangRoleData = {
-          roleCode: "MICRO_OPERATOR",
-          workers: [] as LiangTangWorker[],
-        };
-        for (let i = 0; i < microOperator.length; i++) {
+        const roleWorkers: LiangTangWorkerData[] = [];
+        const len = microOperator.length;
+        for (let i = 0; i < len; i++) {
           const w = microOperator[i];
           workers.push({
             personId: w["personId"],
             personName: w["personName"],
             pointsUnits: 0,
           } as UTSJSONObject);
-          roleData.workers.push({
-            personId: w["personId"] as number,
+          roleWorkers.push({
+            personId: w["personId"] as number | null,
             personName: w["personName"] as string,
             pointsUnits: 0,
-          });
+          } as LiangTangWorkerData);
         }
         this.microOperatorWorkers = workers;
-        this.liangTangRolesData.set("MICRO_OPERATOR", roleData);
+        this.liangTangRolesData.set("MICRO_OPERATOR", {
+          roleCode: "MICRO_OPERATOR",
+          workers: roleWorkers,
+        } as LiangTangRoleData);
       }
     },
 
@@ -2240,6 +2244,7 @@ export default {
         "KOJI_UNLOADER",
         "MICRO_OPERATOR",
       ];
+      let validRoleCount = 0;
       for (let k = 0; k < roleKeys.length; k++) {
         const roleKey = roleKeys[k];
         const roleData = this.liangTangRolesData.get(roleKey);
@@ -2256,12 +2261,12 @@ export default {
           }
           if (workersData.length > 0) {
             defaults[roleKey] = workersData;
+            validRoleCount = validRoleCount + 1;
           }
         }
       }
       // 只有当有有效数据时才保存，避免覆盖已有的默认人员
-      const hasValidData = Object.keys(defaults).length > 0;
-      if (hasValidData) {
+      if (validRoleCount > 0) {
         saveLiangTangDefault(classNo, defaults);
       }
     },
