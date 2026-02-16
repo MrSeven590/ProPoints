@@ -118,10 +118,11 @@ function initCoefConfig(): void {
     return // 已初始化
   }
 
-  // 创建默认系数版本（setId=1）
+  // 创建默认系数版本（setId=260000，表示默认版本）
+  const DEFAULT_COEF_SET_ID = 260000
   const defaultCoefSet = {
-    id: 1,
-    name: '系数版本 v1',
+    id: DEFAULT_COEF_SET_ID,
+    name: '系数版本 260000',
     effectiveFrom: Date.now(),
     effectiveTo: null,
     stages: {
@@ -139,8 +140,8 @@ function initCoefConfig(): void {
     } as UTSJSONObject
   } as UTSJSONObject
 
-  saveCoefSet(1, defaultCoefSet)
-  saveActiveCoefSetId(1)
+  saveCoefSet(DEFAULT_COEF_SET_ID, defaultCoefSet)
+  saveActiveCoefSetId(DEFAULT_COEF_SET_ID)
 
   // 兼容旧版：同时保存到旧的 key（用于数据迁移期间的兼容）
   const legacyConfig = {

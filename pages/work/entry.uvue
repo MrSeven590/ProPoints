@@ -22,6 +22,10 @@
             {{ sessionRemark == '' ? '点击添加备注' : sessionRemark }}
           </text>
         </view>
+        <view class="info-row">
+          <text class="info-label">系数版本</text>
+          <text class="info-value">{{ getCoefVersionLabel() }}</text>
+        </view>
       </view>
 
       <!-- 发酵仓选择（非堆曲环节） -->
@@ -263,6 +267,9 @@
   import { calcLiangTangPoolUnits } from '../../domain/services/ScoreCalculator.uts'
   import { isMicroEnabledForCurrentRound, isMicroEnabledByRoundId } from '../../domain/services/RoundService.uts'
 
+  // 系数版本常量
+  const DEFAULT_COEF_SET_ID = 260000
+
   /**
    * 仓内工人分配数据类型
    */
@@ -440,6 +447,18 @@
       }
     },
     methods: {
+      /**
+       * 获取系数版本标签
+       * @returns 系数版本标签，默认版本显示"默认"，其他版本显示日期数字
+       */
+      getCoefVersionLabel(): string {
+        const id = this.coefSetId
+        if (id == null || id == DEFAULT_COEF_SET_ID) {
+          return '默认'
+        }
+        return id.toString()
+      },
+
       /**
        * 获取仓的工序系数（优先使用会话绑定的系数快照）
        */

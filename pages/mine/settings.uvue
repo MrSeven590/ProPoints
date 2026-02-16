@@ -132,7 +132,7 @@
     getManagerName,
     setManagerName,
     loadCoefConfig,
-    createCoefSetVersion,
+    saveCoefSetIfChanged,
     getActiveCoefSetId,
     loadCoefSetById
   } from '../../domain/stores/AppStore.uts'
@@ -282,8 +282,10 @@
         })
       },
       saveSettings() {
-        setManagerName(this.managerName)
+        // 1. 保存管理员姓名
+        setManagerName(this.managerName.trim())
 
+        // 2. 验证并构建系数数据
         const anQu = this.validateAndParseCoef(this.stageCoefs.AN_QU, '安曲')
         if (anQu == null) return
         const yiFan = this.validateAndParseCoef(this.stageCoefs.YI_FAN, '一次翻曲')
@@ -323,13 +325,21 @@
           liangTang: liangTang
         } as UTSJSONObject
 
-        // 创建新版本（使用返回的实际版本ID）
-        const newId = createCoefSetVersion('', coefData)
+        // 3. 只在系数变化时创建新版本
+        const result = saveCoefSetIfChanged('', coefData)
 
-        uni.showToast({
-          title: '设置已保存（新版本 v' + newId.toString() + '）',
-          icon: 'success'
-        })
+        // 4. 根据变更显示提示
+        if (result.changed) {
+          uni.showToast({
+            title: '系数已保存（版本 ' + result.setId.toString() + '）',
+            icon: 'success'
+          })
+        } else {
+          uni.showToast({
+            title: '设置已保存（系数未变更）',
+            icon: 'success'
+          })
+        }
       }
     }
   }

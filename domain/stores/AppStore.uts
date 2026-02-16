@@ -52,6 +52,24 @@ export const EVENT_SESSION_SUBMITTED = 'session:submitted'
 export const EVENT_ROUND_CHANGED = 'round:changed'
 
 // ============================================
+// 系数版本常量
+// ============================================
+
+const DEFAULT_COEF_SET_ID = 260000
+
+/**
+ * 生成今天的系数版本ID（YYMMDD格式）
+ * @returns 今天的版本ID，例如 260216 代表 2026年2月16日
+ */
+function getTodayCoefSetId(): number {
+  const now = new Date()
+  const yy = (now.getFullYear() % 100).toString().padStart(2, '0')
+  const mm = (now.getMonth() + 1).toString().padStart(2, '0')
+  const dd = now.getDate().toString().padStart(2, '0')
+  return parseInt(`${yy}${mm}${dd}`)
+}
+
+// ============================================
 // 应用配置
 // ============================================
 
@@ -370,25 +388,17 @@ export function saveCoefConfig(config: UTSJSONObject): void {
 }
 
 /**
- * 创建新的系数版本
- * @param name 版本名称
+ * 创建新的系数版本（使用日期格式版本号）
+ * @param name 版本名称（传空字符串则自动生成）
  * @param coefData 系数数据（包含 stages 和 liangTang）
- * @returns 新版本ID
+ * @returns 新版本ID（YYMMDD格式）
  */
 export function createCoefSetVersion(name: string, coefData: UTSJSONObject): number {
-  // 获取所有现有版本ID
-  const existingIds = getAllCoefSetIdsFromRepo()
-
-  // 计算新版本ID（最大ID + 1）
-  let newId = 1
-  for (let i = 0; i < existingIds.length; i++) {
-    if (existingIds[i] >= newId) {
-      newId = existingIds[i] + 1
-    }
-  }
+  // 使用今天的日期作为版本ID
+  const newId = getTodayCoefSetId()
 
   // 自动生成名称（如果传入空字符串）
-  const finalName = name != '' ? name : '系数版本 v' + newId.toString()
+  const finalName = name != '' ? name : '系数版本 ' + newId.toString()
 
   // 构造版本数据
   const coefSet = {
@@ -400,7 +410,7 @@ export function createCoefSetVersion(name: string, coefData: UTSJSONObject): num
     liangTang: coefData['liangTang']
   } as UTSJSONObject
 
-  // 保存版本
+  // 保存版本（如果当天版本已存在，会覆盖）
   saveCoefSetToRepo(newId, coefSet)
 
   // 设置为当前生效版本
@@ -411,14 +421,14 @@ export function createCoefSetVersion(name: string, coefData: UTSJSONObject): num
 
 /**
  * 获取当前生效的系数版本ID
- * @returns 版本ID，不存在时返回 1（默认版本）
+ * @returns 版本ID，不存在时返回 260000（默认版本）
  */
 export function getActiveCoefSetId(): number {
   const setId = loadActiveCoefSetIdFromRepo()
   if (setId != null) {
     return setId
   }
-  return 1 // 默认版本
+  return DEFAULT_COEF_SET_ID // 默认版本
 }
 
 /**
@@ -427,6 +437,75 @@ export function getActiveCoefSetId(): number {
  */
 export function setActiveCoefSet(setId: number): void {
   saveActiveCoefSetIdToRepo(setId)
+}
+
+/**
+ * 系数保存结果
+ */
+export type SaveCoefResult = {
+  changed: boolean
+  setId: number
+}
+
+/**
+ * 比较两个系数配置是否相等
+ * @param activeSet 当前活跃的系数版本
+ * @param coefData 新的系数数据
+ * @returns 如果系数相等返回 true，否则返回 false
+ */
+function coefEquals(activeSet: UTSJSONObject, coefData: UTSJSONObject): boolean {
+  const activeStages = activeSet['stages'] as UTSJSONObject
+  const activeLiangTang = activeSet['liangTang'] as UTSJSONObject
+  const newStages = coefData['stages'] as UTSJSONObject
+  const newLiangTang = coefData['liangTang'] as UTSJSONObject
+
+  // 比较 stages 的所有字段
+  const stageKeys = ['AN_QU', 'YI_FAN', 'ER_FAN', 'CHAI_QU', 'DUI_QU']
+  for (let i = 0; i < stageKeys.length; i++) {
+    const key = stageKeys[i]
+    if (activeStages[key] != newStages[key]) {
+      return false
+    }
+  }
+
+  // 比较 liangTang 的所有字段
+  const liangTangKeys = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER', 'MICRO_OPERATOR']
+  for (let i = 0; i < liangTangKeys.length; i++) {
+    const key = liangTangKeys[i]
+    if (activeLiangTang[key] != newLiangTang[key]) {
+      return false
+    }
+  }
+
+  return true
+}
+
+/**
+ * 只在系数变化时保存新版本
+ * @param name 版本名称（传空字符串则自动生成）
+ * @param coefData 系数数据（包含 stages 和 liangTang）
+ * @returns 保存结果，包含是否变更和版本ID
+ */
+export function saveCoefSetIfChanged(name: string, coefData: UTSJSONObject): SaveCoefResult {
+  // 获取当前活跃版本
+  const activeSetId = getActiveCoefSetId()
+  const activeSet = loadCoefSetFromRepo(activeSetId)
+
+  // 如果活跃版本不存在，直接创建新版本
+  if (activeSet == null) {
+    const newId = createCoefSetVersion(name, coefData)
+    return { changed: true, setId: newId }
+  }
+
+  // 比较系数是否变化
+  if (coefEquals(activeSet, coefData)) {
+    // 系数未变化，不创建新版本
+    return { changed: false, setId: activeSetId }
+  }
+
+  // 系数已变化，创建新版本
+  const newId = createCoefSetVersion(name, coefData)
+  return { changed: true, setId: newId }
 }
 
 /**
