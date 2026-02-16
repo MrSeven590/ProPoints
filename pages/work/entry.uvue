@@ -1061,10 +1061,7 @@
        * 打开日期选择弹窗
        */
       onOpenDatePicker() {
-        // 只读模式下禁止修改日期
-        if (this.viewMode == 'view') {
-          return
-        }
+        // 允许在只读模式下切换日期：用于查看/录入其他日期
         this.tempDate = this.sessionDate
         this.showDatePicker = true
       },
