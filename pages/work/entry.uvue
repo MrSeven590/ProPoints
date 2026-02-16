@@ -1278,7 +1278,7 @@
           this.coefSetId = coefSetId
         } else {
           // 兼容旧数据：如果没有 coef_set_id，使用默认版本
-          this.coefSetId = 1
+          this.coefSetId = DEFAULT_COEF_SET_ID
         }
 
         // 恢复系数快照
