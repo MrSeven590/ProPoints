@@ -15,7 +15,7 @@
       </view>
 
       <view class="nav-right">
-        <view class="nav-today" v-if="sessionDate != getTodayDateString()" @click="onToday">
+        <view class="nav-today" v-if="!isToday" @click="onToday">
           <text class="nav-today-text">返回今天</text>
         </view>
         <view class="nav-calendar" @click="onOpenDatePicker">
@@ -540,6 +540,14 @@ export default {
       uni.hideKeyboard();
       this.doAutoSave();
     }
+  },
+  computed: {
+    /**
+     * 判断当前日期是否为今天
+     */
+    isToday(): boolean {
+      return this.sessionDate == getTodayDateString();
+    },
   },
   methods: {
     /**
