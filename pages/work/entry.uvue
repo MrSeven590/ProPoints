@@ -726,6 +726,10 @@ export default {
         | null;
       if (wheatMaterial != null && wheatMaterial.length > 0) {
         const workers: UTSJSONObject[] = [];
+        const roleData: LiangTangRoleData = {
+          roleCode: "WHEAT_MATERIAL",
+          workers: [] as LiangTangWorker[],
+        };
         for (let i = 0; i < wheatMaterial.length; i++) {
           const w = wheatMaterial[i];
           workers.push({
@@ -733,12 +737,22 @@ export default {
             personName: w["personName"],
             pointsUnits: 0,
           } as UTSJSONObject);
+          roleData.workers.push({
+            personId: w["personId"] as number,
+            personName: w["personName"] as string,
+            pointsUnits: 0,
+          });
         }
         this.wheatMaterialWorkers = workers;
+        this.liangTangRolesData.set("WHEAT_MATERIAL", roleData);
       }
       const machineGuard = defaults["MACHINE_GUARD"] as UTSJSONObject[] | null;
       if (machineGuard != null && machineGuard.length > 0) {
         const workers: UTSJSONObject[] = [];
+        const roleData: LiangTangRoleData = {
+          roleCode: "MACHINE_GUARD",
+          workers: [] as LiangTangWorker[],
+        };
         for (let i = 0; i < machineGuard.length; i++) {
           const w = machineGuard[i];
           workers.push({
@@ -746,12 +760,22 @@ export default {
             personName: w["personName"],
             pointsUnits: 0,
           } as UTSJSONObject);
+          roleData.workers.push({
+            personId: w["personId"] as number,
+            personName: w["personName"] as string,
+            pointsUnits: 0,
+          });
         }
         this.machineGuardWorkers = workers;
+        this.liangTangRolesData.set("MACHINE_GUARD", roleData);
       }
       const kojiUnloader = defaults["KOJI_UNLOADER"] as UTSJSONObject[] | null;
       if (kojiUnloader != null && kojiUnloader.length > 0) {
         const workers: UTSJSONObject[] = [];
+        const roleData: LiangTangRoleData = {
+          roleCode: "KOJI_UNLOADER",
+          workers: [] as LiangTangWorker[],
+        };
         for (let i = 0; i < kojiUnloader.length; i++) {
           const w = kojiUnloader[i];
           workers.push({
@@ -759,14 +783,24 @@ export default {
             personName: w["personName"],
             pointsUnits: 0,
           } as UTSJSONObject);
+          roleData.workers.push({
+            personId: w["personId"] as number,
+            personName: w["personName"] as string,
+            pointsUnits: 0,
+          });
         }
         this.kojiUnloaderWorkers = workers;
+        this.liangTangRolesData.set("KOJI_UNLOADER", roleData);
       }
       const microOperator = defaults["MICRO_OPERATOR"] as
         | UTSJSONObject[]
         | null;
       if (microOperator != null && microOperator.length > 0) {
         const workers: UTSJSONObject[] = [];
+        const roleData: LiangTangRoleData = {
+          roleCode: "MICRO_OPERATOR",
+          workers: [] as LiangTangWorker[],
+        };
         for (let i = 0; i < microOperator.length; i++) {
           const w = microOperator[i];
           workers.push({
@@ -774,8 +808,14 @@ export default {
             personName: w["personName"],
             pointsUnits: 0,
           } as UTSJSONObject);
+          roleData.workers.push({
+            personId: w["personId"] as number,
+            personName: w["personName"] as string,
+            pointsUnits: 0,
+          });
         }
         this.microOperatorWorkers = workers;
+        this.liangTangRolesData.set("MICRO_OPERATOR", roleData);
       }
     },
 
@@ -2219,7 +2259,11 @@ export default {
           }
         }
       }
-      saveLiangTangDefault(classNo, defaults);
+      // 只有当有有效数据时才保存，避免覆盖已有的默认人员
+      const hasValidData = Object.keys(defaults).length > 0;
+      if (hasValidData) {
+        saveLiangTangDefault(classNo, defaults);
+      }
     },
 
     // ============================================
