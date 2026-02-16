@@ -1,8 +1,28 @@
 <template>
   <view class="page-container">
-    <view class="header">
-      <text class="header-title">{{ stageName }}</text>
-      <text class="header-subtitle">{{ sessionDate }}</text>
+    <!-- 交互式头部导航栏 -->
+    <view class="header-nav">
+      <view class="nav-left" @click="onPrevDay">
+        <text class="nav-icon">◀</text>
+      </view>
+
+      <view class="nav-center" @click="onOpenDatePicker">
+        <text class="nav-stage">{{ stageName }}</text>
+        <text class="nav-date">{{ getDateLabel() }}</text>
+        <text class="nav-status" :class="getStatusClass()">{{ getStatusLabel() }}</text>
+      </view>
+
+      <view class="nav-right">
+        <view class="nav-today" @click="onToday">
+          <text class="nav-today-text">今天</text>
+        </view>
+        <view class="nav-calendar" @click="onOpenDatePicker">
+          <text class="nav-icon">📅</text>
+        </view>
+        <view class="nav-next" @click="onNextDay">
+          <text class="nav-icon">▶</text>
+        </view>
+      </view>
     </view>
 
     <scroll-view class="content" scroll-y="true">
@@ -447,6 +467,80 @@
       }
     },
     methods: {
+      /**
+       * 切换到前一天
+       */
+      onPrevDay() {
+        const prevDate = addDaysToDate(this.sessionDate, -1)
+        this.switchSessionDate(prevDate)
+      },
+
+      /**
+       * 切换到后一天
+       */
+      onNextDay() {
+        const nextDate = addDaysToDate(this.sessionDate, 1)
+        this.switchSessionDate(nextDate)
+      },
+
+      /**
+       * 切换到今天
+       */
+      onToday() {
+        const today = getTodayDateString()
+        if (this.sessionDate != today) {
+          this.switchSessionDate(today)
+        }
+      },
+
+      /**
+       * 获取日期标签（今天、昨天、具体日期）
+       */
+      getDateLabel(): string {
+        const today = getTodayDateString()
+        if (this.sessionDate == today) {
+          return '今天'
+        }
+
+        const yesterday = addDaysToDate(today, -1)
+        if (this.sessionDate == yesterday) {
+          return '昨天'
+        }
+
+        const beforeYesterday = addDaysToDate(today, -2)
+        if (this.sessionDate == beforeYesterday) {
+          return '前天'
+        }
+
+        return this.sessionDate
+      },
+
+      /**
+       * 获取状态标签
+       */
+      getStatusLabel(): string {
+        if (this.viewMode == 'view') {
+          return '[已提交]'
+        } else if (this.sessionStatus == 'draft') {
+          return '[草稿]'
+        } else {
+          return '[录入中]'
+        }
+      },
+
+      /**
+       * 获取状态样式类
+       */
+      getStatusClass(): string {
+        if (this.viewMode == 'view') {
+          return 'status-submitted'
+        } else if (this.sessionStatus == 'draft') {
+          return 'status-draft'
+        } else {
+          return 'status-editing'
+        }
+      },
+
       /**
        * 获取系数版本标签
        * @returns 系数版本标签，默认版本显示"默认"，其他版本显示日期数字
@@ -1173,6 +1267,12 @@
        * - 再加载目标日期的会话（draft 优先）
        */
       switchSessionDate(newDate: string) {
+        // 显示加载提示
+        uni.showLoading({
+          title: '加载中...',
+          mask: true
+        })
+
         // 先保存当前草稿（确保不会把旧数据写到新日期）
         this.cancelAutoSave()
         if (this.sessionStatus == 'draft' && this.isSubmitting == false) {
@@ -1184,6 +1284,11 @@
         this.tempDate = newDate
 
         this.loadExistingSession()
+
+        // 隐藏加载提示
+        setTimeout(() => {
+          uni.hideLoading()
+        }, 300)
       },
 
       /**
@@ -2042,22 +2147,91 @@
     background-color: #f5f5f5;
   }
 
-  .header {
+  .header-nav {
     background-color: #007aff;
-    padding: 16px;
-    flex-direction: column;
+    padding: 12px 16px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
   }
 
-  .header-title {
-    font-size: 20px;
+  .nav-left,
+  .nav-next {
+    width: 40px;
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .nav-icon {
+    font-size: 18px;
+    color: #ffffff;
+  }
+
+  .nav-center {
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 12px;
+  }
+
+  .nav-stage {
+    font-size: 18px;
     font-weight: bold;
     color: #ffffff;
   }
 
-  .header-subtitle {
+  .nav-date {
     font-size: 14px;
     color: rgba(255, 255, 255, 0.8);
+    margin-top: 2px;
+  }
+
+  .nav-status {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 4px;
     margin-top: 4px;
+  }
+
+  .status-submitted {
+    background-color: #34c759;
+    color: #ffffff;
+  }
+
+  .status-draft {
+    background-color: #ff9500;
+    color: #ffffff;
+  }
+
+  .status-editing {
+    background-color: #5856d6;
+    color: #ffffff;
+  }
+
+  .nav-right {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .nav-today {
+    padding: 4px 12px;
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    margin-right: 8px;
+  }
+
+  .nav-today-text {
+    font-size: 14px;
+    color: #ffffff;
+  }
+
+  .nav-calendar {
+    width: 32px;
+    height: 32px;
+    align-items: center;
+    justify-content: center;
+    margin-right: 8px;
   }
 
   .content {
