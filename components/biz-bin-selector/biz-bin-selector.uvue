@@ -100,8 +100,26 @@
 	        selectedSeqLookup: new Map<string, boolean>()
 	      }
 	    },
+	    watch: {
+	      selectedBins: {
+	        handler(newVal: BinCode[]) {
+	          this.rebuildSelectedSeqLookup(newVal)
+	        },
+	        immediate: true
+	      }
+	    },
 	    mounted() {
-	      this.initData()
+	      // 初始化非 prop 相关的状态
+      this.classNo = getCurrentClassNo()
+      this.currentFloor = this.defaultFloor
+      const stage = this.stageCode as StageCode
+      this.seqMax = Math.floor(getSeqMaxForFloor(this.classNo, this.currentFloor, stage))
+      this.lastSelectedSeq = 0
+
+      // 智能推断预选
+      if (this.autoInfer == true && this.hasInferred == false) {
+        this.doAutoInfer()
+      }
 	    },
 	    methods: {
 	      rebuildSelectedSeqLookup(bins: BinCode[]) {
@@ -117,19 +135,6 @@
 	        this.selectedSeqLookup = lookup
 	      },
 
-	      initData() {
-	        this.classNo = getCurrentClassNo()
-	        this.currentFloor = this.defaultFloor
-	        const stage = this.stageCode as StageCode
-	        this.seqMax = Math.floor(getSeqMaxForFloor(this.classNo, this.currentFloor, stage))
-	        this.lastSelectedSeq = 0
-	        this.rebuildSelectedSeqLookup(this.selectedBins as BinCode[])
-
-	        // 智能推断预选
-	        if (this.autoInfer == true && this.hasInferred == false) {
-	          this.doAutoInfer()
-	        }
-      },
 
 	      doAutoInfer() {
 	        const bins = this.selectedBins as BinCode[]

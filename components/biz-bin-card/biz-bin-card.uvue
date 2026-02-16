@@ -421,12 +421,16 @@
           this.recalculateTotalPoints()
         },
         immediate: true
+      },
+      initialWorkers: {
+        handler(newVal: UTSJSONObject[]) {
+          this.initWorkerList(newVal)
+        },
+        immediate: true
       }
-      // 注意：initialWorkers 不使用 watcher，只在 mounted 时初始化一次
-      // 因为组件是自管理状态的，通过 @change 事件同步回父组件
     },
     mounted() {
-      this.initData()
+      // 不再需要 initData()，所有初始化由 watchers 处理
     },
     methods: {
       /**
@@ -441,22 +445,6 @@
        */
       calcFinalPointsForWorker(originalUnits: PointsUnits, deductedUnits: PointsUnits): PointsUnits {
         return calcFinalPoints(originalUnits, deductedUnits)
-      },
-
-      initData() {
-        // 初始化曲坯数
-        this.kojiCount = this.initialKojiCount as number
-        this.kojiCountStr = this.kojiCount.toString()
-        this.recalculateTotalPoints()
-
-        // 初始化人员列表
-        const initialWorkers = this.initialWorkers as UTSJSONObject[]
-        if (initialWorkers.length > 0) {
-          this.initWorkerList(initialWorkers)
-        } else {
-          // 创建默认人员行
-          this.createDefaultWorkers()
-        }
       },
 
       initWorkerList(workers: UTSJSONObject[]) {

@@ -57,7 +57,6 @@
       <view class="section" v-if="showBinSection">
         <text class="section-title">发酵仓选择</text>
         <biz-bin-selector
-          :key="sessionDate"
           :selectedBins="selectedBins"
           :stageCode="stageCode"
           :disabled="viewMode == 'view' || isRestoring == true"
@@ -91,7 +90,6 @@
           </view>
         </view>
         <biz-cross-bin-input
-          :key="sessionDate"
           :stageCode="stageCode"
           :bins="stageBinInfos"
           :occupiedPersonIds="occupiedIds"
@@ -127,7 +125,7 @@
         <view class="bin-cards">
           <biz-bin-card
             v-for="binInfo in stageBinInfos"
-            :key="sessionDate + '-' + binInfo.stage_bin_id"
+            :key="binInfo.stage_bin_id"
             :stageBinId="binInfo.stage_bin_id"
             :binId="binInfo.bin_id"
             :binCode="binInfo.bin_code"
@@ -158,7 +156,6 @@
 
         <!-- 麦料参数（严格1人） -->
         <biz-session-role-card
-          :key="sessionDate + '-WHEAT_MATERIAL'"
           roleCode="WHEAT_MATERIAL"
           roleName="麦料参数"
           :poolUnits="calcWheatMaterialPoolUnits()"
@@ -172,7 +169,6 @@
 
         <!-- 守机（严格1人） -->
         <biz-session-role-card
-          :key="sessionDate + '-MACHINE_GUARD'"
           roleCode="MACHINE_GUARD"
           roleName="守机"
           :poolUnits="calcMachineGuardPoolUnits()"
@@ -186,7 +182,6 @@
 
         <!-- 下曲 -->
         <biz-session-role-card
-          :key="sessionDate + '-KOJI_UNLOADER'"
           roleCode="KOJI_UNLOADER"
           roleName="下曲"
           :poolUnits="calcKojiUnloaderPoolUnits()"
@@ -201,7 +196,6 @@
         <!-- 微机（根据 micro_enabled 显示/隐藏） -->
         <biz-session-role-card
           v-if="microEnabled"
-          :key="sessionDate + '-MICRO_OPERATOR'"
           roleCode="MICRO_OPERATOR"
           roleName="微机"
           :poolUnits="calcMicroOperatorPoolUnits()"
@@ -1457,15 +1451,12 @@ export default {
       this.sessionDate = newDate;
       this.tempDate = newDate;
 
-      // 使用 nextTick 延迟数据加载，确保 DOM 更新完成
-      this.$nextTick(() => {
-        this.loadExistingSession();
+      this.loadExistingSession();
 
-        // 隐藏加载提示
-        setTimeout(() => {
-          uni.hideLoading();
-        }, 300);
-      });
+      // 隐藏加载提示
+      setTimeout(() => {
+        uni.hideLoading();
+      }, 300);
     },
 
     /**
