@@ -257,12 +257,11 @@
   import type { BinInfo } from '../../domain/services/ScoreAllocator.uts'
   import { allocateCrossBinPoints } from '../../domain/services/ScoreAllocator.uts'
   import { getBinKojiCountFromAnQu } from '../../domain/services/DuiQuBaseService.uts'
-  import { saveDraftSession, saveSubmittedSession, loadSessionForEdit, saveLiangTangDefault, loadLiangTangDefault, getActiveCoefSetId, loadCoefSetById } from '../../domain/stores/AppStore.uts'
+  import { saveDraftSession, saveSubmittedSession, loadSessionForEdit, saveLiangTangDefault, loadLiangTangDefault, getActiveCoefSetId, loadCoefSetById, getCurrentClassNo, getManagerName } from '../../domain/stores/AppStore.uts'
   import { validateBinBalance, validateCrossBinSource, mergeValidationResults } from '../../domain/services/Validator.uts'
   import type { ValidationResult } from '../../domain/services/Validator.uts'
   import { calcLiangTangPoolUnits } from '../../domain/services/ScoreCalculator.uts'
   import { isMicroEnabledForCurrentRound, isMicroEnabledByRoundId } from '../../domain/services/RoundService.uts'
-  import { getCurrentClassNo } from '../../domain/stores/AppStore.uts'
 
   /**
    * 仓内工人分配数据类型
@@ -355,6 +354,9 @@
         savedRevision: 0 as number,
         isSubmitting: false as boolean,
         sessionStatus: 'draft' as string,
+        // 审计字段（管理员姓名快照）
+        createdByManager: '' as string,
+        updatedByManager: '' as string,
         lastAutoSaveErrorTime: 0 as number,
         // 晾堂岗位相关状态（仅安曲环节）
         showLiangTangSection: false as boolean,
@@ -466,6 +468,16 @@
 
         // 修改状态为 draft
         sessionData['status'] = 'draft'
+
+        // 审计字段：进入编辑时更新 updated_by_manager，并在缺失时补齐 created_by_manager
+        const managerName = getManagerName().trim()
+        if (managerName != '') {
+          const createdByManager = sessionData['created_by_manager'] as string | null
+          if (createdByManager == null || createdByManager == '') {
+            sessionData['created_by_manager'] = managerName
+          }
+          sessionData['updated_by_manager'] = managerName
+        }
 
         // 保存为草稿
         saveDraftSession(this.sessionDate, this.stageCode, this.roundId, sessionData)
@@ -1196,6 +1208,10 @@
         this.sessionRemark = ''
         this.tempRemark = ''
         this.showRemarkPopup = false
+
+        // 重置审计字段
+        this.createdByManager = ''
+        this.updatedByManager = ''
       },
 
       /**
@@ -1218,9 +1234,26 @@
           if (setData != null) {
             this.coefSnapshot = setData
           }
+
+          // 初始化审计字段（新建会话）
+          const managerName = getManagerName().trim()
+          if (managerName != '') {
+            this.createdByManager = managerName
+            this.updatedByManager = managerName
+          }
           this.viewMode = 'edit'
           this.isRestoring = false
           return
+        }
+
+        // 恢复审计字段（兼容旧数据缺失）
+        const createdByManager = sessionData['created_by_manager'] as string | null
+        if (createdByManager != null) {
+          this.createdByManager = createdByManager
+        }
+        const updatedByManager = sessionData['updated_by_manager'] as string | null
+        if (updatedByManager != null) {
+          this.updatedByManager = updatedByManager
         }
 
         // 恢复系数版本ID
@@ -1452,6 +1485,15 @@
           }
         }
 
+        // 审计字段：管理员姓名快照（避免配置为空时覆盖旧值）
+        const managerName = getManagerName().trim()
+        if (managerName != '') {
+          if (this.createdByManager == '') {
+            this.createdByManager = managerName
+          }
+          this.updatedByManager = managerName
+        }
+
         // 构建发酵仓数据
         const binsData: UTSJSONObject[] = []
         for (let i = 0; i < this.stageBinInfos.length; i++) {
@@ -1460,20 +1502,20 @@
 
           // 构建工人数据
           const workersData: UTSJSONObject[] = []
-          if (cardData != null) {
-            for (let j = 0; j < cardData.workers.length; j++) {
-              const w = cardData.workers[j]
-              workersData.push({
-                personId: w.personId,
-                personName: w.personName,
-                pointsUnits: w.pointsUnits,
-                positionIndex: w.positionIndex,
-                deductedUnits: w.deductedUnits,
-                penaltyReason: w.penaltyReason,
-                penaltyId: w.penaltyId
-              } as UTSJSONObject)
-            }
-          }
+	          if (cardData != null) {
+	            for (let j = 0; j < cardData.workers.length; j++) {
+	              const w = cardData.workers[j]
+	              workersData.push({
+	                personId: w.personId,
+	                personName: w.personName,
+	                pointsUnits: w.pointsUnits,
+	                positionIndex: w.positionIndex,
+	                deductedUnits: w.deductedUnits,
+	                penaltyReason: w.penaltyReason,
+	                penaltyId: w.penaltyId
+	              } as UTSJSONObject)
+	            }
+	          }
 
           // 从 selectedBins 获取原始 BinCode
           let classNo = 0
@@ -1501,15 +1543,15 @@
 
         // 构建跨仓岗位数据
         // 直接使用 this.crossBinSources，确保"用户看到的 == 保存的"
-        const crossBinData = {
-          enabled: this.showCrossBinSection,
-          role_code: this.crossBinRoleCode,
-          role_name: this.crossBinRoleName,
-          person_id: this.crossBinPersonId,
-          person_name: this.crossBinPersonName,
-          points_units: this.crossBinPointsUnits,
-          sources: this.crossBinSources
-        } as UTSJSONObject
+	        const crossBinData = {
+	          enabled: this.showCrossBinSection,
+	          role_code: this.crossBinRoleCode,
+	          role_name: this.crossBinRoleName,
+	          person_id: this.crossBinPersonId,
+	          person_name: this.crossBinPersonName,
+	          points_units: this.crossBinPointsUnits,
+	          sources: this.crossBinSources
+	        } as UTSJSONObject
 
         // 构建晾堂岗位数据（仅安曲环节）
         let liangTangData: UTSJSONObject | null = null
@@ -1521,14 +1563,14 @@
             const roleData = this.liangTangRolesData.get(roleKey)
             if (roleData != null) {
               const workersData: UTSJSONObject[] = []
-              for (let j = 0; j < roleData.workers.length; j++) {
-                const w = roleData.workers[j]
-                workersData.push({
-                  personId: w.personId,
-                  personName: w.personName,
-                  pointsUnits: w.pointsUnits
-                } as UTSJSONObject)
-              }
+	              for (let j = 0; j < roleData.workers.length; j++) {
+	                const w = roleData.workers[j]
+	                workersData.push({
+	                  personId: w.personId,
+	                  personName: w.personName,
+	                  pointsUnits: w.pointsUnits
+	                } as UTSJSONObject)
+	              }
               liangTangData[roleKey] = workersData
             }
           }
@@ -1537,6 +1579,8 @@
         // 构建完整会话数据
         const sessionData = {
           status: status,
+          created_by_manager: this.createdByManager,
+          updated_by_manager: this.updatedByManager,
           session_date: this.sessionDate,
           stage_code: this.stageCode,
           stage_name: this.stageName,
@@ -1560,6 +1604,25 @@
        * 提交确认
        */
       submit() {
+        // ============================================
+        // 管理员姓名检查
+        // ============================================
+        const managerName = getManagerName().trim()
+        if (managerName == '') {
+          uni.showModal({
+            title: '提示',
+            content: '请先在设置中配置管理员姓名',
+            success: (res) => {
+              if (res.confirm == true) {
+                uni.navigateTo({
+                  url: '/pages/mine/settings'
+                })
+              }
+            }
+          })
+          return
+        }
+
         // ============================================
         // 数据校验
         // ============================================
