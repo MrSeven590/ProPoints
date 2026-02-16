@@ -1457,12 +1457,15 @@ export default {
       this.sessionDate = newDate;
       this.tempDate = newDate;
 
-      this.loadExistingSession();
+      // 使用 nextTick 延迟数据加载，确保 DOM 更新完成
+      this.$nextTick(() => {
+        this.loadExistingSession();
 
-      // 隐藏加载提示
-      setTimeout(() => {
-        uni.hideLoading();
-      }, 300);
+        // 隐藏加载提示
+        setTimeout(() => {
+          uni.hideLoading();
+        }, 300);
+      });
     },
 
     /**
