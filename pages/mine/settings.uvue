@@ -340,6 +340,11 @@
             icon: 'success'
           })
         }
+
+        // 5. 延迟返回上一级，确保 toast 可见
+        setTimeout(() => {
+          uni.navigateBack()
+        }, 1500)
       }
     }
   }
