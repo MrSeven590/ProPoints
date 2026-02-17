@@ -3118,6 +3118,7 @@ export default {
 
 /* scroll-body 样式 */
 .scroll-body {
-  flex: 1;
+  flex-direction: column;
+  padding-bottom: 20px;
 }
 </style>
