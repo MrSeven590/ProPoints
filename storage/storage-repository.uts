@@ -283,6 +283,18 @@ export function getAllDraftSessions(): UTSJSONObject[] {
 }
 
 /**
+ * 删除所有草稿会话
+ */
+export function deleteAllDraftSessions(): void {
+  const keys = getIndexList(getDraftIndexKey())
+  for (let i = 0; i < keys.length; i++) {
+    removeData(keys[i])
+  }
+  // 清空草稿索引
+  clearIndex(getDraftIndexKey())
+}
+
+/**
  * 获取某日期某环节的已提交会话
  * @param date 日期 YYYY-MM-DD
  * @param stageCode 环节代码

@@ -16,6 +16,7 @@ import {
   saveSubmittedSession as saveSubmittedSessionToRepo,
   loadSessionForEdit as loadSessionForEditFromRepo,
   deleteDraftSession as deleteDraftSessionFromRepo,
+  deleteAllDraftSessions as deleteAllDraftSessionsFromRepo,
   getSessionsByDate as getSessionsByDateFromRepo,
   getAllDraftSessions as getAllDraftSessionsFromRepo,
   getSessionsByDateAndStage as getSessionsByDateAndStageFromRepo,
@@ -260,6 +261,13 @@ export function deleteDraftSession(
   roundId: number | null
 ): void {
   deleteDraftSessionFromRepo(date, stageCode, roundId)
+}
+
+/**
+ * 删除所有草稿
+ */
+export function deleteAllDraftSessions(): void {
+  deleteAllDraftSessionsFromRepo()
 }
 
 /**

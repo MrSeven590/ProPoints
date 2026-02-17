@@ -33,7 +33,16 @@
       </view>
 
       <view class="section">
-        <text class="section-title">草稿</text>
+        <view class="section-header">
+          <text class="section-title">草稿</text>
+          <view
+            v-if="drafts.length > 0"
+            class="clear-all-btn"
+            @click="deleteAllDrafts"
+          >
+            <text class="clear-all-btn-text">全部删除</text>
+          </view>
+        </view>
         <view class="session-list">
           <text class="empty-text" v-if="drafts.length == 0">暂无草稿</text>
           <view
@@ -88,7 +97,7 @@
 
 <script lang="uts">
   import { getTodayDateString } from '../../domain/models/types.uts'
-  import { getSessionsByDate, getAllDraftSessions, deleteDraftSession } from '../../domain/stores/AppStore.uts'
+  import { getSessionsByDate, getAllDraftSessions, deleteDraftSession, deleteAllDraftSessions } from '../../domain/stores/AppStore.uts'
 
   /**
    * 会话列表项类型
@@ -266,6 +275,30 @@
             }
           }
         })
+      },
+
+      /**
+       * 删除所有草稿
+       */
+      deleteAllDrafts() {
+        uni.showModal({
+          title: '确认删除',
+          content: `确定要删除全部 ${this.drafts.length} 个草稿吗？此操作不可恢复。`,
+          success: (res) => {
+            if (res.confirm == true) {
+              // 删除所有草稿
+              deleteAllDraftSessions()
+
+              // 刷新列表
+              this.loadSessions()
+
+              uni.showToast({
+                title: '已清空所有草稿',
+                icon: 'success'
+              })
+            }
+          }
+        })
       }
     }
   }
@@ -307,11 +340,33 @@
     padding: 16px;
   }
 
+  .section-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .section-header-title {
+    margin-bottom: 0;
+  }
+
   .section-title {
     font-size: 16px;
     font-weight: bold;
     color: #333333;
     margin-bottom: 12px;
+  }
+
+  .clear-all-btn {
+    padding: 4px 12px;
+    background-color: #ff3b30;
+    border-radius: 4px;
+  }
+
+  .clear-all-btn-text {
+    font-size: 13px;
+    color: #ffffff;
   }
 
   .entry-grid {
