@@ -96,7 +96,7 @@
 </template>
 
 <script lang="uts">
-  import { getTodayDateString } from '../../domain/models/types.uts'
+  import { getTodayDateString, addDaysToDate } from '../../domain/models/types.uts'
   import { getSessionsByDate, getAllDraftSessions, deleteDraftSession, deleteAllDraftSessions } from '../../domain/stores/AppStore.uts'
 
   /**
@@ -122,6 +122,8 @@
       this.todayDate = getTodayDateString()
     },
     onShow() {
+      // 刷新今日日期（防止跨午夜后日期过期）
+      this.todayDate = getTodayDateString()
       this.loadSessions()
     },
     methods: {
@@ -150,24 +152,32 @@
           }
         }
 
-        // 获取今日已提交的会话
-        const todaySessions = getSessionsByDate(this.todayDate)
-        for (let i = 0; i < todaySessions.length; i++) {
-          const sessionData = todaySessions[i]
-          const status = sessionData['status']
-          if (status == 'submitted') {
-            const date = sessionData['session_date'] as string
-            const stageCode = sessionData['stage_code'] as string
-            const roundIdVal = sessionData['round_id']
-            const roundId = roundIdVal != null ? (roundIdVal as number) : null
-            const item: SessionListItem = {
-              session_date: date,
-              stage_code: stageCode,
-              stage_name: this.getStageName(stageCode),
-              round_id: roundId,
-              status: 'submitted'
+        // 获取最近7天已提交的会话（限制10条）
+        const limit = 10
+        for (let d = 0; d < 7 && submittedList.length < limit; d++) {
+          const date = addDaysToDate(this.todayDate, -d)
+          const todaySessions = getSessionsByDate(date)
+          for (let i = 0; i < todaySessions.length; i++) {
+            const sessionData = todaySessions[i]
+            const status = sessionData['status']
+            if (status == 'submitted') {
+              const dateVal = sessionData['session_date'] as string
+              const stageCode = sessionData['stage_code'] as string
+              const roundIdVal = sessionData['round_id']
+              const roundId = roundIdVal != null ? (roundIdVal as number) : null
+              const item: SessionListItem = {
+                session_date: dateVal,
+                stage_code: stageCode,
+                stage_name: this.getStageName(stageCode),
+                round_id: roundId,
+                status: 'submitted'
+              }
+              submittedList.push(item)
+
+              if (submittedList.length >= limit) {
+                break
+              }
             }
-            submittedList.push(item)
           }
         }
 

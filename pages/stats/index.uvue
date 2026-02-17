@@ -45,14 +45,14 @@
         <text class="section-title">最近录入</text>
         <view v-if="recentSessions.length > 0" class="recent-list">
           <view
-            v-for="(session, index) in recentSessions"
-            :key="index"
+            v-for="session in recentSessions"
+            :key="`${session.date}-${session.stageCode}-${session.roundId != null ? session.roundId : 'null'}`"
             class="recent-item"
             @click="goToSessionDetail(session)"
           >
             <view class="recent-info">
               <text class="recent-date">{{ session.date }}</text>
-              <text class="recent-stage">{{ session.stageName }}</text>
+              <text class="recent-stage">{{ session.stageName }}{{ session.roundId != null ? ` | 轮次${session.roundId}` : '' }}</text>
             </view>
             <view class="recent-status" :class="session.status == 'draft' ? 'status-draft' : 'status-submitted'">
               <text class="recent-status-text">{{ session.status == 'draft' ? '草稿' : '已提交' }}</text>
@@ -72,7 +72,7 @@
   import type { PointsUnits, StageCode } from '../../domain/models/types.uts'
   import { getStageName } from '../../domain/models/stage-session.uts'
   import { calcFinalPoints } from '../../domain/models/assignment.uts'
-  import { getSessionsByDate } from '../../domain/stores/AppStore.uts'
+  import { getSessionsByDate, getAllDraftSessions } from '../../domain/stores/AppStore.uts'
 
   type MonthStats = {
     entryCount: number
@@ -203,8 +203,26 @@
         const sessions: RecentSession[] = []
         const limit = 10
 
-        // 查询最近7天的数据
-        let reachedLimit = false
+        // 1. 加载所有草稿
+        const drafts = getAllDraftSessions()
+        for (let i = 0; i < drafts.length; i++) {
+          const sessionData = drafts[i]
+          const dateVal = sessionData['session_date'] as string | null
+          const stageCodeVal = sessionData['stage_code'] as string | null
+          const roundIdVal = sessionData['round_id'] as number | null
+
+          if (dateVal != null && stageCodeVal != null) {
+            sessions.push({
+              date: dateVal,
+              stageCode: stageCodeVal,
+              stageName: getStageName(stageCodeVal as StageCode),
+              roundId: roundIdVal,
+              status: 'draft'
+            } as RecentSession)
+          }
+        }
+
+        // 2. 查询最近7天的已提交数据
         for (let d = 0; d < 7; d++) {
           const date = addDaysToDate(today, -d)
           const daySessions = getSessionsByDate(date)
@@ -216,29 +234,35 @@
             const roundIdVal = sessionData['round_id'] as number | null
             const statusVal = sessionData['status'] as string | null
 
-            if (dateVal != null && stageCodeVal != null) {
+            if (dateVal != null && stageCodeVal != null && statusVal == 'submitted') {
               sessions.push({
                 date: dateVal,
                 stageCode: stageCodeVal,
                 stageName: getStageName(stageCodeVal as StageCode),
                 roundId: roundIdVal,
-                status: statusVal != null ? statusVal : 'submitted'
+                status: 'submitted'
               } as RecentSession)
-
-              if (sessions.length >= limit) {
-                reachedLimit = true
-                break
-              }
             }
-          }
-
-          // 最多显示 limit 条
-          if (reachedLimit == true) {
-            break
           }
         }
 
-        this.recentSessions = sessions
+        // 3. 按日期降序排序并限制数量
+        sessions.sort((a: RecentSession, b: RecentSession): number => {
+          if (a.date > b.date) {
+            return -1
+          } else if (a.date < b.date) {
+            return 1
+          } else {
+            return 0
+          }
+        })
+
+        // 4. 限制显示数量
+        if (sessions.length > limit) {
+          this.recentSessions = sessions.slice(0, limit)
+        } else {
+          this.recentSessions = sessions
+        }
       },
 
       goToDateDetail() {
