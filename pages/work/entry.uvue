@@ -28,7 +28,8 @@
     </view>
 
     <scroll-view class="content" scroll-y="true">
-      <view class="section">
+      <view class="scroll-body">
+        <view class="section">
         <text class="section-title">基本信息</text>
         <view class="info-row date-row">
           <text class="info-label">日期</text>
@@ -212,7 +213,13 @@
           <text class="micro-disabled-text">本轮次微机岗位不计分</text>
         </view>
       </view>
+      </view>
     </scroll-view>
+
+    <!-- 切换遮罩层 -->
+    <view v-show="isSwitching" class="switch-mask">
+      <text class="switch-mask-text">加载中...</text>
+    </view>
 
     <view class="footer">
       <!-- 只读模式下显示"进入编辑"按钮 -->
@@ -479,6 +486,10 @@ export default {
       isRestoring: false as boolean,
       // 系数快照（持久化到会话数据中）
       coefSnapshot: null as UTSJSONObject | null,
+      // 日期切换控制
+      isSwitching: false as boolean,
+      pendingDate: null as string | null,
+      switchSeq: 0 as number,
     };
   },
   onLoad(options: UTSJSONObject) {
@@ -515,7 +526,9 @@ export default {
     }
 
     // 始终尝试加载已存在的会话（draft 优先）
-    this.loadExistingSession();
+    // 使用新的原子状态交换方式
+    const initialState = this.buildStateForDate(this.sessionDate);
+    this.applyState(initialState);
   },
   onHide() {
     // 页面隐藏时立即保存草稿
@@ -549,7 +562,7 @@ export default {
      */
     onPrevDay() {
       const prevDate = addDaysToDate(this.sessionDate, -1);
-      this.switchSessionDate(prevDate);
+      this.requestSwitchDate(prevDate);
     },
 
     /**
@@ -557,7 +570,7 @@ export default {
      */
     onNextDay() {
       const nextDate = addDaysToDate(this.sessionDate, 1);
-      this.switchSessionDate(nextDate);
+      this.requestSwitchDate(nextDate);
     },
 
     /**
@@ -566,7 +579,7 @@ export default {
     onToday() {
       const today = getTodayDateString();
       if (this.sessionDate != today) {
-        this.switchSessionDate(today);
+        this.requestSwitchDate(today);
       }
     },
 
@@ -823,6 +836,133 @@ export default {
           workers: roleWorkers,
         } as LiangTangRoleData);
       }
+    },
+
+    /**
+     * 加载晾堂默认人员（用于新会话）
+     * 返回结构化数据，不修改组件状态
+     */
+    loadLiangTangDefaultsForNewSession(): UTSJSONObject {
+      const result = {
+        rolesData: new Map<string, LiangTangRoleData>(),
+        wheatMaterialWorkers: [] as UTSJSONObject[],
+        machineGuardWorkers: [] as UTSJSONObject[],
+        kojiUnloaderWorkers: [] as UTSJSONObject[],
+        microOperatorWorkers: [] as UTSJSONObject[]
+      } as UTSJSONObject;
+
+      if (this.showLiangTangSection == false) {
+        return result;
+      }
+
+      const classNo = getCurrentClassNo();
+      const defaults = loadLiangTangDefault(classNo);
+      if (defaults == null) {
+        return result;
+      }
+
+      const rolesData = new Map<string, LiangTangRoleData>();
+      const wheatMaterialWorkers: UTSJSONObject[] = [];
+      const machineGuardWorkers: UTSJSONObject[] = [];
+      const kojiUnloaderWorkers: UTSJSONObject[] = [];
+      const microOperatorWorkers: UTSJSONObject[] = [];
+
+      // 回填各岗位默认人员（仅人员，不回填工分）
+      const wheatMaterial = defaults["WHEAT_MATERIAL"] as UTSJSONObject[] | null;
+      if (wheatMaterial != null && wheatMaterial.length > 0) {
+        const roleWorkers: LiangTangWorkerData[] = [];
+        for (let i = 0; i < wheatMaterial.length; i++) {
+          const w = wheatMaterial[i];
+          wheatMaterialWorkers.push({
+            personId: w["personId"],
+            personName: w["personName"],
+            pointsUnits: 0
+          } as UTSJSONObject);
+          roleWorkers.push({
+            personId: w["personId"] as number | null,
+            personName: w["personName"] as string,
+            pointsUnits: 0
+          } as LiangTangWorkerData);
+        }
+        rolesData.set("WHEAT_MATERIAL", {
+          roleCode: "WHEAT_MATERIAL",
+          workers: roleWorkers
+        } as LiangTangRoleData);
+      }
+
+      const machineGuard = defaults["MACHINE_GUARD"] as UTSJSONObject[] | null;
+      if (machineGuard != null && machineGuard.length > 0) {
+        const roleWorkers: LiangTangWorkerData[] = [];
+        for (let i = 0; i < machineGuard.length; i++) {
+          const w = machineGuard[i];
+          machineGuardWorkers.push({
+            personId: w["personId"],
+            personName: w["personName"],
+            pointsUnits: 0
+          } as UTSJSONObject);
+          roleWorkers.push({
+            personId: w["personId"] as number | null,
+            personName: w["personName"] as string,
+            pointsUnits: 0
+          } as LiangTangWorkerData);
+        }
+        rolesData.set("MACHINE_GUARD", {
+          roleCode: "MACHINE_GUARD",
+          workers: roleWorkers
+        } as LiangTangRoleData);
+      }
+
+      const kojiUnloader = defaults["KOJI_UNLOADER"] as UTSJSONObject[] | null;
+      if (kojiUnloader != null && kojiUnloader.length > 0) {
+        const roleWorkers: LiangTangWorkerData[] = [];
+        for (let i = 0; i < kojiUnloader.length; i++) {
+          const w = kojiUnloader[i];
+          kojiUnloaderWorkers.push({
+            personId: w["personId"],
+            personName: w["personName"],
+            pointsUnits: 0
+          } as UTSJSONObject);
+          roleWorkers.push({
+            personId: w["personId"] as number | null,
+            personName: w["personName"] as string,
+            pointsUnits: 0
+          } as LiangTangWorkerData);
+        }
+        rolesData.set("KOJI_UNLOADER", {
+          roleCode: "KOJI_UNLOADER",
+          workers: roleWorkers
+        } as LiangTangRoleData);
+      }
+
+      const microOperator = defaults["MICRO_OPERATOR"] as UTSJSONObject[] | null;
+      if (microOperator != null && microOperator.length > 0) {
+        const roleWorkers: LiangTangWorkerData[] = [];
+        for (let i = 0; i < microOperator.length; i++) {
+          const w = microOperator[i];
+          microOperatorWorkers.push({
+            personId: w["personId"],
+            personName: w["personName"],
+            pointsUnits: 0
+          } as UTSJSONObject);
+          roleWorkers.push({
+            personId: w["personId"] as number | null,
+            personName: w["personName"] as string,
+            pointsUnits: 0
+          } as LiangTangWorkerData);
+        }
+        rolesData.set("MICRO_OPERATOR", {
+          roleCode: "MICRO_OPERATOR",
+          workers: roleWorkers
+        } as LiangTangRoleData);
+      }
+
+      return {
+        rolesData: rolesData,
+        wheatMaterialWorkers: wheatMaterialWorkers,
+        machineGuardWorkers: machineGuardWorkers,
+        kojiUnloaderWorkers: kojiUnloaderWorkers,
+        microOperatorWorkers: microOperatorWorkers
+      } as UTSJSONObject;
     },
 
     /**
@@ -1365,7 +1505,430 @@ export default {
       if (newDate == this.sessionDate) {
         return;
       }
-      this.switchSessionDate(newDate);
+      this.requestSwitchDate(newDate);
+    },
+
+    // ============================================
+    // 日期切换控制器（单次飞行模式）
+    // ============================================
+
+    /**
+     * 请求切换日期（单次飞行控制器）
+     * 如果正在切换，将请求合并到 pendingDate
+     */
+    requestSwitchDate(targetDate: string) {
+      if (targetDate == this.sessionDate) {
+        return;
+      }
+
+      if (this.isSwitching == true) {
+        // 正在切换，合并请求
+        this.pendingDate = targetDate;
+        return;
+      }
+
+      this.performSwitchDate(targetDate);
+    },
+
+    /**
+     * 执行日期切换（原子状态交换）
+     */
+    performSwitchDate(targetDate: string) {
+      this.isSwitching = true;
+      const seq = ++this.switchSeq;
+
+      // 1. 捕获当前日期（用于保存草稿）
+      const fromDate = this.sessionDate;
+
+      // 2. 保存当前草稿（使用 fromDate 确保日期安全）
+      this.flushDraftIfNeeded(fromDate);
+
+      // 3. 在 setTimeout 中构建和应用新状态
+      setTimeout(() => {
+        // 序列号检查（如果不匹配，清理状态后退出）
+        if (seq != this.switchSeq) {
+          this.isSwitching = false;
+          return;
+        }
+
+        try {
+          // 4. 构建新状态
+          const nextState = this.buildStateForDate(targetDate);
+
+          // 5. 应用新状态
+          this.applyState(nextState);
+        } catch (e) {
+          console.error('日期切换失败:', e);
+          uni.showToast({
+            title: '切换失败',
+            icon: 'none'
+          });
+        } finally {
+          // 6. 切换完成（确保状态清理）
+          this.isSwitching = false;
+
+          // 7. 处理待处理的日期
+          if (this.pendingDate != null) {
+            const pending = this.pendingDate;
+            this.pendingDate = null;
+            this.requestSwitchDate(pending);
+          }
+        }
+      }, 0);
+    },
+
+    /**
+     * 构建指定日期的状态对象（无副作用）
+     */
+    buildStateForDate(date: string): UTSJSONObject {
+      // 加载会话数据
+      const sessionData = loadSessionForEdit(date, this.stageCode, this.roundId);
+
+      if (sessionData == null) {
+        // 无已有数据，返回默认新建状态
+        // 加载晾堂默认人员（仅安曲环节）
+        const defaultLiangTangData = this.loadLiangTangDefaultsForNewSession();
+
+        const activeCoefSetId = getActiveCoefSetId();
+        return {
+          hasData: false,
+          sessionDate: date,
+          coefSetId: activeCoefSetId,
+          coefSnapshot: loadCoefSetById(activeCoefSetId),
+          selectedBins: [] as BinCode[],
+          stageBinInfos: [] as StageBinInfo[],
+          binCardsData: new Map<number, BinCardData>(),
+          occupiedIds: [] as number[],
+          showCrossBinSection: stageHasCrossBinRole(this.stageCode),
+          crossBinPersonId: null,
+          crossBinPersonName: '',
+          crossBinPointsUnits: 0,
+          crossBinSources: [] as AssignmentSourceCreateParams[],
+          liangTangRolesData: defaultLiangTangData['rolesData'],
+          wheatMaterialWorkers: defaultLiangTangData['wheatMaterialWorkers'],
+          machineGuardWorkers: defaultLiangTangData['machineGuardWorkers'],
+          kojiUnloaderWorkers: defaultLiangTangData['kojiUnloaderWorkers'],
+          microOperatorWorkers: defaultLiangTangData['microOperatorWorkers'],
+          sessionStatus: 'draft',
+          viewMode: 'edit',
+          sessionRemark: '',
+          createdByManager: getManagerName().trim(),
+          updatedByManager: getManagerName().trim(),
+          missingAnQuBins: [] as string[]
+        } as UTSJSONObject;
+      }
+
+      // 解析已有数据
+      const state = {} as UTSJSONObject;
+      state['hasData'] = true;
+      state['sessionDate'] = date;
+
+      // 系数版本
+      const coefSetId = sessionData['coef_set_id'] as number | null;
+      state['coefSetId'] = coefSetId != null ? coefSetId : DEFAULT_COEF_SET_ID;
+
+      // 系数快照
+      const savedSnapshot = sessionData['coef_snapshot'] as UTSJSONObject | null;
+      if (savedSnapshot != null) {
+        state['coefSnapshot'] = savedSnapshot;
+      } else {
+        state['coefSnapshot'] = loadCoefSetById(state['coefSetId'] as number);
+      }
+
+      // 发酵仓数据
+      const binsData = sessionData['bins'] as UTSJSONObject[] | null;
+      const bins: BinCode[] = [];
+      const infos: StageBinInfo[] = [];
+      const cardsData = new Map<number, BinCardData>();
+      const missingBins: string[] = [];
+
+      if (binsData != null && binsData.length > 0) {
+        for (let i = 0; i < binsData.length; i++) {
+          const binObj = binsData[i];
+          const classNo = binObj['class_no'] as number | null;
+          const floorNo = binObj['floor_no'] as number | null;
+          const seqNo = binObj['seq_no'] as number | null;
+          const binId = binObj['bin_id'] as number | null;
+          const stageBinId = binObj['stage_bin_id'] as number | null;
+          const kojiCount = binObj['koji_count'] as number | null;
+          const binCode = binObj['bin_code'] as string | null;
+
+          if (classNo != null && floorNo != null && seqNo != null) {
+            bins.push({
+              class_no: classNo,
+              floor_no: floorNo,
+              seq_no: seqNo
+            } as BinCode);
+
+            infos.push({
+              bin_id: binId != null ? binId : i + 1,
+              stage_bin_id: stageBinId != null ? stageBinId : i + 1,
+              koji_count: kojiCount != null ? kojiCount : 0,
+              bin_code: binCode != null ? binCode : `${classNo}-${floorNo}-${seqNo}`
+            } as StageBinInfo);
+
+            // 解析工人数据
+            const workersData = binObj['workers'] as UTSJSONObject[] | null;
+            if (workersData != null) {
+              const workers: BinWorkerData[] = [];
+              for (let j = 0; j < workersData.length; j++) {
+                const w = workersData[j];
+                workers.push({
+                  personId: w['personId'] != null ? (w['personId'] as number) : null,
+                  personName: w['personName'] != null ? (w['personName'] as string) : '',
+                  pointsUnits: w['pointsUnits'] != null ? (w['pointsUnits'] as number) : 0,
+                  positionIndex: w['positionIndex'] != null ? (w['positionIndex'] as number) : j + 1,
+                  deductedUnits: w['deductedUnits'] != null ? (w['deductedUnits'] as number) : 0,
+                  penaltyReason: w['penaltyReason'] != null ? (w['penaltyReason'] as string) : '',
+                  penaltyId: w['penaltyId'] != null ? (w['penaltyId'] as number) : null
+                } as BinWorkerData);
+              }
+
+              const cardStageBinId = stageBinId != null ? stageBinId : i + 1;
+              cardsData.set(cardStageBinId, {
+                stageBinId: cardStageBinId,
+                binId: binId != null ? binId : i + 1,
+                binCode: binCode != null ? binCode : `${classNo}-${floorNo}-${seqNo}`,
+                kojiCount: kojiCount != null ? kojiCount : 0,
+                totalPointsUnits: binObj['totalPointsUnits'] != null ? (binObj['totalPointsUnits'] as number) : 0,
+                assignedUnits: binObj['assignedUnits'] != null ? (binObj['assignedUnits'] as number) : 0,
+                workers: workers
+              } as BinCardData);
+            }
+          }
+        }
+      }
+
+      state['selectedBins'] = bins;
+      state['stageBinInfos'] = infos;
+      state['binCardsData'] = cardsData;
+      state['missingAnQuBins'] = missingBins;
+
+      // 跨仓岗位数据
+      const crossBinData = sessionData['cross_bin'] as UTSJSONObject | null;
+      if (crossBinData != null) {
+        const hasCrossBin = crossBinData['enabled'] as boolean | null;
+
+        // 修复：如果 enabled=false，保持 false（用户主动移除）
+        // 只有在 enabled=true 或 null（旧数据）时才显示
+        if (hasCrossBin == false) {
+          state['showCrossBinSection'] = false;
+          state['crossBinPersonId'] = null;
+          state['crossBinPersonName'] = '';
+          state['crossBinPointsUnits'] = 0;
+          state['crossBinSources'] = [] as AssignmentSourceCreateParams[];
+        } else if (hasCrossBin == true) {
+          state['showCrossBinSection'] = true;
+          state['crossBinPersonId'] = crossBinData['person_id'] != null ? (crossBinData['person_id'] as number) : null;
+          state['crossBinPersonName'] = crossBinData['person_name'] != null ? (crossBinData['person_name'] as string) : '';
+          state['crossBinPointsUnits'] = crossBinData['points_units'] != null ? (crossBinData['points_units'] as number) : 0;
+
+          const roleCode = crossBinData['role_code'] as string | null;
+          if (roleCode != null) {
+            state['crossBinRoleCode'] = roleCode;
+          }
+
+          const sourcesRaw = crossBinData['sources'] as UTSJSONObject[] | null;
+          if (sourcesRaw != null && sourcesRaw.length > 0) {
+            const parsedSources: AssignmentSourceCreateParams[] = [];
+            for (let j = 0; j < sourcesRaw.length; j++) {
+              const s = sourcesRaw[j];
+              parsedSources.push({
+                assignment_id: s['assignment_id'] != null ? (s['assignment_id'] as number) : 0,
+                stage_bin_id: s['stage_bin_id'] != null ? (s['stage_bin_id'] as number) : 0,
+                source_points_units: s['source_points_units'] != null ? (s['source_points_units'] as number) : 0
+              } as AssignmentSourceCreateParams);
+            }
+            state['crossBinSources'] = parsedSources;
+          } else {
+            state['crossBinSources'] = [] as AssignmentSourceCreateParams[];
+          }
+        } else {
+          // hasCrossBin == null（旧数据），使用默认值
+          state['showCrossBinSection'] = stageHasCrossBinRole(this.stageCode);
+          state['crossBinPersonId'] = null;
+          state['crossBinPersonName'] = '';
+          state['crossBinPointsUnits'] = 0;
+          state['crossBinSources'] = [] as AssignmentSourceCreateParams[];
+        }
+      } else {
+        // 无 cross_bin 数据，使用默认值
+        state['showCrossBinSection'] = stageHasCrossBinRole(this.stageCode);
+        state['crossBinPersonId'] = null;
+        state['crossBinPersonName'] = '';
+        state['crossBinPointsUnits'] = 0;
+        state['crossBinSources'] = [] as AssignmentSourceCreateParams[];
+      }
+
+      // 晾堂岗位数据
+      const liangTangRolesData = new Map<string, LiangTangRoleData>();
+      const wheatMaterialWorkers: UTSJSONObject[] = [];
+      const machineGuardWorkers: UTSJSONObject[] = [];
+      const kojiUnloaderWorkers: UTSJSONObject[] = [];
+      const microOperatorWorkers: UTSJSONObject[] = [];
+
+      if (this.showLiangTangSection == true) {
+        const liangTangData = sessionData['liang_tang'] as UTSJSONObject | null;
+        if (liangTangData != null) {
+          const roleKeys: string[] = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER', 'MICRO_OPERATOR'];
+          for (let k = 0; k < roleKeys.length; k++) {
+            const roleKey = roleKeys[k];
+            const roleWorkersRaw = liangTangData[roleKey] as UTSJSONObject[] | null;
+            if (roleWorkersRaw != null && roleWorkersRaw.length > 0) {
+              const workerList: LiangTangWorkerData[] = [];
+              const workersForInit: UTSJSONObject[] = [];
+              for (let j = 0; j < roleWorkersRaw.length; j++) {
+                const w = roleWorkersRaw[j];
+                workerList.push({
+                  personId: w['personId'] != null ? (w['personId'] as number) : null,
+                  personName: w['personName'] != null ? (w['personName'] as string) : '',
+                  pointsUnits: w['pointsUnits'] != null ? (w['pointsUnits'] as number) : 0
+                } as LiangTangWorkerData);
+                workersForInit.push({
+                  personId: w['personId'],
+                  personName: w['personName'],
+                  pointsUnits: w['pointsUnits']
+                } as UTSJSONObject);
+              }
+              liangTangRolesData.set(roleKey, {
+                roleCode: roleKey as RoleCode,
+                workers: workerList
+              } as LiangTangRoleData);
+
+              if (roleKey == 'WHEAT_MATERIAL') {
+                for (let j = 0; j < workersForInit.length; j++) {
+                  wheatMaterialWorkers.push(workersForInit[j]);
+                }
+              } else if (roleKey == 'MACHINE_GUARD') {
+                for (let j = 0; j < workersForInit.length; j++) {
+                  machineGuardWorkers.push(workersForInit[j]);
+                }
+              } else if (roleKey == 'KOJI_UNLOADER') {
+                for (let j = 0; j < workersForInit.length; j++) {
+                  kojiUnloaderWorkers.push(workersForInit[j]);
+                }
+              } else if (roleKey == 'MICRO_OPERATOR') {
+                for (let j = 0; j < workersForInit.length; j++) {
+                  microOperatorWorkers.push(workersForInit[j]);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      state['liangTangRolesData'] = liangTangRolesData;
+      state['wheatMaterialWorkers'] = wheatMaterialWorkers;
+      state['machineGuardWorkers'] = machineGuardWorkers;
+      state['kojiUnloaderWorkers'] = kojiUnloaderWorkers;
+      state['microOperatorWorkers'] = microOperatorWorkers;
+
+      // 会话状态
+      const status = sessionData['status'] as string | null;
+      state['sessionStatus'] = status != null ? status : 'draft';
+      state['viewMode'] = (status == 'submitted') ? 'view' : 'edit';
+
+      // 备注
+      const remark = sessionData['remark'] as string | null;
+      state['sessionRemark'] = remark != null ? remark : '';
+
+      // 审计字段
+      const createdByManager = sessionData['created_by_manager'] as string | null;
+      const updatedByManager = sessionData['updated_by_manager'] as string | null;
+      state['createdByManager'] = createdByManager != null ? createdByManager : '';
+      state['updatedByManager'] = updatedByManager != null ? updatedByManager : '';
+
+      // occupiedIds 将在 applyState 中计算
+      state['occupiedIds'] = [] as number[];
+
+      return state;
+    },
+
+    /**
+     * 应用状态对象到组件（原子性替换）
+     */
+    applyState(nextState: UTSJSONObject) {
+      try {
+        this.isRestoring = true;
+
+        // 应用所有状态字段
+        this.sessionDate = nextState['sessionDate'] as string;
+        this.tempDate = this.sessionDate;
+        this.coefSetId = nextState['coefSetId'] as number | null;
+        this.coefSnapshot = nextState['coefSnapshot'] as UTSJSONObject | null;
+        this.selectedBins = nextState['selectedBins'] as BinCode[];
+        this.stageBinInfos = nextState['stageBinInfos'] as StageBinInfo[];
+        this.binCardsData = nextState['binCardsData'] as Map<number, BinCardData>;
+        this.missingAnQuBins = nextState['missingAnQuBins'] as string[];
+        this.showCrossBinSection = nextState['showCrossBinSection'] as boolean;
+        this.crossBinPersonId = nextState['crossBinPersonId'] as number | null;
+        this.crossBinPersonName = nextState['crossBinPersonName'] as string;
+        this.crossBinPointsUnits = nextState['crossBinPointsUnits'] as number;
+        this.crossBinSources = nextState['crossBinSources'] as AssignmentSourceCreateParams[];
+
+        // 跨仓岗位配置
+        const crossBinRoleCode = nextState['crossBinRoleCode'] as string | null;
+        if (crossBinRoleCode != null) {
+          this.crossBinRoleCode = crossBinRoleCode as RoleCode;
+          if (crossBinRoleCode == 'CART_PULLER') {
+            this.crossBinRoleName = '拉车';
+          } else if (crossBinRoleCode == 'HELPER') {
+            this.crossBinRoleName = '打杂';
+          }
+        } else {
+          this.initCrossBinRole();
+        }
+
+        this.liangTangRolesData = nextState['liangTangRolesData'] as Map<string, LiangTangRoleData>;
+        this.wheatMaterialWorkers = nextState['wheatMaterialWorkers'] as UTSJSONObject[];
+        this.machineGuardWorkers = nextState['machineGuardWorkers'] as UTSJSONObject[];
+        this.kojiUnloaderWorkers = nextState['kojiUnloaderWorkers'] as UTSJSONObject[];
+        this.microOperatorWorkers = nextState['microOperatorWorkers'] as UTSJSONObject[];
+        this.sessionStatus = nextState['sessionStatus'] as string;
+        this.viewMode = nextState['viewMode'] as 'edit' | 'view';
+        this.sessionRemark = nextState['sessionRemark'] as string;
+        this.createdByManager = nextState['createdByManager'] as string;
+        this.updatedByManager = nextState['updatedByManager'] as string;
+
+        // 修复：重新计算 microEnabled（基于 roundId）
+        if (this.showLiangTangSection == true && this.roundId != null) {
+          this.microEnabled = isMicroEnabledByRoundId(this.roundId as number);
+        }
+
+        // 重新计算派生数据
+        this.updateOccupiedIds();
+        this.recalculateCrossBinSources();
+
+        // 更新晾堂池子总分缓存（仅安曲环节）
+        if (this.showLiangTangSection == true) {
+          this.updateLiangTangPoolCache();
+        }
+
+        // 重置自动保存状态
+        this.draftRevision = 0;
+        this.savedRevision = 0;
+      } finally {
+        // 确保 isRestoring 总是被重置
+        this.isRestoring = false;
+      }
+    },
+
+    /**
+     * 日期安全的草稿保存
+     * 使用传入的 fromDate 参数保存草稿，避免日期混淆
+     */
+    flushDraftIfNeeded(fromDate: string) {
+      this.cancelAutoSave();
+      if (this.sessionStatus == 'draft' && this.isSubmitting == false) {
+        uni.hideKeyboard();
+        try {
+          const sessionData = this.buildSessionData('draft');
+          saveDraftSession(fromDate, this.stageCode, this.roundId, sessionData);
+          this.savedRevision = this.draftRevision;
+        } catch (e) {
+          console.error('保存草稿失败:', e);
+        }
+      }
     },
 
     // ============================================
@@ -1429,40 +1992,27 @@ export default {
       });
     },
 
+    // ============================================
+    // 旧的日期切换方法（已废弃，保留用于兼容）
+    // ============================================
+
     /**
-     * 切换会话日期
-     * - 先保存当前草稿（如有变更）
-     * - 再加载目标日期的会话（draft 优先）
+     * 切换会话日期（已废弃，使用 requestSwitchDate 替代）
+     * 保留此方法用于向后兼容
      */
     switchSessionDate(newDate: string) {
-      // 显示加载提示
-      uni.showLoading({
-        title: "加载中...",
-        mask: true,
-      });
-
-      // 先保存当前草稿（确保不会把旧数据写到新日期）
-      this.cancelAutoSave();
-      if (this.sessionStatus == "draft" && this.isSubmitting == false) {
-        uni.hideKeyboard();
-        this.doAutoSave();
-      }
-
-      this.sessionDate = newDate;
-      this.tempDate = newDate;
-
-      this.loadExistingSession();
-
-      // 隐藏加载提示
-      setTimeout(() => {
-        uni.hideLoading();
-      }, 300);
+      this.requestSwitchDate(newDate);
     },
 
     /**
      * 重置会话编辑状态（不改变环节配置）
+     * 已废弃：使用 buildStateForDate + applyState 替代
      */
     resetSessionState() {
+      // 此方法已废弃，保留用于向后兼容
+      // 新的日期切换流程不再调用此方法
+      console.warn('resetSessionState() is deprecated, use buildStateForDate + applyState instead');
+
       this.selectedBins = [] as BinCode[];
       this.stageBinInfos = [] as StageBinInfo[];
       this.occupiedIds = [] as number[];
@@ -1505,316 +2055,15 @@ export default {
 
     /**
      * 加载已有会话数据（draft 优先）
+     * 已废弃：使用 buildStateForDate + applyState 替代
      */
     loadExistingSession() {
-      // 先重置，避免旧状态残留
-      this.resetSessionState();
+      // 此方法已废弃，保留用于向后兼容
+      console.warn('loadExistingSession() is deprecated, use buildStateForDate + applyState instead');
 
-      // 标记正在恢复数据
-      this.isRestoring = true;
-
-      const sessionData = loadSessionForEdit(
-        this.sessionDate,
-        this.stageCode,
-        this.roundId,
-      );
-      if (sessionData == null) {
-        // 无已有数据，使用默认新建流程
-        // 绑定当前生效的系数版本
-        this.coefSetId = getActiveCoefSetId();
-        // 加载当前生效版本的完整数据到 coefSnapshot
-        const setData = loadCoefSetById(this.coefSetId as number);
-        if (setData != null) {
-          this.coefSnapshot = setData;
-        }
-
-        // 初始化审计字段（新建会话）
-        const managerName = getManagerName().trim();
-        if (managerName != "") {
-          this.createdByManager = managerName;
-          this.updatedByManager = managerName;
-        }
-        this.viewMode = "edit";
-        this.isRestoring = false;
-        return;
-      }
-
-      // 恢复审计字段（兼容旧数据缺失）
-      const createdByManager = sessionData["created_by_manager"] as
-        | string
-        | null;
-      if (createdByManager != null) {
-        this.createdByManager = createdByManager;
-      }
-      const updatedByManager = sessionData["updated_by_manager"] as
-        | string
-        | null;
-      if (updatedByManager != null) {
-        this.updatedByManager = updatedByManager;
-      }
-
-      // 恢复系数版本ID
-      const coefSetId = sessionData["coef_set_id"] as number | null;
-      if (coefSetId != null) {
-        this.coefSetId = coefSetId;
-      } else {
-        // 兼容旧数据：如果没有 coef_set_id，使用默认版本
-        this.coefSetId = DEFAULT_COEF_SET_ID;
-      }
-
-      // 恢复系数快照
-      const savedSnapshot = sessionData[
-        "coef_snapshot"
-      ] as UTSJSONObject | null;
-      if (savedSnapshot != null) {
-        this.coefSnapshot = savedSnapshot;
-      } else {
-        // 没有快照，从存储加载并缓存
-        const setData = loadCoefSetById(this.coefSetId as number);
-        if (setData != null) {
-          this.coefSnapshot = setData;
-        }
-      }
-
-      // 恢复发酵仓数据
-      const binsData = sessionData["bins"] as UTSJSONObject[] | null;
-      if (binsData != null && binsData.length > 0) {
-        const bins: BinCode[] = [];
-        const infos: StageBinInfo[] = [];
-
-        for (let i = 0; i < binsData.length; i++) {
-          const binObj = binsData[i];
-          const classNo = binObj["class_no"] as number | null;
-          const floorNo = binObj["floor_no"] as number | null;
-          const seqNo = binObj["seq_no"] as number | null;
-          const binId = binObj["bin_id"] as number | null;
-          const stageBinId = binObj["stage_bin_id"] as number | null;
-          const kojiCount = binObj["koji_count"] as number | null;
-          const binCode = binObj["bin_code"] as string | null;
-
-          if (classNo != null && floorNo != null && seqNo != null) {
-            bins.push({
-              class_no: classNo,
-              floor_no: floorNo,
-              seq_no: seqNo,
-            } as BinCode);
-
-            infos.push({
-              bin_id: binId != null ? binId : i + 1,
-              stage_bin_id: stageBinId != null ? stageBinId : i + 1,
-              koji_count: kojiCount != null ? kojiCount : 0,
-              bin_code:
-                binCode != null ? binCode : `${classNo}-${floorNo}-${seqNo}`,
-            } as StageBinInfo);
-
-            // 恢复仓卡片数据
-            const workersData = binObj["workers"] as UTSJSONObject[] | null;
-            if (workersData != null) {
-              const workers: BinWorkerData[] = [];
-              for (let j = 0; j < workersData.length; j++) {
-                const w = workersData[j];
-                workers.push({
-                  personId:
-                    w["personId"] != null ? (w["personId"] as number) : null,
-                  personName:
-                    w["personName"] != null ? (w["personName"] as string) : "",
-                  pointsUnits:
-                    w["pointsUnits"] != null ? (w["pointsUnits"] as number) : 0,
-                  positionIndex:
-                    w["positionIndex"] != null
-                      ? (w["positionIndex"] as number)
-                      : j + 1,
-                  deductedUnits:
-                    w["deductedUnits"] != null
-                      ? (w["deductedUnits"] as number)
-                      : 0,
-                  penaltyReason:
-                    w["penaltyReason"] != null
-                      ? (w["penaltyReason"] as string)
-                      : "",
-                  penaltyId:
-                    w["penaltyId"] != null ? (w["penaltyId"] as number) : null,
-                } as BinWorkerData);
-              }
-
-              const cardStageBinId = stageBinId != null ? stageBinId : i + 1;
-              this.binCardsData.set(cardStageBinId, {
-                stageBinId: cardStageBinId,
-                binId: binId != null ? binId : i + 1,
-                binCode:
-                  binCode != null ? binCode : `${classNo}-${floorNo}-${seqNo}`,
-                kojiCount: kojiCount != null ? kojiCount : 0,
-                totalPointsUnits:
-                  binObj["totalPointsUnits"] != null
-                    ? (binObj["totalPointsUnits"] as number)
-                    : 0,
-                assignedUnits:
-                  binObj["assignedUnits"] != null
-                    ? (binObj["assignedUnits"] as number)
-                    : 0,
-                workers: workers,
-              } as BinCardData);
-            }
-          }
-        }
-
-        this.selectedBins = bins;
-        this.stageBinInfos = infos;
-
-        // 更新晾堂池子总分缓存（仅安曲环节）
-        if (this.showLiangTangSection == true) {
-          this.updateLiangTangPoolCache();
-        }
-      }
-
-      // 恢复跨仓岗位数据
-      const crossBinData = sessionData["cross_bin"] as UTSJSONObject | null;
-      if (crossBinData != null) {
-        const hasCrossBin = crossBinData["enabled"] as boolean | null;
-        this.showCrossBinSection = hasCrossBin == true;
-
-        if (this.showCrossBinSection == true) {
-          this.crossBinPersonId =
-            crossBinData["person_id"] != null
-              ? (crossBinData["person_id"] as number)
-              : null;
-          this.crossBinPersonName =
-            crossBinData["person_name"] != null
-              ? (crossBinData["person_name"] as string)
-              : "";
-          this.crossBinPointsUnits =
-            crossBinData["points_units"] != null
-              ? (crossBinData["points_units"] as number)
-              : 0;
-          const roleCode = crossBinData["role_code"] as string | null;
-          if (roleCode != null) {
-            this.crossBinRoleCode = roleCode as RoleCode;
-            if (roleCode == "CART_PULLER") {
-              this.crossBinRoleName = "拉车";
-            } else if (roleCode == "HELPER") {
-              this.crossBinRoleName = "打杂";
-            }
-          }
-
-          // 恢复 sources（跨仓抽取来源）
-          const sourcesRaw = crossBinData["sources"] as UTSJSONObject[] | null;
-          if (sourcesRaw != null && sourcesRaw.length > 0) {
-            // 手动解析 UTSJSONObject 为 AssignmentSourceCreateParams
-            const parsedSources: AssignmentSourceCreateParams[] = [];
-            for (let j = 0; j < sourcesRaw.length; j++) {
-              const s = sourcesRaw[j];
-              parsedSources.push({
-                assignment_id:
-                  s["assignment_id"] != null
-                    ? (s["assignment_id"] as number)
-                    : 0,
-                stage_bin_id:
-                  s["stage_bin_id"] != null ? (s["stage_bin_id"] as number) : 0,
-                source_points_units:
-                  s["source_points_units"] != null
-                    ? (s["source_points_units"] as number)
-                    : 0,
-              } as AssignmentSourceCreateParams);
-            }
-            this.crossBinSources = parsedSources;
-          } else {
-            this.crossBinSources = [] as AssignmentSourceCreateParams[];
-          }
-        } else {
-          // 显式清理（避免残留旧值）
-          this.crossBinPersonId = null;
-          this.crossBinPersonName = "";
-          this.crossBinPointsUnits = 0;
-          this.crossBinSources = [] as AssignmentSourceCreateParams[];
-        }
-      }
-
-      // 恢复晾堂岗位数据（仅安曲环节）
-      if (this.showLiangTangSection == true) {
-        // 刷新微机计分权（基于会话的 roundId）
-        if (this.roundId != null) {
-          this.microEnabled = isMicroEnabledByRoundId(this.roundId);
-        }
-
-        const liangTangData = sessionData["liang_tang"] as UTSJSONObject | null;
-        if (liangTangData != null) {
-          // 恢复各岗位数据
-          const roleKeys: string[] = [
-            "WHEAT_MATERIAL",
-            "MACHINE_GUARD",
-            "KOJI_UNLOADER",
-            "MICRO_OPERATOR",
-          ];
-          for (let k = 0; k < roleKeys.length; k++) {
-            const roleKey = roleKeys[k];
-            const roleWorkersRaw = liangTangData[roleKey] as
-              | UTSJSONObject[]
-              | null;
-            if (roleWorkersRaw != null && roleWorkersRaw.length > 0) {
-              const workerList: LiangTangWorkerData[] = [];
-              const workersForInit: UTSJSONObject[] = [];
-              for (let j = 0; j < roleWorkersRaw.length; j++) {
-                const w = roleWorkersRaw[j];
-                workerList.push({
-                  personId:
-                    w["personId"] != null ? (w["personId"] as number) : null,
-                  personName:
-                    w["personName"] != null ? (w["personName"] as string) : "",
-                  pointsUnits:
-                    w["pointsUnits"] != null ? (w["pointsUnits"] as number) : 0,
-                } as LiangTangWorkerData);
-                workersForInit.push({
-                  personId: w["personId"],
-                  personName: w["personName"],
-                  pointsUnits: w["pointsUnits"],
-                } as UTSJSONObject);
-              }
-              this.liangTangRolesData.set(roleKey, {
-                roleCode: roleKey as RoleCode,
-                workers: workerList,
-              } as LiangTangRoleData);
-              // 更新组件初始数据
-              if (roleKey == "WHEAT_MATERIAL") {
-                this.wheatMaterialWorkers = workersForInit;
-              } else if (roleKey == "MACHINE_GUARD") {
-                this.machineGuardWorkers = workersForInit;
-              } else if (roleKey == "KOJI_UNLOADER") {
-                this.kojiUnloaderWorkers = workersForInit;
-              } else if (roleKey == "MICRO_OPERATOR") {
-                this.microOperatorWorkers = workersForInit;
-              }
-            }
-          }
-        }
-      }
-
-      // 更新人员互斥列表
-      this.updateOccupiedIds();
-
-      // 加载会话后重新计算跨仓工分分配（确保与当前曲坯数一致）
-      this.recalculateCrossBinSources();
-
-      // 恢复会话状态（用于自动保存判断）
-      const status = sessionData["status"] as string | null;
-      if (status != null) {
-        this.sessionStatus = status;
-      }
-
-      // 根据状态设置视图模式
-      if (this.sessionStatus == "submitted") {
-        this.viewMode = "view";
-      } else {
-        this.viewMode = "edit";
-      }
-
-      // 恢复备注
-      const remark = sessionData["remark"] as string | null;
-      if (remark != null) {
-        this.sessionRemark = remark;
-      }
-
-      // 恢复完成
-      this.isRestoring = false;
+      // 使用新的原子状态交换方式
+      const nextState = this.buildStateForDate(this.sessionDate);
+      this.applyState(nextState);
     },
 
     /**
@@ -2844,5 +3093,31 @@ export default {
   border-width: 1px;
   border-style: solid;
   border-color: #e8e8e8;
+}
+
+/* 切换遮罩层样式 */
+.switch-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.3);
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.switch-mask-text {
+  font-size: 16px;
+  color: #ffffff;
+  background-color: rgba(0, 0, 0, 0.7);
+  padding: 12px 24px;
+  border-radius: 8px;
+}
+
+/* scroll-body 样式 */
+.scroll-body {
+  flex: 1;
 }
 </style>

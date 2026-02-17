@@ -91,7 +91,7 @@
     emits: ['change', 'update:selectedBins'],
 	    data() {
 	      return {
-	        classNo: 3 as number,
+	        classNo: getCurrentClassNo() as number,
 	        currentFloor: 3 as number,
 	        floors: [3, 4, 5] as number[],
 	        seqMax: 24 as number,
@@ -106,20 +106,24 @@
 	          this.rebuildSelectedSeqLookup(newVal)
 	        },
 	        immediate: true
+	      },
+	      defaultFloor: {
+	        handler(newVal: number) {
+	          this.currentFloor = newVal
+	          const stage = this.stageCode as StageCode
+	          this.seqMax = Math.floor(getSeqMaxForFloor(this.classNo, this.currentFloor, stage))
+	        },
+	        immediate: true
 	      }
 	    },
 	    mounted() {
 	      // 初始化非 prop 相关的状态
-      this.classNo = getCurrentClassNo()
-      this.currentFloor = this.defaultFloor
-      const stage = this.stageCode as StageCode
-      this.seqMax = Math.floor(getSeqMaxForFloor(this.classNo, this.currentFloor, stage))
-      this.lastSelectedSeq = 0
+	      this.lastSelectedSeq = 0
 
-      // 智能推断预选
-      if (this.autoInfer == true && this.hasInferred == false) {
-        this.doAutoInfer()
-      }
+	      // 智能推断预选
+	      if (this.autoInfer == true && this.hasInferred == false) {
+	        this.doAutoInfer()
+	      }
 	    },
 	    methods: {
 	      rebuildSelectedSeqLookup(bins: BinCode[]) {

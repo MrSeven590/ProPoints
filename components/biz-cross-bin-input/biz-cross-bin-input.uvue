@@ -166,17 +166,13 @@
       },
       initialPersonId: {
         handler(newVal: number | null) {
-          if (newVal != null) {
-            this.selectedPersonId = newVal
-          }
+          this.selectedPersonId = newVal != null ? newVal : null
         },
         immediate: true
       },
       initialPersonName: {
         handler(newVal: string) {
-          if (newVal.length > 0) {
-            this.selectedPersonName = newVal
-          }
+          this.selectedPersonName = newVal
         },
         immediate: true
       },
@@ -197,27 +193,9 @@
       }
     },
     mounted() {
-      this.initData()
-      // 初始化预览显示
-      this.buildSourceDisplayListFromSources()
+      // 所有初始化由 watchers 处理，无需手动初始化
     },
     methods: {
-      initData() {
-        // 初始化 bin_id -> bin_code 映射
-        this.rebuildBinCodeMap(this.bins as StageBinInfo[])
-
-        // 初始化已有数据
-        if (this.initialPersonId != null) {
-          this.selectedPersonId = this.initialPersonId as number
-        }
-        if ((this.initialPersonName as string).length > 0) {
-          this.selectedPersonName = this.initialPersonName as string
-        }
-        if ((this.initialPointsUnits as number) > 0) {
-          this.pointsUnits = this.initialPointsUnits as number
-          this.displayPoints = this.pointsUnits == 0 ? '' : formatPointsUnits(this.pointsUnits)
-        }
-      },
 
       rebuildBinCodeMap(bins: StageBinInfo[]) {
         const map = new Map<number, string>()

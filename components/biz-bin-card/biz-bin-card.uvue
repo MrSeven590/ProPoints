@@ -427,6 +427,13 @@
           this.initWorkerList(newVal)
         },
         immediate: true
+      },
+      stageCoef: {
+        handler() {
+          // 系数变化时重新计算总分
+          this.recalculateTotalPoints()
+        },
+        immediate: true
       }
     },
     mounted() {
