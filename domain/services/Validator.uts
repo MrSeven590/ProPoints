@@ -168,16 +168,22 @@ function getMessages(locale: ValidationLocale): UTSJSONObject {
  */
 function formatMessage(template: string, params: UTSJSONObject): string {
   let result = template
-  const keys = Object.keys(params)
-  for (let i = 0; i < keys.length; i++) {
-    const key = keys[i]
+  // UTS 不支持 Object.keys()，需要手动遍历已知的参数
+  // 定义所有可能的参数键
+  const commonKeys = ['bin_code', 'role_name', 'person_name', 'where', 'scope', 'where_a', 'where_b',
+                      'pool', 'assigned', 'diff', 'expected', 'actual', 'total', 'sources', 'field']
+
+  for (let i = 0; i < commonKeys.length; i++) {
+    const key = commonKeys[i]
     const value = params[key]
-    const placeholder = '{' + key + '}'
-    // UTS 不支持 String.prototype.replaceAll，使用循环替换
-    let index = result.indexOf(placeholder)
-    while (index != -1) {
-      result = result.substring(0, index) + (value as string) + result.substring(index + placeholder.length)
-      index = result.indexOf(placeholder)
+    if (value != null) {
+      const placeholder = '{' + key + '}'
+      // UTS 不支持 String.prototype.replaceAll，使用循环替换
+      let index = result.indexOf(placeholder)
+      while (index != -1) {
+        result = result.substring(0, index) + (value as string) + result.substring(index + placeholder.length)
+        index = result.indexOf(placeholder)
+      }
     }
   }
   return result
