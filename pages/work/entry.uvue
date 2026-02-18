@@ -1220,6 +1220,34 @@ export default {
           koji_count: kojiCount,
           bin_code: binCode,
         } as StageBinInfo);
+
+        // 修复：初始化 binCardsData，确保每个仓都有默认数据
+        // 只有当 binCardsData 中不存在该仓时才初始化（避免覆盖已有数据）
+        if (this.binCardsData.get(binId) == null) {
+          const stageCoef = this.getStageCoefForBin();
+          const totalPointsUnits = kojiCount * stageCoef;
+
+          // 创建默认工人数组
+          const workers: BinWorkerData[] = [];
+          for (let j = 0; j < this.defaultBinWorkerCount; j++) {
+            workers.push({
+              personId: null,
+              personName: '',
+              pointsUnits: 0,
+              positionIndex: j + 1,
+              deductedUnits: 0,
+              penaltyReason: '',
+              penaltyId: null
+            } as BinWorkerData);
+          }
+
+          this.binCardsData.set(binId, {
+            kojiCount: kojiCount,
+            totalPointsUnits: totalPointsUnits,
+            assignedUnits: 0,
+            workers: workers
+          } as BinCardData);
+        }
       }
 
       this.stageBinInfos = infos;
