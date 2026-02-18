@@ -1242,6 +1242,9 @@ export default {
           }
 
           this.binCardsData.set(binId, {
+            stageBinId: binId,
+            binId: binId,
+            binCode: binCode,
             kojiCount: kojiCount,
             totalPointsUnits: totalPointsUnits,
             assignedUnits: 0,
