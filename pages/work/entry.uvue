@@ -2168,7 +2168,16 @@ export default {
       }
 
       // 构建跨仓岗位数据
-      // 直接使用 this.crossBinSources，确保"用户看到的 == 保存的"
+      // 转换 crossBinSources 为 UTSJSONObject[]
+      const sourcesData: UTSJSONObject[] = [];
+      for (let i = 0; i < this.crossBinSources.length; i++) {
+        const source = this.crossBinSources[i];
+        sourcesData.push({
+          stage_bin_id: source.stage_bin_id,
+          source_points_units: source.source_points_units,
+        } as UTSJSONObject);
+      }
+
       const crossBinData = {
         enabled: this.showCrossBinSection,
         role_code: this.crossBinRoleCode,
@@ -2176,7 +2185,7 @@ export default {
         person_id: this.crossBinPersonId,
         person_name: this.crossBinPersonName,
         points_units: this.crossBinPointsUnits,
-        sources: this.crossBinSources,
+        sources: sourcesData,
       } as UTSJSONObject;
 
       // 构建晾堂岗位数据（仅安曲环节）
