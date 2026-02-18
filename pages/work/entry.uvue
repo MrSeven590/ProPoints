@@ -2204,34 +2204,44 @@ export default {
      * 提交确认
      */
     submit() {
-      // 1. 构建提交数据
-      const sessionData = this.buildSessionData("submitted");
+      try {
+        // 1. 构建提交数据
+        const sessionData = this.buildSessionData("submitted");
 
-      // 2. 构建校验上下文
-      const ctx = {
-        mode: "submit",
-        locale: "zh-CN" as "zh-CN",
-        stage_code: this.stageCode,
-        round_id: this.roundId,
-        micro_enabled: this.microEnabled,
-        manager_name: getManagerName().trim()
-      } as ValidationContext;
+        // 2. 构建校验上下文
+        const ctx = {
+          mode: "submit",
+          locale: "zh-CN" as "zh-CN",
+          stage_code: this.stageCode,
+          round_id: this.roundId,
+          micro_enabled: this.microEnabled,
+          manager_name: getManagerName().trim()
+        } as ValidationContext;
 
-      // 3. 调用校验引擎
-      const result = validateSessionData(sessionData, ctx);
+        // 3. 调用校验引擎
+        const result = validateSessionData(sessionData, ctx);
 
-      // 4. 处理校验结果
-      if (result.is_valid == false) {
+        // 4. 处理校验结果
+        if (result.is_valid == false) {
+          uni.showModal({
+            title: "无法提交",
+            content: formatErrorsForModal(result),
+            showCancel: false
+          });
+          return;
+        }
+
+        // 5. 用户确认后提交
+        this.confirmAndSubmit(sessionData);
+      } catch (e : any) {
+        // 捕获校验引擎异常
+        console.error("校验引擎错误:", e);
         uni.showModal({
-          title: "无法提交",
-          content: formatErrorsForModal(result),
+          title: "校验失败",
+          content: "数据校验时发生错误，请检查数据后重试。\n错误信息: " + e.message,
           showCancel: false
         });
-        return;
       }
-
-      // 5. 用户确认后提交
-      this.confirmAndSubmit(sessionData);
     },
 
     /**

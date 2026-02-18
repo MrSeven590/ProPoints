@@ -116,6 +116,8 @@ const MESSAGES_ZH_CN: UTSJSONObject = {
   'STRUCT_NEGATIVE_NOT_ALLOWED': '{field} 不能为负数（{where}）',
   'STRUCT_PENALTY_REASON_REQUIRED': '扣分时原因必填（{where}）',
   'STRUCT_PENALTY_EXCEEDS_POINTS': '扣分不能超过原始工分（{where}）',
+  'STRUCT_BINS_REQUIRED': '{stage_name} 环节必须选择发酵仓',
+  'STRUCT_BIN_WORKERS_REQUIRED': '发酵仓 {bin_code} 必须分配工人',
   'PERM_MICRO_DISABLED_BUT_HAS_DATA': '本轮次微机岗位不计分，但检测到微机数据（请清空微机人员/工分）',
   'PERM_STRICT_SINGLE_VIOLATION': '{role_name} 岗位必须且只能有 1 人（当前 {count} 人）',
   'BIZ_DUPLICATE_PERSON': '人员重复分配：{person_name} 同时出现在 {where_a} 与 {where_b}',
@@ -136,6 +138,8 @@ const MESSAGES_EN_US: UTSJSONObject = {
   'STRUCT_NEGATIVE_NOT_ALLOWED': '{field} cannot be negative ({where})',
   'STRUCT_PENALTY_REASON_REQUIRED': 'Penalty reason is required when deducting points ({where})',
   'STRUCT_PENALTY_EXCEEDS_POINTS': 'Penalty cannot exceed original points ({where})',
+  'STRUCT_BINS_REQUIRED': '{stage_name} stage requires fermentation bins to be selected',
+  'STRUCT_BIN_WORKERS_REQUIRED': 'Bin {bin_code} must have workers assigned',
   'PERM_MICRO_DISABLED_BUT_HAS_DATA': 'Micro operator role is disabled for this round, but data detected (please clear micro workers/points)',
   'PERM_STRICT_SINGLE_VIOLATION': '{role_name} role must have exactly 1 person (current: {count})',
   'BIZ_DUPLICATE_PERSON': 'Duplicate person assignment: {person_name} appears in both {where_a} and {where_b}',
@@ -171,7 +175,8 @@ function formatMessage(template: string, params: UTSJSONObject): string {
   // UTS 不支持 Object.keys()，需要手动遍历已知的参数
   // 定义所有可能的参数键
   const commonKeys = ['bin_code', 'role_name', 'person_name', 'where', 'scope', 'where_a', 'where_b',
-                      'pool', 'assigned', 'diff', 'expected', 'actual', 'total', 'sources', 'field']
+                      'pool', 'assigned', 'diff', 'expected', 'actual', 'total', 'sources', 'field',
+                      'stage_name', 'count', 'assignment', 'sources_sum', 'stage_bin_id', 'data_stage', 'ctx_stage']
 
   for (let i = 0; i < commonKeys.length; i++) {
     const key = commonKeys[i]
@@ -1377,6 +1382,103 @@ registerRule({
         location,
         ctx.locale
       ))
+    }
+
+    return errors
+  }
+} as ValidationRule)
+
+/**
+ * 规则 11: struct.bins.required
+ * 需要仓的环节必须有仓（仅 submit 模式）
+ */
+registerRule({
+  id: 'struct.bins.required',
+  category: 'structure',
+  modes: ['submit'],
+  fn: (data: NormalizedSessionData, ctx: ValidationContext, runtime: RuntimeContext): ValidationError[] => {
+    const errors: ValidationError[] = []
+
+    // 堆曲环节不需要仓
+    if (ctx.stage_code == 'DUI_QU') {
+      return errors
+    }
+
+    // 其他环节必须有至少一个仓
+    if (data.bins.length == 0) {
+      const location = createEmptyLocation(ctx.stage_code)
+
+      errors.push(makeError(
+        'struct.bins.required',
+        'structure',
+        'error',
+        'STRUCT_BINS_REQUIRED',
+        {
+          stage_name: data.stage_name
+        } as UTSJSONObject,
+        'bins',
+        location,
+        ctx.locale
+      ))
+    }
+
+    return errors
+  }
+} as ValidationRule)
+
+/**
+ * 规则 12: struct.bin.workers.required
+ * 提交的仓必须有工人（仅 submit 模式）
+ */
+registerRule({
+  id: 'struct.bin.workers.required',
+  category: 'structure',
+  modes: ['submit'],
+  fn: (data: NormalizedSessionData, ctx: ValidationContext, runtime: RuntimeContext): ValidationError[] => {
+    const errors: ValidationError[] = []
+
+    // 检查每个仓是否有工人
+    for (let i = 0; i < data.bins.length; i++) {
+      const bin = data.bins[i]
+
+      // 检查是否有至少一个有效工人（person_id 不为 null）
+      let hasValidWorker = false
+      for (let j = 0; j < bin.workers.length; j++) {
+        if (bin.workers[j].person_id != null) {
+          hasValidWorker = true
+          break
+        }
+      }
+
+      // 如果没有有效工人，生成错误
+      if (hasValidWorker == false) {
+        const location: ErrorLocation = {
+          stage_code: ctx.stage_code,
+          bin_id: bin.bin_id,
+          stage_bin_id: bin.stage_bin_id,
+          bin_code: bin.bin_code,
+          bin_worker_index: null,
+          position_index: null,
+          role_code: null,
+          role_name: null,
+          session_worker_index: null,
+          person_id: null,
+          person_name: null
+        } as ErrorLocation
+
+        errors.push(makeError(
+          'struct.bin.workers.required',
+          'structure',
+          'error',
+          'STRUCT_BIN_WORKERS_REQUIRED',
+          {
+            bin_code: bin.bin_code
+          } as UTSJSONObject,
+          `bins[${i}]`,
+          location,
+          ctx.locale
+        ))
+      }
     }
 
     return errors
