@@ -1,123 +1,1463 @@
 /**
- * 数据校验器
- * 负责校验工分分配的平衡性等
+ * 数据校验引擎
+ * 基于规则注册机制的集中式校验系统
+ *
+ * 设计原则：
+ * 1. Single source of truth - 所有阻塞规则都在此文件
+ * 2. Pure + deterministic - validateSessionData() 是纯函数
+ * 3. Typed, locatable errors - 每个错误都有 code/category/severity/location
+ * 4. Phase-ordered execution - 阶段化执行（Structure → Permission → Business → Consistency）
+ * 5. Extensible registry - 通过注册规则扩展，无需修改提交流程
  */
 
-import { PointsUnits, formatPointsUnits } from '../models/types.uts'
+import { PointsUnits, formatPointsUnits, StageCode, RoleCode } from '../models/types.uts'
+import { calcLiangTangPoolUnits } from './ScoreCalculator.uts'
+
+// ============================================
+// 类型定义
+// ============================================
+
+/**
+ * 校验模式
+ * - draft: 草稿保存时的校验（宽松）
+ * - submit: 提交时的校验（严格）
+ */
+export type ValidationMode = 'draft' | 'submit'
+
+/**
+ * 校验类别（按执行顺序）
+ * - structure: 结构完整性（如：有工分必须有人员）
+ * - permission: 权限检查（如：微机禁用时不能有数据）
+ * - business: 业务规则（如：工分平衡、人员唯一性）
+ * - consistency: 一致性检查（如：环节代码匹配）
+ */
+export type ValidationCategory = 'structure' | 'permission' | 'business' | 'consistency'
+
+/**
+ * 校验严重程度
+ * - error: 错误，阻止提交
+ * - warning: 警告，不阻止提交
+ */
+export type ValidationSeverity = 'error' | 'warning'
+
+/**
+ * 错误位置信息
+ * 用于精确定位错误发生的位置
+ */
+export type ErrorLocation = {
+  stage_code: StageCode
+  bin_id: number | null
+  stage_bin_id: number | null
+  bin_code: string | null
+  bin_worker_index: number | null
+  position_index: number | null
+  role_code: RoleCode | null
+  role_name: string | null
+  session_worker_index: number | null
+  person_id: number | null
+  person_name: string | null
+}
+
+/**
+ * 校验错误
+ * 包含错误代码、类别、严重程度、消息、位置等信息
+ */
+export type ValidationError = {
+  code: string
+  category: ValidationCategory
+  severity: ValidationSeverity
+  message_key: string
+  message_params: UTSJSONObject
+  message: string
+  path: string
+  location: ErrorLocation
+  hint_key: string | null
+  hint_params: UTSJSONObject | null
+  hint: string | null
+}
 
 /**
  * 校验结果
  */
 export type ValidationResult = {
-  isValid: boolean
-  errors: string[]
+  is_valid: boolean
+  has_warnings: boolean
+  errors: ValidationError[]
 }
 
 /**
- * 发酵仓平衡校验数据
+ * 校验上下文
+ * 包含校验所需的环境信息
  */
-export type BinBalanceData = {
+export type ValidationContext = {
+  mode: ValidationMode
+  locale: ValidationLocale
+  stage_code: StageCode
+  round_id: number | null
+  micro_enabled: boolean
+  manager_name: string
+}
+
+/**
+ * 国际化语言环境
+ */
+export type ValidationLocale = 'zh-CN' | 'en-US'
+
+// ============================================
+// i18n 消息模板
+// ============================================
+
+/**
+ * 中文消息模板
+ */
+const MESSAGES_ZH_CN: UTSJSONObject = {
+  'STRUCT_MANAGER_REQUIRED': '请先在设置中配置管理员姓名',
+  'STRUCT_PERSON_REQUIRED_WHEN_POINTS': '{scope}：已填写工分但未选择人员（{where}）',
+  'STRUCT_NEGATIVE_NOT_ALLOWED': '{field} 不能为负数（{where}）',
+  'STRUCT_PENALTY_REASON_REQUIRED': '扣分时原因必填（{where}）',
+  'STRUCT_PENALTY_EXCEEDS_POINTS': '扣分不能超过原始工分（{where}）',
+  'PERM_MICRO_DISABLED_BUT_HAS_DATA': '本轮次微机岗位不计分，但检测到微机数据（请清空微机人员/工分）',
+  'PERM_STRICT_SINGLE_VIOLATION': '{role_name} 岗位必须且只能有 1 人（当前 {count} 人）',
+  'BIZ_DUPLICATE_PERSON': '人员重复分配：{person_name} 同时出现在 {where_a} 与 {where_b}',
+  'BIZ_BIN_BALANCE_MISMATCH': '发酵仓 {bin_code} 工分不平衡：总分 {expected}，已分配+跨仓抽取 {actual}，差额 {diff}',
+  'BIZ_CROSS_BIN_SOURCE_INCOMPLETE': '跨仓工分来源不完整：分配 {assignment}，来源合计 {sources_sum}',
+  'BIZ_CROSS_BIN_SOURCE_UNKNOWN_BIN': '跨仓来源引用了不存在的仓（stage_bin_id={stage_bin_id}）',
+  'BIZ_LIANGTANG_ROLE_MISSING': '晾堂岗位 {role_name} 数据缺失，无法校验（请刷新/重进页面）',
+  'BIZ_LIANGTANG_POOL_NOT_BALANCED': '晾堂岗位 {role_name} 工分未分配完：池子 {pool}，已分配 {assigned}',
+  'CONS_STAGE_CODE_MISMATCH': '数据环节与当前页面不一致：data={data_stage}，ctx={ctx_stage}'
+} as UTSJSONObject
+
+/**
+ * 英文消息模板（预留）
+ */
+const MESSAGES_EN_US: UTSJSONObject = {
+  'STRUCT_MANAGER_REQUIRED': 'Please configure manager name in settings first',
+  'STRUCT_PERSON_REQUIRED_WHEN_POINTS': '{scope}: Points assigned but no person selected ({where})',
+  'STRUCT_NEGATIVE_NOT_ALLOWED': '{field} cannot be negative ({where})',
+  'STRUCT_PENALTY_REASON_REQUIRED': 'Penalty reason is required when deducting points ({where})',
+  'STRUCT_PENALTY_EXCEEDS_POINTS': 'Penalty cannot exceed original points ({where})',
+  'PERM_MICRO_DISABLED_BUT_HAS_DATA': 'Micro operator role is disabled for this round, but data detected (please clear micro workers/points)',
+  'PERM_STRICT_SINGLE_VIOLATION': '{role_name} role must have exactly 1 person (current: {count})',
+  'BIZ_DUPLICATE_PERSON': 'Duplicate person assignment: {person_name} appears in both {where_a} and {where_b}',
+  'BIZ_BIN_BALANCE_MISMATCH': 'Bin {bin_code} points imbalance: total {expected}, assigned+cross-bin {actual}, diff {diff}',
+  'BIZ_CROSS_BIN_SOURCE_INCOMPLETE': 'Cross-bin source incomplete: assignment {assignment}, sources sum {sources_sum}',
+  'BIZ_CROSS_BIN_SOURCE_UNKNOWN_BIN': 'Cross-bin source references non-existent bin (stage_bin_id={stage_bin_id})',
+  'BIZ_LIANGTANG_ROLE_MISSING': 'Liangtang role {role_name} data missing, cannot validate (please refresh/re-enter page)',
+  'BIZ_LIANGTANG_POOL_NOT_BALANCED': 'Liangtang role {role_name} points not fully allocated: pool {pool}, assigned {assigned}',
+  'CONS_STAGE_CODE_MISMATCH': 'Data stage code mismatch: data={data_stage}, ctx={ctx_stage}'
+} as UTSJSONObject
+
+/**
+ * 获取消息模板
+ * @param locale 语言环境
+ * @returns 消息模板对象
+ */
+function getMessages(locale: ValidationLocale): UTSJSONObject {
+  if (locale == 'en-US') {
+    return MESSAGES_EN_US
+  }
+  return MESSAGES_ZH_CN
+}
+
+/**
+ * 格式化消息
+ * 将消息模板中的占位符替换为实际值
+ * @param template 消息模板
+ * @param params 参数对象
+ * @returns 格式化后的消息
+ */
+function formatMessage(template: string, params: UTSJSONObject): string {
+  let result = template
+  const keys = Object.keys(params)
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i]
+    const value = params[key]
+    const placeholder = '{' + key + '}'
+    // UTS 不支持 String.prototype.replaceAll，使用循环替换
+    let index = result.indexOf(placeholder)
+    while (index != -1) {
+      result = result.substring(0, index) + (value as string) + result.substring(index + placeholder.length)
+      index = result.indexOf(placeholder)
+    }
+  }
+  return result
+}
+
+// ============================================
+// 工具函数
+// ============================================
+
+/**
+ * 创建空的错误位置
+ * @param stageCode 环节代码
+ * @returns 空的错误位置对象
+ */
+function createEmptyLocation(stageCode: StageCode): ErrorLocation {
+  return {
+    stage_code: stageCode,
+    bin_id: null,
+    stage_bin_id: null,
+    bin_code: null,
+    bin_worker_index: null,
+    position_index: null,
+    role_code: null,
+    role_name: null,
+    session_worker_index: null,
+    person_id: null,
+    person_name: null
+  } as ErrorLocation
+}
+
+/**
+ * 创建错误对象的工厂函数
+ * @param code 错误代码
+ * @param category 错误类别
+ * @param severity 严重程度
+ * @param messageKey 消息键
+ * @param messageParams 消息参数
+ * @param path 错误路径
+ * @param location 错误位置
+ * @param locale 语言环境
+ * @param hintKey 提示键（可选）
+ * @param hintParams 提示参数（可选）
+ * @returns 错误对象
+ */
+function makeError(
+  code: string,
+  category: ValidationCategory,
+  severity: ValidationSeverity,
+  messageKey: string,
+  messageParams: UTSJSONObject,
+  path: string,
+  location: ErrorLocation,
+  locale: ValidationLocale,
+  hintKey: string | null = null,
+  hintParams: UTSJSONObject | null = null
+): ValidationError {
+  const messages = getMessages(locale)
+  const messageTemplate = messages[messageKey] as string | null
+  const message = messageTemplate != null ? formatMessage(messageTemplate, messageParams) : messageKey
+
+  let hint: string | null = null
+  if (hintKey != null && hintParams != null) {
+    const hintTemplate = messages[hintKey] as string | null
+    hint = hintTemplate != null ? formatMessage(hintTemplate, hintParams) : hintKey
+  }
+
+  return {
+    code: code,
+    category: category,
+    severity: severity,
+    message_key: messageKey,
+    message_params: messageParams,
+    message: message,
+    path: path,
+    location: location,
+    hint_key: hintKey,
+    hint_params: hintParams,
+    hint: hint
+  } as ValidationError
+}
+
+// ============================================
+// 数据标准化层
+// ============================================
+
+/**
+ * 标准化后的工人数据
+ */
+type NormalizedWorker = {
+  person_id: number | null
+  person_name: string
+  points_units: PointsUnits
+  deducted_units: PointsUnits
+  penalty_reason: string
+  penalty_id: number | null
+  position_index: number
+}
+
+/**
+ * 标准化后的发酵仓数据
+ */
+type NormalizedBin = {
   bin_id: number
+  stage_bin_id: number
   bin_code: string
+  koji_count: number
   total_points_units: PointsUnits
-  assigned_points_units: PointsUnits
-  cross_bin_deducted_units: PointsUnits
+  workers: NormalizedWorker[]
 }
 
 /**
- * 校验发酵仓工分平衡
- * 规则：bin.total_points_units = sum(BIN分配原始工分) + sum(从该仓抽取的工分)
- *
- * @param data 发酵仓平衡数据
- * @returns 校验结果
+ * 标准化后的跨仓来源数据
  */
-export function validateBinBalance(data: BinBalanceData): ValidationResult {
-  const errors: string[] = []
+type NormalizedCrossBinSource = {
+  stage_bin_id: number
+  source_points_units: PointsUnits
+}
 
-  const expected = data.total_points_units
-  const actual = data.assigned_points_units + data.cross_bin_deducted_units
+/**
+ * 标准化后的跨仓岗位数据
+ */
+type NormalizedCrossBin = {
+  enabled: boolean
+  role_code: RoleCode
+  role_name: string
+  person_id: number | null
+  person_name: string
+  points_units: PointsUnits
+  sources: NormalizedCrossBinSource[]
+}
 
-  if (expected != actual) {
-    const diff = expected - actual
-    errors.push(`发酵仓 ${data.bin_code} 工分不平衡：总分 ${formatPointsUnits(expected)}，已分配 ${formatPointsUnits(actual)}，差额 ${formatPointsUnits(diff)}`)
+/**
+ * 标准化后的晾堂工人数据
+ */
+type NormalizedLiangTangWorker = {
+  person_id: number | null
+  person_name: string
+  points_units: PointsUnits
+}
+
+/**
+ * 标准化后的晾堂岗位数据
+ */
+type NormalizedLiangTangRole = {
+  role_code: RoleCode
+  role_name: string
+  workers: NormalizedLiangTangWorker[]
+}
+
+/**
+ * 标准化后的会话数据
+ */
+type NormalizedSessionData = {
+  status: string
+  session_date: string
+  stage_code: StageCode
+  stage_name: string
+  round_id: number | null
+  coef_set_id: number | null
+  created_by_manager: string
+  updated_by_manager: string
+  remark: string
+  bins: NormalizedBin[]
+  cross_bin: NormalizedCrossBin
+  liang_tang: Map<string, NormalizedLiangTangRole>
+}
+
+/**
+ * 标准化会话数据
+ * 将原始 UTSJSONObject 转换为类型安全的标准化数据结构
+ * @param raw 原始会话数据
+ * @returns 标准化后的会话数据
+ */
+function normalizeSessionData(raw: UTSJSONObject): NormalizedSessionData {
+  // 解析基础字段
+  const status = raw['status'] as string | null
+  const sessionDate = raw['session_date'] as string | null
+  const stageCode = raw['stage_code'] as string | null
+  const stageName = raw['stage_name'] as string | null
+  const roundId = raw['round_id'] as number | null
+  const coefSetId = raw['coef_set_id'] as number | null
+  const createdByManager = raw['created_by_manager'] as string | null
+  const updatedByManager = raw['updated_by_manager'] as string | null
+  const remark = raw['remark'] as string | null
+
+  // 解析发酵仓数据
+  const binsRaw = raw['bins'] as UTSJSONObject[] | null
+  const bins: NormalizedBin[] = []
+  if (binsRaw != null) {
+    for (let i = 0; i < binsRaw.length; i++) {
+      const binRaw = binsRaw[i]
+      const binId = binRaw['bin_id'] as number | null
+      const stageBinId = binRaw['stage_bin_id'] as number | null
+      const binCode = binRaw['bin_code'] as string | null
+      const kojiCount = binRaw['koji_count'] as number | null
+      const totalPointsUnits = binRaw['totalPointsUnits'] as number | null
+
+      const workersRaw = binRaw['workers'] as UTSJSONObject[] | null
+      const workers: NormalizedWorker[] = []
+      if (workersRaw != null) {
+        for (let j = 0; j < workersRaw.length; j++) {
+          const workerRaw = workersRaw[j]
+          workers.push({
+            person_id: workerRaw['personId'] as number | null,
+            person_name: (workerRaw['personName'] as string | null) != null ? (workerRaw['personName'] as string) : '',
+            points_units: (workerRaw['pointsUnits'] as number | null) != null ? (workerRaw['pointsUnits'] as number) : 0,
+            deducted_units: (workerRaw['deductedUnits'] as number | null) != null ? (workerRaw['deductedUnits'] as number) : 0,
+            penalty_reason: (workerRaw['penaltyReason'] as string | null) != null ? (workerRaw['penaltyReason'] as string) : '',
+            penalty_id: workerRaw['penaltyId'] as number | null,
+            position_index: (workerRaw['positionIndex'] as number | null) != null ? (workerRaw['positionIndex'] as number) : j + 1
+          } as NormalizedWorker)
+        }
+      }
+
+      bins.push({
+        bin_id: binId != null ? binId : 0,
+        stage_bin_id: stageBinId != null ? stageBinId : 0,
+        bin_code: binCode != null ? binCode : '',
+        koji_count: kojiCount != null ? kojiCount : 0,
+        total_points_units: totalPointsUnits != null ? totalPointsUnits : 0,
+        workers: workers
+      } as NormalizedBin)
+    }
   }
 
-  return {
-    isValid: errors.length == 0,
-    errors: errors
-  } as ValidationResult
-}
+  // 解析跨仓岗位数据
+  const crossBinRaw = raw['cross_bin'] as UTSJSONObject | null
+  let crossBin: NormalizedCrossBin = {
+    enabled: false,
+    role_code: 'CART_PULLER' as RoleCode,
+    role_name: '拉车',
+    person_id: null,
+    person_name: '',
+    points_units: 0,
+    sources: []
+  } as NormalizedCrossBin
 
-/**
- * 校验跨仓来源完整性
- * 规则：Assignment.points_units = sum(AssignmentSource.source_points_units)
- *
- * @param assignmentUnits 分配行工分
- * @param sourceUnitsSum 来源工分合计
- * @returns 校验结果
- */
-export function validateCrossBinSource(
-  assignmentUnits: PointsUnits,
-  sourceUnitsSum: PointsUnits
-): ValidationResult {
-  const errors: string[] = []
+  if (crossBinRaw != null) {
+    const enabled = crossBinRaw['enabled'] as boolean | null
+    const roleCode = crossBinRaw['role_code'] as string | null
+    const roleName = crossBinRaw['role_name'] as string | null
+    const personId = crossBinRaw['person_id'] as number | null
+    const personName = crossBinRaw['person_name'] as string | null
+    const pointsUnits = crossBinRaw['points_units'] as number | null
 
-  if (assignmentUnits != sourceUnitsSum) {
-    errors.push(`跨仓工分来源不完整：分配 ${formatPointsUnits(assignmentUnits)}，来源合计 ${formatPointsUnits(sourceUnitsSum)}`)
+    const sourcesRaw = crossBinRaw['sources'] as UTSJSONObject[] | null
+    const sources: NormalizedCrossBinSource[] = []
+    if (sourcesRaw != null) {
+      for (let i = 0; i < sourcesRaw.length; i++) {
+        const sourceRaw = sourcesRaw[i]
+        sources.push({
+          stage_bin_id: (sourceRaw['stage_bin_id'] as number | null) != null ? (sourceRaw['stage_bin_id'] as number) : 0,
+          source_points_units: (sourceRaw['source_points_units'] as number | null) != null ? (sourceRaw['source_points_units'] as number) : 0
+        } as NormalizedCrossBinSource)
+      }
+    }
+
+    crossBin = {
+      enabled: enabled != null ? enabled : false,
+      role_code: (roleCode as RoleCode | null) != null ? (roleCode as RoleCode) : ('CART_PULLER' as RoleCode),
+      role_name: roleName != null ? roleName : '拉车',
+      person_id: personId,
+      person_name: personName != null ? personName : '',
+      points_units: pointsUnits != null ? pointsUnits : 0,
+      sources: sources
+    } as NormalizedCrossBin
   }
 
-  return {
-    isValid: errors.length == 0,
-    errors: errors
-  } as ValidationResult
-}
+  // 解析晾堂岗位数据
+  const liangTangRaw = raw['liang_tang'] as UTSJSONObject | null
+  const liangTang = new Map<string, NormalizedLiangTangRole>()
+  if (liangTangRaw != null) {
+    const roleKeys = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER', 'MICRO_OPERATOR']
+    for (let i = 0; i < roleKeys.length; i++) {
+      const roleKey = roleKeys[i]
+      const roleWorkersRaw = liangTangRaw[roleKey] as UTSJSONObject[] | null
+      if (roleWorkersRaw != null) {
+        const workers: NormalizedLiangTangWorker[] = []
+        for (let j = 0; j < roleWorkersRaw.length; j++) {
+          const workerRaw = roleWorkersRaw[j]
+          workers.push({
+            person_id: workerRaw['personId'] as number | null,
+            person_name: (workerRaw['personName'] as string | null) != null ? (workerRaw['personName'] as string) : '',
+            points_units: (workerRaw['pointsUnits'] as number | null) != null ? (workerRaw['pointsUnits'] as number) : 0
+          } as NormalizedLiangTangWorker)
+        }
 
-/**
- * 校验会话池子平衡
- * 规则：session_total_points_units = sum(SESSION分配原始工分)
- *
- * @param sessionTotalUnits 会话总工分
- * @param assignedUnitsSum 已分配工分合计
- * @returns 校验结果
- */
-export function validateSessionPoolBalance(
-  sessionTotalUnits: PointsUnits,
-  assignedUnitsSum: PointsUnits
-): ValidationResult {
-  const errors: string[] = []
+        let roleName = roleKey
+        if (roleKey == 'WHEAT_MATERIAL') {
+          roleName = '麦料参数'
+        } else if (roleKey == 'MACHINE_GUARD') {
+          roleName = '守机'
+        } else if (roleKey == 'KOJI_UNLOADER') {
+          roleName = '下曲'
+        } else if (roleKey == 'MICRO_OPERATOR') {
+          roleName = '微机'
+        }
 
-  if (sessionTotalUnits != assignedUnitsSum) {
-    const diff = sessionTotalUnits - assignedUnitsSum
-    errors.push(`会话池子不平衡：总分 ${formatPointsUnits(sessionTotalUnits)}，已分配 ${formatPointsUnits(assignedUnitsSum)}，差额 ${formatPointsUnits(diff)}`)
-  }
-
-  return {
-    isValid: errors.length == 0,
-    errors: errors
-  } as ValidationResult
-}
-
-/**
- * 合并多个校验结果
- * @param results 校验结果数组
- * @returns 合并后的校验结果
- */
-export function mergeValidationResults(results: ValidationResult[]): ValidationResult {
-  const allErrors: string[] = []
-  let allValid = true
-
-  for (let i = 0; i < results.length; i++) {
-    const result = results[i]
-    if (!result.isValid) {
-      allValid = false
-      for (let j = 0; j < result.errors.length; j++) {
-        allErrors.push(result.errors[j])
+        liangTang.set(roleKey, {
+          role_code: roleKey as RoleCode,
+          role_name: roleName,
+          workers: workers
+        } as NormalizedLiangTangRole)
       }
     }
   }
 
   return {
-    isValid: allValid,
+    status: status != null ? status : 'draft',
+    session_date: sessionDate != null ? sessionDate : '',
+    stage_code: (stageCode as StageCode | null) != null ? (stageCode as StageCode) : ('AN_QU' as StageCode),
+    stage_name: stageName != null ? stageName : '',
+    round_id: roundId,
+    coef_set_id: coefSetId,
+    created_by_manager: createdByManager != null ? createdByManager : '',
+    updated_by_manager: updatedByManager != null ? updatedByManager : '',
+    remark: remark != null ? remark : '',
+    bins: bins,
+    cross_bin: crossBin,
+    liang_tang: liangTang
+  } as NormalizedSessionData
+}
+
+/**
+ * 构建运行时上下文
+ * 从标准化数据中提取运行时需要的辅助信息
+ * @param data 标准化后的会话数据
+ * @returns 运行时上下文
+ */
+type RuntimeContext = {
+  bin_map: Map<number, NormalizedBin>
+  person_locations: Map<number, string[]>
+}
+
+function buildRuntimeContext(data: NormalizedSessionData): RuntimeContext {
+  const binMap = new Map<number, NormalizedBin>()
+  const personLocations = new Map<number, string[]>()
+
+  // 构建仓位映射
+  for (let i = 0; i < data.bins.length; i++) {
+    const bin = data.bins[i]
+    binMap.set(bin.stage_bin_id, bin)
+
+    // 记录仓内人员位置
+    for (let j = 0; j < bin.workers.length; j++) {
+      const worker = bin.workers[j]
+      if (worker.person_id != null) {
+        const locations = personLocations.get(worker.person_id as number)
+        const location = `仓位 ${bin.bin_code} 站位 ${worker.position_index}`
+        if (locations != null) {
+          locations.push(location)
+        } else {
+          personLocations.set(worker.person_id as number, [location])
+        }
+      }
+    }
+  }
+
+  // 记录跨仓人员位置
+  if (data.cross_bin.enabled == true && data.cross_bin.person_id != null) {
+    const locations = personLocations.get(data.cross_bin.person_id as number)
+    const location = `跨仓岗位（${data.cross_bin.role_name}）`
+    if (locations != null) {
+      locations.push(location)
+    } else {
+      personLocations.set(data.cross_bin.person_id as number, [location])
+    }
+  }
+
+  // 记录晾堂人员位置
+  data.liang_tang.forEach((role: NormalizedLiangTangRole, _key: string) => {
+    for (let i = 0; i < role.workers.length; i++) {
+      const worker = role.workers[i]
+      if (worker.person_id != null) {
+        const locations = personLocations.get(worker.person_id as number)
+        const location = `晾堂岗位（${role.role_name}）`
+        if (locations != null) {
+          locations.push(location)
+        } else {
+          personLocations.set(worker.person_id as number, [location])
+        }
+      }
+    }
+  })
+
+  return {
+    bin_map: binMap,
+    person_locations: personLocations
+  } as RuntimeContext
+}
+
+// ============================================
+// 规则注册机制
+// ============================================
+
+/**
+ * 校验规则函数类型
+ */
+type ValidationRuleFn = (
+  data: NormalizedSessionData,
+  ctx: ValidationContext,
+  runtime: RuntimeContext
+) => ValidationError[]
+
+/**
+ * 校验规则定义
+ */
+type ValidationRule = {
+  id: string
+  category: ValidationCategory
+  modes: ValidationMode[]
+  fn: ValidationRuleFn
+}
+
+/**
+ * 规则注册表
+ */
+const RULES: ValidationRule[] = []
+
+/**
+ * 注册校验规则
+ * @param rule 规则定义
+ */
+function registerRule(rule: ValidationRule): void {
+  RULES.push(rule)
+}
+
+/**
+ * 获取指定模式下的规则
+ * @param mode 校验模式
+ * @returns 适用的规则列表
+ */
+function getRulesForMode(mode: ValidationMode): ValidationRule[] {
+  const result: ValidationRule[] = []
+  for (let i = 0; i < RULES.length; i++) {
+    const rule = RULES[i]
+    let applicable = false
+    for (let j = 0; j < rule.modes.length; j++) {
+      if (rule.modes[j] == mode) {
+        applicable = true
+        break
+      }
+    }
+    if (applicable == true) {
+      result.push(rule)
+    }
+  }
+  return result
+}
+
+/**
+ * 按类别排序规则
+ * @param rules 规则列表
+ * @returns 排序后的规则列表
+ */
+function sortRulesByCategory(rules: ValidationRule[]): ValidationRule[] {
+  const categoryOrder: UTSJSONObject = {
+    'structure': 1,
+    'permission': 2,
+    'business': 3,
+    'consistency': 4
+  } as UTSJSONObject
+
+  // UTS 不支持 Array.prototype.sort，使用冒泡排序
+  const sorted = rules.slice(0)
+  for (let i = 0; i < sorted.length - 1; i++) {
+    for (let j = 0; j < sorted.length - i - 1; j++) {
+      const orderA = categoryOrder[sorted[j].category] as number
+      const orderB = categoryOrder[sorted[j + 1].category] as number
+      if (orderA > orderB) {
+        const temp = sorted[j]
+        sorted[j] = sorted[j + 1]
+        sorted[j + 1] = temp
+      }
+    }
+  }
+  return sorted
+}
+
+// ============================================
+// 内置规则实现
+// ============================================
+
+/**
+ * 规则 1: struct.manager.required
+ * 管理员姓名必填（仅 submit 模式）
+ */
+registerRule({
+  id: 'struct.manager.required',
+  category: 'structure',
+  modes: ['submit'],
+  fn: (data: NormalizedSessionData, ctx: ValidationContext, runtime: RuntimeContext): ValidationError[] => {
+    const errors: ValidationError[] = []
+
+    if (ctx.manager_name == '') {
+      const location = createEmptyLocation(ctx.stage_code)
+      errors.push(makeError(
+        'struct.manager.required',
+        'structure',
+        'error',
+        'STRUCT_MANAGER_REQUIRED',
+        {} as UTSJSONObject,
+        'session.manager_name',
+        location,
+        ctx.locale
+      ))
+    }
+
+    return errors
+  }
+} as ValidationRule)
+
+/**
+ * 规则 2: struct.person.required.when.points
+ * 有工分/扣分必须有人员（draft + submit）
+ */
+registerRule({
+  id: 'struct.person.required.when.points',
+  category: 'structure',
+  modes: ['draft', 'submit'],
+  fn: (data: NormalizedSessionData, ctx: ValidationContext, runtime: RuntimeContext): ValidationError[] => {
+    const errors: ValidationError[] = []
+
+    // 检查仓内工人
+    for (let i = 0; i < data.bins.length; i++) {
+      const bin = data.bins[i]
+      for (let j = 0; j < bin.workers.length; j++) {
+        const worker = bin.workers[j]
+        const hasPoints = worker.points_units > 0 || worker.deducted_units > 0
+        const hasPerson = worker.person_id != null
+
+        if (hasPoints == true && hasPerson == false) {
+          const location: ErrorLocation = {
+            stage_code: ctx.stage_code,
+            bin_id: bin.bin_id,
+            stage_bin_id: bin.stage_bin_id,
+            bin_code: bin.bin_code,
+            bin_worker_index: j,
+            position_index: worker.position_index,
+            role_code: null,
+            role_name: null,
+            session_worker_index: null,
+            person_id: null,
+            person_name: ''
+          } as ErrorLocation
+
+          errors.push(makeError(
+            'struct.person.required.when.points',
+            'structure',
+            'error',
+            'STRUCT_PERSON_REQUIRED_WHEN_POINTS',
+            {
+              scope: '仓内工人',
+              where: `仓位 ${bin.bin_code} 站位 ${worker.position_index}`
+            } as UTSJSONObject,
+            `bins[${i}].workers[${j}]`,
+            location,
+            ctx.locale
+          ))
+        }
+      }
+    }
+
+    // 检查跨仓岗位
+    if (data.cross_bin.enabled == true && data.cross_bin.points_units > 0) {
+      if (data.cross_bin.person_id == null) {
+        const location = createEmptyLocation(ctx.stage_code)
+        location.role_code = data.cross_bin.role_code
+        location.role_name = data.cross_bin.role_name
+
+        errors.push(makeError(
+          'struct.person.required.when.points',
+          'structure',
+          'error',
+          'STRUCT_PERSON_REQUIRED_WHEN_POINTS',
+          {
+            scope: '跨仓岗位',
+            where: data.cross_bin.role_name
+          } as UTSJSONObject,
+          'cross_bin',
+          location,
+          ctx.locale
+        ))
+      }
+    }
+
+    // 检查晾堂岗位
+    data.liang_tang.forEach((role: NormalizedLiangTangRole, roleKey: string) => {
+      for (let i = 0; i < role.workers.length; i++) {
+        const worker = role.workers[i]
+        if (worker.points_units > 0 && worker.person_id == null) {
+          const location = createEmptyLocation(ctx.stage_code)
+          location.role_code = role.role_code
+          location.role_name = role.role_name
+          location.session_worker_index = i
+
+          errors.push(makeError(
+            'struct.person.required.when.points',
+            'structure',
+            'error',
+            'STRUCT_PERSON_REQUIRED_WHEN_POINTS',
+            {
+              scope: '晾堂岗位',
+              where: `${role.role_name} 第 ${i + 1} 人`
+            } as UTSJSONObject,
+            `liang_tang.${roleKey}.workers[${i}]`,
+            location,
+            ctx.locale
+          ))
+        }
+      }
+    })
+
+    return errors
+  }
+} as ValidationRule)
+
+/**
+ * 规则 3: perm.micro.disabled
+ * 微机禁用时不能有数据（draft + submit）
+ */
+registerRule({
+  id: 'perm.micro.disabled',
+  category: 'permission',
+  modes: ['draft', 'submit'],
+  fn: (data: NormalizedSessionData, ctx: ValidationContext, runtime: RuntimeContext): ValidationError[] => {
+    const errors: ValidationError[] = []
+
+    // 仅在微机禁用时检查
+    if (ctx.micro_enabled == false) {
+      const microRole = data.liang_tang.get('MICRO_OPERATOR')
+      if (microRole != null) {
+        let hasMicroData = false
+        for (let i = 0; i < microRole.workers.length; i++) {
+          const worker = microRole.workers[i]
+          if (worker.person_id != null || worker.points_units > 0) {
+            hasMicroData = true
+            break
+          }
+        }
+
+        if (hasMicroData == true) {
+          const location = createEmptyLocation(ctx.stage_code)
+          location.role_code = 'MICRO_OPERATOR' as RoleCode
+          location.role_name = '微机'
+
+          errors.push(makeError(
+            'perm.micro.disabled',
+            'permission',
+            'error',
+            'PERM_MICRO_DISABLED_BUT_HAS_DATA',
+            {} as UTSJSONObject,
+            'liang_tang.MICRO_OPERATOR',
+            location,
+            ctx.locale
+          ))
+        }
+      }
+    }
+
+    return errors
+  }
+} as ValidationRule)
+
+/**
+ * 规则 4: perm.strict.single.roles
+ * 严格单人岗位校验（仅 submit 模式）
+ */
+registerRule({
+  id: 'perm.strict.single.roles',
+  category: 'permission',
+  modes: ['submit'],
+  fn: (data: NormalizedSessionData, ctx: ValidationContext, runtime: RuntimeContext): ValidationError[] => {
+    const errors: ValidationError[] = []
+
+    // 严格单人岗位列表
+    const strictSingleRoles = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'MICRO_OPERATOR']
+
+    for (let i = 0; i < strictSingleRoles.length; i++) {
+      const roleKey = strictSingleRoles[i]
+      const role = data.liang_tang.get(roleKey)
+
+      if (role != null) {
+        // 统计有效人员数（person_id 不为 null）
+        let validCount = 0
+        for (let j = 0; j < role.workers.length; j++) {
+          if (role.workers[j].person_id != null) {
+            validCount = validCount + 1
+          }
+        }
+
+        // 微机岗位：如果禁用，允许 0 人；如果启用，必须 1 人
+        if (roleKey == 'MICRO_OPERATOR') {
+          if (ctx.micro_enabled == true && validCount != 1) {
+            const location = createEmptyLocation(ctx.stage_code)
+            location.role_code = role.role_code
+            location.role_name = role.role_name
+
+            errors.push(makeError(
+              'perm.strict.single.roles',
+              'permission',
+              'error',
+              'PERM_STRICT_SINGLE_VIOLATION',
+              {
+                role_name: role.role_name,
+                count: validCount.toString()
+              } as UTSJSONObject,
+              `liang_tang.${roleKey}`,
+              location,
+              ctx.locale
+            ))
+          }
+        } else {
+          // 其他严格单人岗位：必须恰好 1 人
+          if (validCount != 1) {
+            const location = createEmptyLocation(ctx.stage_code)
+            location.role_code = role.role_code
+            location.role_name = role.role_name
+
+            errors.push(makeError(
+              'perm.strict.single.roles',
+              'permission',
+              'error',
+              'PERM_STRICT_SINGLE_VIOLATION',
+              {
+                role_name: role.role_name,
+                count: validCount.toString()
+              } as UTSJSONObject,
+              `liang_tang.${roleKey}`,
+              location,
+              ctx.locale
+            ))
+          }
+        }
+      }
+    }
+
+    return errors
+  }
+} as ValidationRule)
+
+/**
+ * 规则 5: biz.person.unique.global
+ * 全局人员唯一性（仅 submit 模式）
+ */
+registerRule({
+  id: 'biz.person.unique.global',
+  category: 'business',
+  modes: ['submit'],
+  fn: (data: NormalizedSessionData, ctx: ValidationContext, runtime: RuntimeContext): ValidationError[] => {
+    const errors: ValidationError[] = []
+
+    // 遍历 person_locations，找出重复分配的人员
+    runtime.person_locations.forEach((locations: string[], personId: number) => {
+      if (locations.length > 1) {
+        const location = createEmptyLocation(ctx.stage_code)
+        location.person_id = personId
+
+        // 获取人员姓名（从第一个位置获取）
+        let personName = ''
+        // 从仓内工人查找
+        for (let i = 0; i < data.bins.length; i++) {
+          const bin = data.bins[i]
+          for (let j = 0; j < bin.workers.length; j++) {
+            if (bin.workers[j].person_id == personId) {
+              personName = bin.workers[j].person_name
+              break
+            }
+          }
+          if (personName != '') {
+            break
+          }
+        }
+        // 从跨仓岗位查找
+        if (personName == '' && data.cross_bin.person_id == personId) {
+          personName = data.cross_bin.person_name
+        }
+        // 从晾堂岗位查找
+        if (personName == '') {
+          data.liang_tang.forEach((role: NormalizedLiangTangRole, _key: string) => {
+            for (let i = 0; i < role.workers.length; i++) {
+              if (role.workers[i].person_id == personId) {
+                personName = role.workers[i].person_name
+                break
+              }
+            }
+          })
+        }
+
+        location.person_name = personName
+
+        errors.push(makeError(
+          'biz.person.unique.global',
+          'business',
+          'error',
+          'BIZ_DUPLICATE_PERSON',
+          {
+            person_name: personName,
+            where_a: locations[0],
+            where_b: locations[1]
+          } as UTSJSONObject,
+          `person_id=${personId}`,
+          location,
+          ctx.locale
+        ))
+      }
+    })
+
+    return errors
+  }
+} as ValidationRule)
+
+/**
+ * 规则 6: biz.bin.balance
+ * 发酵仓工分平衡（仅 submit 模式）
+ */
+registerRule({
+  id: 'biz.bin.balance',
+  category: 'business',
+  modes: ['submit'],
+  fn: (data: NormalizedSessionData, ctx: ValidationContext, runtime: RuntimeContext): ValidationError[] => {
+    const errors: ValidationError[] = []
+
+    for (let i = 0; i < data.bins.length; i++) {
+      const bin = data.bins[i]
+
+      // 计算已分配原始工分（不含扣分）
+      let assignedUnits: PointsUnits = 0
+      for (let j = 0; j < bin.workers.length; j++) {
+        assignedUnits = assignedUnits + bin.workers[j].points_units
+      }
+
+      // 计算跨仓抽取工分
+      let crossBinDeduction: PointsUnits = 0
+      if (data.cross_bin.enabled == true) {
+        for (let j = 0; j < data.cross_bin.sources.length; j++) {
+          const source = data.cross_bin.sources[j]
+          if (source.stage_bin_id == bin.stage_bin_id) {
+            crossBinDeduction = crossBinDeduction + source.source_points_units
+          }
+        }
+      }
+
+      // 校验平衡：total = assigned + cross_deduction
+      const expected = bin.total_points_units
+      const actual = assignedUnits + crossBinDeduction
+
+      if (expected != actual) {
+        const diff = expected - actual
+        const location: ErrorLocation = {
+          stage_code: ctx.stage_code,
+          bin_id: bin.bin_id,
+          stage_bin_id: bin.stage_bin_id,
+          bin_code: bin.bin_code,
+          bin_worker_index: null,
+          position_index: null,
+          role_code: null,
+          role_name: null,
+          session_worker_index: null,
+          person_id: null,
+          person_name: null
+        } as ErrorLocation
+
+        errors.push(makeError(
+          'biz.bin.balance',
+          'business',
+          'error',
+          'BIZ_BIN_BALANCE_MISMATCH',
+          {
+            bin_code: bin.bin_code,
+            expected: formatPointsUnits(expected),
+            actual: formatPointsUnits(actual),
+            diff: formatPointsUnits(diff)
+          } as UTSJSONObject,
+          `bins[${i}]`,
+          location,
+          ctx.locale
+        ))
+      }
+    }
+
+    return errors
+  }
+} as ValidationRule)
+
+/**
+ * 规则 7: biz.crossbin.sources
+ * 跨仓来源完整性（仅 submit 模式）
+ */
+registerRule({
+  id: 'biz.crossbin.sources',
+  category: 'business',
+  modes: ['submit'],
+  fn: (data: NormalizedSessionData, ctx: ValidationContext, runtime: RuntimeContext): ValidationError[] => {
+    const errors: ValidationError[] = []
+
+    if (data.cross_bin.enabled == true && data.cross_bin.points_units > 0) {
+      // 计算来源工分合计
+      let sourcesSum: PointsUnits = 0
+      for (let i = 0; i < data.cross_bin.sources.length; i++) {
+        const source = data.cross_bin.sources[i]
+        sourcesSum = sourcesSum + source.source_points_units
+
+        // 检查来源仓是否存在
+        const sourceBin = runtime.bin_map.get(source.stage_bin_id)
+        if (sourceBin == null) {
+          const location = createEmptyLocation(ctx.stage_code)
+          location.role_code = data.cross_bin.role_code
+          location.role_name = data.cross_bin.role_name
+
+          errors.push(makeError(
+            'biz.crossbin.sources',
+            'business',
+            'error',
+            'BIZ_CROSS_BIN_SOURCE_UNKNOWN_BIN',
+            {
+              stage_bin_id: source.stage_bin_id.toString()
+            } as UTSJSONObject,
+            `cross_bin.sources[${i}]`,
+            location,
+            ctx.locale
+          ))
+        }
+      }
+
+      // 检查来源完整性
+      if (sourcesSum != data.cross_bin.points_units) {
+        const location = createEmptyLocation(ctx.stage_code)
+        location.role_code = data.cross_bin.role_code
+        location.role_name = data.cross_bin.role_name
+
+        errors.push(makeError(
+          'biz.crossbin.sources',
+          'business',
+          'error',
+          'BIZ_CROSS_BIN_SOURCE_INCOMPLETE',
+          {
+            assignment: formatPointsUnits(data.cross_bin.points_units),
+            sources_sum: formatPointsUnits(sourcesSum)
+          } as UTSJSONObject,
+          'cross_bin.sources',
+          location,
+          ctx.locale
+        ))
+      }
+    }
+
+    return errors
+  }
+} as ValidationRule)
+
+/**
+ * 规则 8: biz.liangtang.pool.balance
+ * 晾堂岗位工分平衡（仅 submit 模式）
+ */
+registerRule({
+  id: 'biz.liangtang.pool.balance',
+  category: 'business',
+  modes: ['submit'],
+  fn: (data: NormalizedSessionData, ctx: ValidationContext, runtime: RuntimeContext): ValidationError[] => {
+    const errors: ValidationError[] = []
+
+    // 仅在安曲环节检查晾堂岗位
+    if (ctx.stage_code != 'AN_QU') {
+      return errors
+    }
+
+    // 需要校验的晾堂岗位
+    const rolesToValidate = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER']
+    // 如果微机启用，也校验微机岗位
+    if (ctx.micro_enabled == true) {
+      rolesToValidate.push('MICRO_OPERATOR')
+    }
+
+    for (let i = 0; i < rolesToValidate.length; i++) {
+      const roleKey = rolesToValidate[i]
+      const role = data.liang_tang.get(roleKey)
+
+      if (role == null) {
+        // 岗位数据缺失
+        const location = createEmptyLocation(ctx.stage_code)
+        location.role_code = roleKey as RoleCode
+
+        let roleName = roleKey
+        if (roleKey == 'WHEAT_MATERIAL') {
+          roleName = '麦料参数'
+        } else if (roleKey == 'MACHINE_GUARD') {
+          roleName = '守机'
+        } else if (roleKey == 'KOJI_UNLOADER') {
+          roleName = '下曲'
+        } else if (roleKey == 'MICRO_OPERATOR') {
+          roleName = '微机'
+        }
+        location.role_name = roleName
+
+        errors.push(makeError(
+          'biz.liangtang.pool.balance',
+          'business',
+          'error',
+          'BIZ_LIANGTANG_ROLE_MISSING',
+          {
+            role_name: roleName
+          } as UTSJSONObject,
+          `liang_tang.${roleKey}`,
+          location,
+          ctx.locale
+        ))
+      } else {
+        // 计算已分配工分
+        let assignedUnits: PointsUnits = 0
+        for (let j = 0; j < role.workers.length; j++) {
+          assignedUnits = assignedUnits + role.workers[j].points_units
+        }
+
+        // 计算池子总分
+        // 1. 计算总曲块数
+        let totalKojiCount = 0
+        for (let k = 0; k < data.bins.length; k++) {
+          totalKojiCount = totalKojiCount + data.bins[k].koji_count
+        }
+
+        // 2. 调用 calcLiangTangPoolUnits 计算池子总分
+        const poolUnits = calcLiangTangPoolUnits(totalKojiCount, roleKey as RoleCode, null, data.coef_set_id)
+
+        // 3. 比较并生成错误
+        if (assignedUnits != poolUnits) {
+          const location = createEmptyLocation(ctx.stage_code)
+          location.role_code = role.role_code
+          location.role_name = role.role_name
+
+          errors.push(makeError(
+            'biz.liangtang.pool.balance',
+            'business',
+            'error',
+            'BIZ_LIANGTANG_POOL_NOT_BALANCED',
+            {
+              role_name: role.role_name,
+              pool: formatPointsUnits(poolUnits),
+              assigned: formatPointsUnits(assignedUnits)
+            } as UTSJSONObject,
+            `liang_tang.${roleKey}`,
+            location,
+            ctx.locale
+          ))
+        }
+      }
+    }
+
+    return errors
+  }
+} as ValidationRule)
+
+/**
+ * 规则 9: struct.penalty.constraints
+ * 扣分约束（仅 submit 模式）
+ */
+registerRule({
+  id: 'struct.penalty.constraints',
+  category: 'structure',
+  modes: ['submit'],
+  fn: (data: NormalizedSessionData, ctx: ValidationContext, runtime: RuntimeContext): ValidationError[] => {
+    const errors: ValidationError[] = []
+
+    // 检查仓内工人的扣分约束
+    for (let i = 0; i < data.bins.length; i++) {
+      const bin = data.bins[i]
+      for (let j = 0; j < bin.workers.length; j++) {
+        const worker = bin.workers[j]
+
+        // 扣分不能为负数
+        if (worker.deducted_units < 0) {
+          const location: ErrorLocation = {
+            stage_code: ctx.stage_code,
+            bin_id: bin.bin_id,
+            stage_bin_id: bin.stage_bin_id,
+            bin_code: bin.bin_code,
+            bin_worker_index: j,
+            position_index: worker.position_index,
+            role_code: null,
+            role_name: null,
+            session_worker_index: null,
+            person_id: worker.person_id,
+            person_name: worker.person_name
+          } as ErrorLocation
+
+          errors.push(makeError(
+            'struct.penalty.constraints',
+            'structure',
+            'error',
+            'STRUCT_NEGATIVE_NOT_ALLOWED',
+            {
+              field: '扣分',
+              where: `仓位 ${bin.bin_code} 站位 ${worker.position_index}`
+            } as UTSJSONObject,
+            `bins[${i}].workers[${j}].deducted_units`,
+            location,
+            ctx.locale
+          ))
+        }
+
+        // 有扣分时原因必填
+        if (worker.deducted_units > 0 && worker.penalty_reason == '') {
+          const location: ErrorLocation = {
+            stage_code: ctx.stage_code,
+            bin_id: bin.bin_id,
+            stage_bin_id: bin.stage_bin_id,
+            bin_code: bin.bin_code,
+            bin_worker_index: j,
+            position_index: worker.position_index,
+            role_code: null,
+            role_name: null,
+            session_worker_index: null,
+            person_id: worker.person_id,
+            person_name: worker.person_name
+          } as ErrorLocation
+
+          errors.push(makeError(
+            'struct.penalty.constraints',
+            'structure',
+            'error',
+            'STRUCT_PENALTY_REASON_REQUIRED',
+            {
+              where: `仓位 ${bin.bin_code} 站位 ${worker.position_index}`
+            } as UTSJSONObject,
+            `bins[${i}].workers[${j}].penalty_reason`,
+            location,
+            ctx.locale
+          ))
+        }
+
+        // 扣分不能超过原始工分
+        if (worker.deducted_units > worker.points_units) {
+          const location: ErrorLocation = {
+            stage_code: ctx.stage_code,
+            bin_id: bin.bin_id,
+            stage_bin_id: bin.stage_bin_id,
+            bin_code: bin.bin_code,
+            bin_worker_index: j,
+            position_index: worker.position_index,
+            role_code: null,
+            role_name: null,
+            session_worker_index: null,
+            person_id: worker.person_id,
+            person_name: worker.person_name
+          } as ErrorLocation
+
+          errors.push(makeError(
+            'struct.penalty.constraints',
+            'structure',
+            'error',
+            'STRUCT_PENALTY_EXCEEDS_POINTS',
+            {
+              where: `仓位 ${bin.bin_code} 站位 ${worker.position_index}`
+            } as UTSJSONObject,
+            `bins[${i}].workers[${j}].deducted_units`,
+            location,
+            ctx.locale
+          ))
+        }
+      }
+    }
+
+    return errors
+  }
+} as ValidationRule)
+
+/**
+ * 规则 10: cons.stage.code.match
+ * 环节代码一致性（仅 submit 模式）
+ */
+registerRule({
+  id: 'cons.stage.code.match',
+  category: 'consistency',
+  modes: ['submit'],
+  fn: (data: NormalizedSessionData, ctx: ValidationContext, runtime: RuntimeContext): ValidationError[] => {
+    const errors: ValidationError[] = []
+
+    if (data.stage_code != ctx.stage_code) {
+      const location = createEmptyLocation(ctx.stage_code)
+
+      errors.push(makeError(
+        'cons.stage.code.match',
+        'consistency',
+        'error',
+        'CONS_STAGE_CODE_MISMATCH',
+        {
+          data_stage: data.stage_code,
+          ctx_stage: ctx.stage_code
+        } as UTSJSONObject,
+        'session.stage_code',
+        location,
+        ctx.locale
+      ))
+    }
+
+    return errors
+  }
+} as ValidationRule)
+
+// ============================================
+// 公共 API 实现
+// ============================================
+
+/**
+ * 校验会话数据
+ * 主入口函数，执行所有适用的校验规则
+ * @param raw 原始会话数据
+ * @param ctx 校验上下文
+ * @returns 校验结果
+ */
+export function validateSessionData(
+  raw: UTSJSONObject,
+  ctx: ValidationContext
+): ValidationResult {
+  // 1. 标准化数据
+  const data = normalizeSessionData(raw)
+
+  // 2. 构建运行时上下文
+  const runtime = buildRuntimeContext(data)
+
+  // 3. 获取适用的规则并排序
+  const rules = getRulesForMode(ctx.mode)
+  const sortedRules = sortRulesByCategory(rules)
+
+  // 4. 执行所有规则
+  const allErrors: ValidationError[] = []
+  for (let i = 0; i < sortedRules.length; i++) {
+    const rule = sortedRules[i]
+    const ruleErrors = rule.fn(data, ctx, runtime)
+    for (let j = 0; j < ruleErrors.length; j++) {
+      allErrors.push(ruleErrors[j])
+    }
+  }
+
+  // 5. 分离错误和警告
+  const blockingErrors: ValidationError[] = []
+  let hasWarnings = false
+  for (let i = 0; i < allErrors.length; i++) {
+    if (allErrors[i].severity == 'error') {
+      blockingErrors.push(allErrors[i])
+    } else if (allErrors[i].severity == 'warning') {
+      hasWarnings = true
+    }
+  }
+
+  // 6. 返回结果
+  return {
+    is_valid: blockingErrors.length == 0,
+    has_warnings: hasWarnings,
     errors: allErrors
   } as ValidationResult
 }
+
+/**
+ * 格式化错误消息为 Modal 显示格式
+ * @param result 校验结果
+ * @param maxItems 最大显示错误数
+ * @returns 格式化后的错误消息
+ */
+export function formatErrorsForModal(
+  result: ValidationResult,
+  maxItems: number = 12
+): string {
+  if (result.is_valid == true) {
+    return ''
+  }
+
+  let message = '数据校验失败：\n'
+  const errorCount = result.errors.length
+  const displayCount = errorCount > maxItems ? maxItems : errorCount
+
+  for (let i = 0; i < displayCount; i++) {
+    const error = result.errors[i]
+    message = message + '\n' + (i + 1) + '. ' + error.message
+  }
+
+  if (errorCount > maxItems) {
+    message = message + '\n\n... 还有 ' + (errorCount - maxItems) + ' 个错误未显示'
+  }
+
+  return message
+}
+

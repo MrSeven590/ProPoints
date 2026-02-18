@@ -264,6 +264,8 @@
         if (this.currentEditingIndex >= 0 && this.currentEditingIndex < this.workers.length) {
           this.workers[this.currentEditingIndex].personId = null
           this.workers[this.currentEditingIndex].personName = ''
+          // 修复：清除工分
+          this.workers[this.currentEditingIndex].pointsUnits = 0
           this.showPersonPicker = false
           this.currentEditingIndex = -1
           this.emitChange()

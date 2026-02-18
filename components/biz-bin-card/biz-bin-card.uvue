@@ -601,6 +601,11 @@
           const worker = this.workerList[this.currentWorkerIndex]
           worker.personId = null
           worker.personName = ''
+          // 修复：清除工分和扣分
+          worker.pointsUnits = 0
+          worker.displayPoints = ''
+          worker.deductedUnits = 0
+          worker.penaltyReason = ''
           this.showWorkerPicker = false
           this.currentWorkerIndex = -1
           this.emitChange()

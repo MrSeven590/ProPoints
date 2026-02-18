@@ -352,11 +352,10 @@ import {
   getManagerName,
 } from "../../domain/stores/AppStore.uts";
 import {
-  validateBinBalance,
-  validateCrossBinSource,
-  mergeValidationResults,
+  validateSessionData,
+  formatErrorsForModal,
 } from "../../domain/services/Validator.uts";
-import type { ValidationResult } from "../../domain/services/Validator.uts";
+import type { ValidationContext } from "../../domain/services/Validator.uts";
 import { calcLiangTangPoolUnits } from "../../domain/services/ScoreCalculator.uts";
 import {
   isMicroEnabledForCurrentRound,
@@ -407,15 +406,6 @@ type LiangTangWorkerData = {
 type LiangTangRoleData = {
   roleCode: RoleCode;
   workers: LiangTangWorkerData[];
-};
-
-/**
- * 晾堂岗位校验配置类型
- */
-type LiangTangRoleValidation = {
-  code: string;
-  name: string;
-  pool: PointsUnits;
 };
 
 export default {
@@ -728,6 +718,7 @@ export default {
 
     /**
      * 加载晾堂默认人员（从上次安曲会话回填）
+     * 修复：微机禁用时不加载微机默认数据
      */
     loadLiangTangDefaults() {
       const classNo = getCurrentClassNo();
@@ -810,31 +801,40 @@ export default {
           workers: roleWorkers,
         } as LiangTangRoleData);
       }
-      const microOperator = defaults["MICRO_OPERATOR"] as
-        | UTSJSONObject[]
-        | null;
-      if (microOperator != null && microOperator.length > 0) {
-        const workers: UTSJSONObject[] = [];
-        const roleWorkers: LiangTangWorkerData[] = [];
-        const len = microOperator.length;
-        for (let i = 0; i < len; i++) {
-          const w = microOperator[i];
-          workers.push({
-            personId: w["personId"],
-            personName: w["personName"],
-            pointsUnits: 0,
-          } as UTSJSONObject);
-          roleWorkers.push({
-            personId: w["personId"] as number | null,
-            personName: w["personName"] as string,
-            pointsUnits: 0,
-          } as LiangTangWorkerData);
+
+      // 修复：微机禁用时不加载微机默认数据
+      if (this.microEnabled == false) {
+        // 清除微机数据
+        this.microOperatorWorkers = [] as UTSJSONObject[];
+        this.liangTangRolesData.delete('MICRO_OPERATOR');
+      } else {
+        // 微机启用时才加载微机默认数据
+        const microOperator = defaults["MICRO_OPERATOR"] as
+          | UTSJSONObject[]
+          | null;
+        if (microOperator != null && microOperator.length > 0) {
+          const workers: UTSJSONObject[] = [];
+          const roleWorkers: LiangTangWorkerData[] = [];
+          const len = microOperator.length;
+          for (let i = 0; i < len; i++) {
+            const w = microOperator[i];
+            workers.push({
+              personId: w["personId"],
+              personName: w["personName"],
+              pointsUnits: 0,
+            } as UTSJSONObject);
+            roleWorkers.push({
+              personId: w["personId"] as number | null,
+              personName: w["personName"] as string,
+              pointsUnits: 0,
+            } as LiangTangWorkerData);
+          }
+          this.microOperatorWorkers = workers;
+          this.liangTangRolesData.set("MICRO_OPERATOR", {
+            roleCode: "MICRO_OPERATOR",
+            workers: roleWorkers,
+          } as LiangTangRoleData);
         }
-        this.microOperatorWorkers = workers;
-        this.liangTangRolesData.set("MICRO_OPERATOR", {
-          roleCode: "MICRO_OPERATOR",
-          workers: roleWorkers,
-        } as LiangTangRoleData);
       }
     },
 
@@ -2204,233 +2204,41 @@ export default {
      * 提交确认
      */
     submit() {
-      // ============================================
-      // 管理员姓名检查
-      // ============================================
-      const managerName = getManagerName().trim();
-      if (managerName == "") {
-        uni.showModal({
-          title: "提示",
-          content: "请先在设置中配置管理员姓名",
-          success: (res) => {
-            if (res.confirm == true) {
-              uni.navigateTo({
-                url: "/pages/mine/settings",
-              });
-            }
-          },
-        });
-        return;
-      }
+      // 1. 构建提交数据
+      const sessionData = this.buildSessionData("submitted");
 
-      // ============================================
-      // 数据校验
-      // ============================================
-      const validationResults: ValidationResult[] = [];
+      // 2. 构建校验上下文
+      const ctx = {
+        mode: "submit",
+        locale: "zh-CN" as "zh-CN",
+        stage_code: this.stageCode,
+        round_id: this.roundId,
+        micro_enabled: this.microEnabled,
+        manager_name: getManagerName().trim()
+      } as ValidationContext;
 
-      // 1. 校验 BIN 平衡
-      if (this.showBinSection == true) {
-        for (let i = 0; i < this.stageBinInfos.length; i++) {
-          const info = this.stageBinInfos[i];
-          const cardData = this.binCardsData.get(info.stage_bin_id);
-          if (cardData != null) {
-            // 计算原始工分总和（不是最终工分）
-            let assignedOriginalUnits = 0;
-            for (let j = 0; j < cardData.workers.length; j++) {
-              assignedOriginalUnits =
-                assignedOriginalUnits + cardData.workers[j].pointsUnits;
-            }
+      // 3. 调用校验引擎
+      const result = validateSessionData(sessionData, ctx);
 
-            // 获取跨仓抽取工分
-            const crossDeduction = this.getCrossBinDeduction(info.stage_bin_id);
-
-            // 校验平衡
-            const result = validateBinBalance({
-              bin_id: info.bin_id,
-              bin_code: info.bin_code,
-              total_points_units: cardData.totalPointsUnits,
-              assigned_points_units: assignedOriginalUnits,
-              cross_bin_deducted_units: crossDeduction,
-            });
-            validationResults.push(result);
-          }
-        }
-      }
-
-      // 2. 校验跨仓来源完整性
-      if (this.showCrossBinSection == true && this.crossBinPointsUnits > 0) {
-        let sourceSum = 0;
-        for (let i = 0; i < this.crossBinSources.length; i++) {
-          sourceSum = sourceSum + this.crossBinSources[i].source_points_units;
-        }
-        const result = validateCrossBinSource(
-          this.crossBinPointsUnits,
-          sourceSum,
-        );
-        validationResults.push(result);
-      }
-
-      // 合并校验结果
-      const finalResult = mergeValidationResults(validationResults);
-      if (finalResult.isValid == false) {
-        // 显示所有错误
-        let errorMsg = "数据校验失败：\n";
-        for (let i = 0; i < finalResult.errors.length; i++) {
-          errorMsg = errorMsg + "\n" + (i + 1) + ". " + finalResult.errors[i];
-        }
+      // 4. 处理校验结果
+      if (result.is_valid == false) {
         uni.showModal({
           title: "无法提交",
-          content: errorMsg,
-          showCancel: false,
+          content: formatErrorsForModal(result),
+          showCancel: false
         });
         return;
       }
 
-      // ============================================
-      // 基础必填校验
-      // ============================================
+      // 5. 用户确认后提交
+      this.confirmAndSubmit(sessionData);
+    },
 
-      // 校验是否存在缺失安曲记录的仓
-      if (this.missingAnQuBins.length > 0) {
-        const binList = this.missingAnQuBins.join(", ");
-        uni.showModal({
-          title: "无法提交",
-          content: `以下仓位缺少安曲记录: ${binList}，请先录入安曲数据。`,
-          showCancel: true,
-          cancelText: "取消",
-          confirmText: "去录入",
-          success: (res) => {
-            if (res.confirm == true) {
-              // 跳转到安曲录入页面
-              uni.navigateTo({
-                url: "/pages/work/entry?stage=AN_QU",
-              });
-            }
-          },
-        });
-        return;
-      }
-
-      // 校验是否有发酵仓数据（非堆曲环节）
-      if (this.showBinSection == true && this.stageBinInfos.length == 0) {
-        uni.showToast({
-          title: "请选择发酵仓",
-          icon: "none",
-        });
-        return;
-      }
-
-      // 校验每个仓是否有人员分配
-      if (this.showBinSection == true) {
-        for (let i = 0; i < this.stageBinInfos.length; i++) {
-          const info = this.stageBinInfos[i];
-          const cardData = this.binCardsData.get(info.stage_bin_id);
-          if (cardData == null) {
-            uni.showToast({
-              title: `仓 ${info.bin_code} 未分配人员`,
-              icon: "none",
-            });
-            return;
-          }
-
-          // 检查是否有至少一个人员
-          let hasWorker = false;
-          for (let j = 0; j < cardData.workers.length; j++) {
-            if (cardData.workers[j].personId != null) {
-              hasWorker = true;
-              break;
-            }
-          }
-          if (hasWorker == false) {
-            uni.showToast({
-              title: `仓 ${info.bin_code} 未分配人员`,
-              icon: "none",
-            });
-            return;
-          }
-        }
-      }
-
-      // 校验跨仓岗位
-      if (this.showCrossBinSection == true && this.crossBinPointsUnits > 0) {
-        if (this.crossBinPersonId == null) {
-          uni.showToast({
-            title: "请选择跨仓岗位人员",
-            icon: "none",
-          });
-          return;
-        }
-      }
-
-      // 校验晾堂岗位（仅安曲环节）
-      if (this.showLiangTangSection == true) {
-        // 校验微机计分权（micro_enabled=0 时不允许有微机记录）
-        if (this.microEnabled == false) {
-          const microData = this.liangTangRolesData.get("MICRO_OPERATOR");
-          if (microData != null && microData.workers.length > 0) {
-            let hasMicroWorker = false;
-            for (let i = 0; i < microData.workers.length; i++) {
-              if (microData.workers[i].personId != null) {
-                hasMicroWorker = true;
-                break;
-              }
-            }
-            if (hasMicroWorker == true) {
-              uni.showToast({
-                title: "本轮次微机岗位不计分",
-                icon: "none",
-              });
-              return;
-            }
-          }
-        }
-
-        // 校验各晾堂岗位工分平衡
-        const liangTangRoles: LiangTangRoleValidation[] = [
-          {
-            code: "WHEAT_MATERIAL",
-            name: "麦料参数",
-            pool: this.calcWheatMaterialPoolUnits(),
-          } as LiangTangRoleValidation,
-          {
-            code: "MACHINE_GUARD",
-            name: "守机",
-            pool: this.calcMachineGuardPoolUnits(),
-          } as LiangTangRoleValidation,
-          {
-            code: "KOJI_UNLOADER",
-            name: "下曲",
-            pool: this.calcKojiUnloaderPoolUnits(),
-          } as LiangTangRoleValidation,
-        ];
-        // 如果微机计分权开启，也校验微机岗位
-        if (this.microEnabled == true) {
-          liangTangRoles.push({
-            code: "MICRO_OPERATOR",
-            name: "微机",
-            pool: this.calcMicroOperatorPoolUnits(),
-          } as LiangTangRoleValidation);
-        }
-
-        for (let i = 0; i < liangTangRoles.length; i++) {
-          const role = liangTangRoles[i];
-          const roleData = this.liangTangRolesData.get(role.code);
-          if (roleData != null) {
-            let totalAssigned = 0;
-            for (let j = 0; j < roleData.workers.length; j++) {
-              totalAssigned = totalAssigned + roleData.workers[j].pointsUnits;
-            }
-            if (totalAssigned != role.pool) {
-              uni.showToast({
-                title: `${role.name}岗位工分未分配完`,
-                icon: "none",
-              });
-              return;
-            }
-          }
-        }
-      }
-
+    /**
+     * 确认并提交会话数据
+     * @param sessionData 会话数据
+     */
+    confirmAndSubmit(sessionData: UTSJSONObject) {
       uni.showModal({
         title: "提示",
         content: "确认提交工分录入？",
@@ -2441,9 +2249,6 @@ export default {
             this.isSubmitting = true;
 
             try {
-              // 构建会话数据
-              const sessionData = this.buildSessionData("submitted");
-
               // 保存到存储
               saveSubmittedSession(
                 this.sessionDate,
