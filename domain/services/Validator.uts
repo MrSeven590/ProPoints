@@ -128,7 +128,8 @@ const MESSAGES_ZH_CN: UTSJSONObject = {
   'BIZ_LIANGTANG_POOL_NOT_BALANCED': '晾堂岗位 {role_name} 工分未分配完：池子 {pool}，已分配 {assigned}',
   'CONS_STAGE_CODE_MISMATCH': '数据环节与当前页面不一致：data={data_stage}，ctx={ctx_stage}',
   'STRUCT_CROSSBIN_PERSON_REQUIRED': '跨仓岗位 {role_name} 必须选择人员',
-  'STRUCT_CROSSBIN_POINTS_REQUIRED': '跨仓岗位 {role_name} 必须填写工分'
+  'STRUCT_CROSSBIN_POINTS_REQUIRED': '跨仓岗位 {role_name} 必须填写工分',
+  'BIZ_SESSION_BALANCE_MISMATCH': '会话总量不平衡：总池 {total_pool}，总已分 {total_assigned}，差额 {diff}'
 } as UTSJSONObject
 
 /**
@@ -152,7 +153,8 @@ const MESSAGES_EN_US: UTSJSONObject = {
   'BIZ_LIANGTANG_POOL_NOT_BALANCED': 'Liangtang role {role_name} points not fully allocated: pool {pool}, assigned {assigned}',
   'CONS_STAGE_CODE_MISMATCH': 'Data stage code mismatch: data={data_stage}, ctx={ctx_stage}',
   'STRUCT_CROSSBIN_PERSON_REQUIRED': 'Cross-bin role {role_name} requires a person to be selected',
-  'STRUCT_CROSSBIN_POINTS_REQUIRED': 'Cross-bin role {role_name} requires points to be filled'
+  'STRUCT_CROSSBIN_POINTS_REQUIRED': 'Cross-bin role {role_name} requires points to be filled',
+  'BIZ_SESSION_BALANCE_MISMATCH': 'Session total imbalance: pool {total_pool}, assigned {total_assigned}, diff {diff}'
 } as UTSJSONObject
 
 /**
@@ -180,7 +182,8 @@ function formatMessage(template: string, params: UTSJSONObject): string {
   // 定义所有可能的参数键
   const commonKeys = ['bin_code', 'role_name', 'person_name', 'where', 'scope', 'where_a', 'where_b',
                       'pool', 'assigned', 'diff', 'expected', 'actual', 'total', 'sources', 'field',
-                      'stage_name', 'count', 'assignment', 'sources_sum', 'stage_bin_id', 'data_stage', 'ctx_stage']
+                      'stage_name', 'count', 'assignment', 'sources_sum', 'stage_bin_id', 'data_stage', 'ctx_stage',
+                      'total_pool', 'total_assigned']
 
   for (let i = 0; i < commonKeys.length; i++) {
     const key = commonKeys[i]
@@ -358,6 +361,7 @@ type NormalizedSessionData = {
   bins: NormalizedBin[]
   cross_bin: NormalizedCrossBin
   liang_tang: Map<string, NormalizedLiangTangRole>
+  session_bonus_units: PointsUnits
 }
 
 /**
@@ -500,6 +504,10 @@ function normalizeSessionData(raw: UTSJSONObject): NormalizedSessionData {
     }
   }
 
+  // 解析会话级班组加分
+  const sessionBonusUnitsRaw = raw['session_bonus_units'] as number | null
+  const sessionBonusUnits: PointsUnits = sessionBonusUnitsRaw != null ? sessionBonusUnitsRaw : 0
+
   return {
     status: status != null ? status : 'draft',
     session_date: sessionDate != null ? sessionDate : '',
@@ -512,7 +520,8 @@ function normalizeSessionData(raw: UTSJSONObject): NormalizedSessionData {
     remark: remark != null ? remark : '',
     bins: bins,
     cross_bin: crossBin,
-    liang_tang: liangTang
+    liang_tang: liangTang,
+    session_bonus_units: sessionBonusUnits
   } as NormalizedSessionData
 }
 
@@ -1059,7 +1068,7 @@ registerRule({
         errors.push(makeError(
           'biz.bin.balance',
           'business',
-          'error',
+          'warning',
           'BIZ_BIN_BALANCE_MISMATCH',
           {
             bin_code: bin.bin_code,
@@ -1536,6 +1545,45 @@ registerRule({
   }
 } as ValidationRule)
 
+/**
+ * 规则 14: biz.session.balance
+ * 会话总量平衡（仅 submit 模式）
+ */
+registerRule({
+  id: 'biz.session.balance',
+  category: 'business',
+  modes: ['submit'],
+  fn: (data: NormalizedSessionData, ctx: ValidationContext, runtime: RuntimeContext): ValidationError[] => {
+    const errors: ValidationError[] = []
+
+    // 总池 = sum(bin.total_points_units) + session_bonus_units
+    let totalPool: PointsUnits = data.session_bonus_units
+    for (let i = 0; i < data.bins.length; i++) {
+      totalPool = totalPool + data.bins[i].total_points_units
+    }
+
+    // 总已分 = sum(所有仓工人) + cross_bin.points_units
+    let totalAssigned: PointsUnits = 0
+    for (let i = 0; i < data.bins.length; i++) {
+      for (let j = 0; j < data.bins[i].workers.length; j++) {
+        totalAssigned = totalAssigned + data.bins[i].workers[j].points_units
+      }
+    }
+    if (data.cross_bin.enabled == true) {
+      totalAssigned = totalAssigned + data.cross_bin.points_units
+    }
+
+    if (totalPool != totalAssigned) {
+      const diff = totalPool - totalAssigned
+      errors.push(makeError('biz.session.balance', 'business', 'error',
+        'BIZ_SESSION_BALANCE_MISMATCH',
+        { total_pool: formatPointsUnits(totalPool), total_assigned: formatPointsUnits(totalAssigned), diff: formatPointsUnits(diff) } as UTSJSONObject,
+        'session', createEmptyLocation(ctx.stage_code), ctx.locale))
+    }
+    return errors
+  }
+} as ValidationRule)
+
 // ============================================
 // 公共 API 实现
 // ============================================
@@ -1605,12 +1653,18 @@ export function formatErrorsForModal(
   }
 
   let message = '数据校验失败：\n'
-  const errorCount = result.errors.length
+  // 只显示 error 级别，不显示 warning
+  const onlyErrors: ValidationError[] = []
+  for (let i = 0; i < result.errors.length; i++) {
+    if (result.errors[i].severity == 'error') {
+      onlyErrors.push(result.errors[i])
+    }
+  }
+  const errorCount = onlyErrors.length
   const displayCount = errorCount > maxItems ? maxItems : errorCount
 
   for (let i = 0; i < displayCount; i++) {
-    const error = result.errors[i]
-    message = message + '\n' + (i + 1) + '. ' + error.message
+    message = message + '\n' + (i + 1) + '. ' + onlyErrors[i].message
   }
 
   if (errorCount > maxItems) {
