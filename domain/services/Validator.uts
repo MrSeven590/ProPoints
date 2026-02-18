@@ -126,7 +126,9 @@ const MESSAGES_ZH_CN: UTSJSONObject = {
   'BIZ_CROSS_BIN_SOURCE_UNKNOWN_BIN': '跨仓来源引用了不存在的仓（stage_bin_id={stage_bin_id}）',
   'BIZ_LIANGTANG_ROLE_MISSING': '晾堂岗位 {role_name} 数据缺失，无法校验（请刷新/重进页面）',
   'BIZ_LIANGTANG_POOL_NOT_BALANCED': '晾堂岗位 {role_name} 工分未分配完：池子 {pool}，已分配 {assigned}',
-  'CONS_STAGE_CODE_MISMATCH': '数据环节与当前页面不一致：data={data_stage}，ctx={ctx_stage}'
+  'CONS_STAGE_CODE_MISMATCH': '数据环节与当前页面不一致：data={data_stage}，ctx={ctx_stage}',
+  'STRUCT_CROSSBIN_PERSON_REQUIRED': '跨仓岗位 {role_name} 必须选择人员',
+  'STRUCT_CROSSBIN_POINTS_REQUIRED': '跨仓岗位 {role_name} 必须填写工分'
 } as UTSJSONObject
 
 /**
@@ -148,7 +150,9 @@ const MESSAGES_EN_US: UTSJSONObject = {
   'BIZ_CROSS_BIN_SOURCE_UNKNOWN_BIN': 'Cross-bin source references non-existent bin (stage_bin_id={stage_bin_id})',
   'BIZ_LIANGTANG_ROLE_MISSING': 'Liangtang role {role_name} data missing, cannot validate (please refresh/re-enter page)',
   'BIZ_LIANGTANG_POOL_NOT_BALANCED': 'Liangtang role {role_name} points not fully allocated: pool {pool}, assigned {assigned}',
-  'CONS_STAGE_CODE_MISMATCH': 'Data stage code mismatch: data={data_stage}, ctx={ctx_stage}'
+  'CONS_STAGE_CODE_MISMATCH': 'Data stage code mismatch: data={data_stage}, ctx={ctx_stage}',
+  'STRUCT_CROSSBIN_PERSON_REQUIRED': 'Cross-bin role {role_name} requires a person to be selected',
+  'STRUCT_CROSSBIN_POINTS_REQUIRED': 'Cross-bin role {role_name} requires points to be filled'
 } as UTSJSONObject
 
 /**
@@ -1475,6 +1479,53 @@ registerRule({
             bin_code: bin.bin_code
           } as UTSJSONObject,
           `bins[${i}]`,
+          location,
+          ctx.locale
+        ))
+      }
+    }
+
+    return errors
+  }
+} as ValidationRule)
+
+/**
+ * 规则 13: struct.crossbin.required.when.enabled
+ * 显示跨仓区域时必须有完整数据（仅 submit 模式）
+ */
+registerRule({
+  id: 'struct.crossbin.required.when.enabled',
+  category: 'structure',
+  modes: ['submit'],
+  fn: (data: NormalizedSessionData, ctx: ValidationContext, runtime: RuntimeContext): ValidationError[] => {
+    const errors: ValidationError[] = []
+
+    if (data.cross_bin.enabled == true) {
+      const location = createEmptyLocation(ctx.stage_code)
+      location.role_code = data.cross_bin.role_code
+      location.role_name = data.cross_bin.role_name
+
+      if (data.cross_bin.person_id == null) {
+        errors.push(makeError(
+          'struct.crossbin.required.when.enabled',
+          'structure',
+          'error',
+          'STRUCT_CROSSBIN_PERSON_REQUIRED',
+          { role_name: data.cross_bin.role_name } as UTSJSONObject,
+          'cross_bin.person_id',
+          location,
+          ctx.locale
+        ))
+      }
+
+      if (data.cross_bin.points_units <= 0) {
+        errors.push(makeError(
+          'struct.crossbin.required.when.enabled',
+          'structure',
+          'error',
+          'STRUCT_CROSSBIN_POINTS_REQUIRED',
+          { role_name: data.cross_bin.role_name } as UTSJSONObject,
+          'cross_bin.points_units',
           location,
           ctx.locale
         ))
