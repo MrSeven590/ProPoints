@@ -68,7 +68,7 @@
         </view>
         <biz-worker-selector-pinyin
           :selectedPersonId="currentEditingPersonId"
-          :occupiedIds="occupiedPersonIds"
+          :occupiedIds="actualOccupiedIds"
           placeholder="搜索姓名/拼音"
           @select="onPersonSelect"
           @clear="onPersonClear"
@@ -152,6 +152,31 @@
           total = total + this.workers[i].pointsUnits
         }
         return total
+      },
+      /**
+       * 计算实际占用的人员ID列表（排除当前编辑槽位）
+       * 修复 M2: 排除当前槽位人员，避免自己占用自己
+       */
+      actualOccupiedIds(): number[] {
+        const occupied = this.occupiedPersonIds as number[]
+        const result: number[] = []
+
+        // 添加外部传入的占用ID
+        for (let i = 0; i < occupied.length; i++) {
+          result.push(occupied[i])
+        }
+
+        // 添加本组件内其他槽位的人员ID（排除当前编辑槽位）
+        for (let i = 0; i < this.workers.length; i++) {
+          if (i != this.currentEditingIndex && this.workers[i].personId != null) {
+            const id = this.workers[i].personId as number
+            if (result.indexOf(id) == -1) {
+              result.push(id)
+            }
+          }
+        }
+
+        return result
       },
       balanceStatusClass(): string {
         const pool = this.poolUnits as number

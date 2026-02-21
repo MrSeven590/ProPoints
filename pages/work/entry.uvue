@@ -158,7 +158,7 @@
         <!-- 麦料参数（严格1人） -->
         <biz-session-role-card
           roleCode="WHEAT_MATERIAL"
-          roleName="麦料参数"
+          :roleName="getRoleName('WHEAT_MATERIAL')"
           :poolUnits="calcWheatMaterialPoolUnits()"
           :strictSingle="true"
           :simpleMode="true"
@@ -171,7 +171,7 @@
         <!-- 守机（严格1人） -->
         <biz-session-role-card
           roleCode="MACHINE_GUARD"
-          roleName="守机"
+          :roleName="getRoleName('MACHINE_GUARD')"
           :poolUnits="calcMachineGuardPoolUnits()"
           :strictSingle="true"
           :simpleMode="true"
@@ -184,7 +184,7 @@
         <!-- 下曲 -->
         <biz-session-role-card
           roleCode="KOJI_UNLOADER"
-          roleName="下曲"
+          :roleName="getRoleName('KOJI_UNLOADER')"
           :poolUnits="calcKojiUnloaderPoolUnits()"
           :strictSingle="false"
           :simpleMode="isKojiUnloaderSimpleMode()"
@@ -198,7 +198,7 @@
         <biz-session-role-card
           v-if="microEnabled"
           roleCode="MICRO_OPERATOR"
-          roleName="微机"
+          :roleName="getRoleName('MICRO_OPERATOR')"
           :poolUnits="calcMicroOperatorPoolUnits()"
           :strictSingle="true"
           :simpleMode="true"
@@ -363,6 +363,7 @@ import {
 } from "../../domain/services/StageCoefService.uts";
 import type { BinCode, StageBinInfo } from "../../domain/models/ferment.uts";
 import type { AssignmentSourceCreateParams } from "../../domain/models/assignment.uts";
+import { getRoleName } from "../../domain/models/assignment.uts";
 import type { BinInfo } from "../../domain/services/ScoreAllocator.uts";
 import { allocateCrossBinPoints } from "../../domain/services/ScoreAllocator.uts";
 import { getBinKojiCountFromAnQu } from "../../domain/services/DuiQuBaseService.uts";
@@ -390,6 +391,9 @@ import {
 
 // 系数版本常量
 const DEFAULT_COEF_SET_ID = 260000;
+
+// 晾堂岗位角色列表（修复 L2：提取为常量）
+const LIANG_TANG_ROLES: RoleCode[] = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER', 'MICRO_OPERATOR'];
 
 /**
  * 仓内工人分配数据类型
@@ -1863,9 +1867,8 @@ export default {
       if (this.showLiangTangSection == true) {
         const liangTangData = sessionData['liang_tang'] as UTSJSONObject | null;
         if (liangTangData != null) {
-          const roleKeys: string[] = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER', 'MICRO_OPERATOR'];
-          for (let k = 0; k < roleKeys.length; k++) {
-            const roleKey = roleKeys[k];
+          for (let k = 0; k < LIANG_TANG_ROLES.length; k++) {
+            const roleKey = LIANG_TANG_ROLES[k];
             const roleWorkersRaw = liangTangData[roleKey] as UTSJSONObject[] | null;
             if (roleWorkersRaw != null && roleWorkersRaw.length > 0) {
               const workerList: LiangTangWorkerData[] = [];
@@ -2259,14 +2262,8 @@ export default {
       let liangTangData: UTSJSONObject | null = null;
       if (this.showLiangTangSection == true) {
         liangTangData = {} as UTSJSONObject;
-        const roleKeys: string[] = [
-          "WHEAT_MATERIAL",
-          "MACHINE_GUARD",
-          "KOJI_UNLOADER",
-          "MICRO_OPERATOR",
-        ];
-        for (let k = 0; k < roleKeys.length; k++) {
-          const roleKey = roleKeys[k];
+        for (let k = 0; k < LIANG_TANG_ROLES.length; k++) {
+          const roleKey = LIANG_TANG_ROLES[k];
           const roleData = this.liangTangRolesData.get(roleKey);
           if (roleData != null) {
             const workersData: UTSJSONObject[] = [];
@@ -2420,15 +2417,9 @@ export default {
       }
       const classNo = getCurrentClassNo();
       const defaults = {} as UTSJSONObject;
-      const roleKeys: string[] = [
-        "WHEAT_MATERIAL",
-        "MACHINE_GUARD",
-        "KOJI_UNLOADER",
-        "MICRO_OPERATOR",
-      ];
       let validRoleCount = 0;
-      for (let k = 0; k < roleKeys.length; k++) {
-        const roleKey = roleKeys[k];
+      for (let k = 0; k < LIANG_TANG_ROLES.length; k++) {
+        const roleKey = LIANG_TANG_ROLES[k];
         const roleData = this.liangTangRolesData.get(roleKey);
         if (roleData != null && roleData.workers.length > 0) {
           const workersData: UTSJSONObject[] = [];
