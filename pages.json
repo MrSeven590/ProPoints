@@ -21,7 +21,7 @@
     {
       "path": "pages/stats/date-detail",
       "style": {
-        "navigationBarTitleText": "每日公示"
+        "navigationBarTitleText": "日期工分详情"
       }
     },
     {
@@ -33,7 +33,7 @@
     {
       "path": "pages/stats/person-detail",
       "style": {
-        "navigationBarTitleText": "工资条"
+        "navigationBarTitleText": "个人工分详情"
       }
     },
     {
