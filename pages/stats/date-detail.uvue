@@ -94,10 +94,13 @@
 
 <script lang="uts">
   import { getTodayDateString, addDaysToDate, formatPointsUnits } from '../../domain/models/types.uts'
-  import type { StageCode, PointsUnits } from '../../domain/models/types.uts'
+  import type { StageCode, PointsUnits, RoleCode } from '../../domain/models/types.uts'
   import { getStageName } from '../../domain/models/stage-session.uts'
-  import { calcFinalPoints } from '../../domain/models/assignment.uts'
+  import { calcFinalPoints, getRoleName } from '../../domain/models/assignment.uts'
   import { getSessionsByDateAndStage } from '../../domain/stores/AppStore.uts'
+
+  // 晾堂岗位角色列表
+  const LIANG_TANG_ROLES: RoleCode[] = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER', 'MICRO_OPERATOR']
 
   type StageItem = {
     code: string
@@ -245,6 +248,36 @@
                   finalUnits: pointsUnits != null ? pointsUnits : 0,
                   penaltyReason: ''
                 } as DisplayItem)
+              }
+            }
+          }
+
+          // 解析晾堂岗位
+          const liangTang = session['liang_tang'] as UTSJSONObject | null
+          if (liangTang != null) {
+            for (let r = 0; r < LIANG_TANG_ROLES.length; r++) {
+              const roleCode = LIANG_TANG_ROLES[r]
+              const roleWorkers = liangTang[roleCode] as UTSJSONObject[] | null
+              if (roleWorkers != null) {
+                for (let k = 0; k < roleWorkers.length; k++) {
+                  const worker = roleWorkers[k]
+                  const personId = worker['personId'] as number | null
+                  const personName = worker['personName'] as string | null
+                  const pointsUnits = worker['pointsUnits'] as number | null
+                  if (personId != null && personName != null) {
+                    const original = pointsUnits != null ? pointsUnits : 0
+                    items.push({
+                      personId: personId,
+                      personName: personName,
+                      binCode: getRoleName(roleCode),
+                      positionIndex: k + 1,
+                      originalUnits: original,
+                      deductedUnits: 0,
+                      finalUnits: original,
+                      penaltyReason: ''
+                    } as DisplayItem)
+                  }
+                }
               }
             }
           }

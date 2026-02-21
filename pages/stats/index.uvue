@@ -75,10 +75,13 @@
 
 <script lang="uts">
   import { getTodayDateString, addDaysToDate, formatPointsUnits } from '../../domain/models/types.uts'
-  import type { PointsUnits, StageCode } from '../../domain/models/types.uts'
+  import type { PointsUnits, StageCode, RoleCode } from '../../domain/models/types.uts'
   import { getStageName } from '../../domain/models/stage-session.uts'
   import { calcFinalPoints } from '../../domain/models/assignment.uts'
   import { getSessionsByDate, getAllDraftSessions } from '../../domain/stores/AppStore.uts'
+
+  // 晾堂岗位角色列表
+  const LIANG_TANG_ROLES: RoleCode[] = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER', 'MICRO_OPERATOR']
 
   type MonthStats = {
     entryCount: number
@@ -185,6 +188,27 @@
                 }
                 if (pointsUnits != null) {
                   totalPointsUnits = totalPointsUnits + calcFinalPoints(pointsUnits, 0)
+                }
+              }
+            }
+
+            // 统计晾堂岗位
+            const liangTang = session['liang_tang'] as UTSJSONObject | null
+            if (liangTang != null) {
+              for (let r = 0; r < LIANG_TANG_ROLES.length; r++) {
+                const roleWorkers = liangTang[LIANG_TANG_ROLES[r]] as UTSJSONObject[] | null
+                if (roleWorkers != null) {
+                  for (let k = 0; k < roleWorkers.length; k++) {
+                    const worker = roleWorkers[k]
+                    const personId = worker['personId'] as number | null
+                    const pointsUnits = worker['pointsUnits'] as number | null
+                    if (personId != null) {
+                      personIdSet.set(personId, true)
+                    }
+                    if (pointsUnits != null) {
+                      totalPointsUnits = totalPointsUnits + calcFinalPoints(pointsUnits, 0)
+                    }
+                  }
                 }
               }
             }

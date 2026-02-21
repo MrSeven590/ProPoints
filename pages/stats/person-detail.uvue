@@ -84,10 +84,13 @@
 
 <script lang="uts">
   import { getTodayDateString, addDaysToDate, formatPointsUnits } from '../../domain/models/types.uts'
-  import type { PointsUnits, StageCode } from '../../domain/models/types.uts'
+  import type { PointsUnits, StageCode, RoleCode } from '../../domain/models/types.uts'
   import { getStageName } from '../../domain/models/stage-session.uts'
-  import { calcFinalPoints } from '../../domain/models/assignment.uts'
+  import { calcFinalPoints, getRoleName } from '../../domain/models/assignment.uts'
   import { getSessionsByDate } from '../../domain/stores/AppStore.uts'
+
+  // 晾堂岗位角色列表
+  const LIANG_TANG_ROLES: RoleCode[] = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER', 'MICRO_OPERATOR']
 
   type PointsRecord = {
     date: string
@@ -247,6 +250,40 @@
                   } as PointsRecord)
 
                   totalOriginal = totalOriginal + original
+                }
+              }
+            }
+
+            // 查找晾堂岗位
+            const liangTang = session['liang_tang'] as UTSJSONObject | null
+            if (liangTang != null) {
+              for (let r = 0; r < LIANG_TANG_ROLES.length; r++) {
+                const roleCode = LIANG_TANG_ROLES[r]
+                const roleWorkers = liangTang[roleCode] as UTSJSONObject[] | null
+                if (roleWorkers != null) {
+                  for (let k = 0; k < roleWorkers.length; k++) {
+                    const worker = roleWorkers[k]
+                    const workerId = worker['personId'] as number | null
+                    if (workerId == personId) {
+                      const pointsUnits = worker['pointsUnits'] as number | null
+                      const original = pointsUnits != null ? pointsUnits : 0
+
+                      dayRecords.push({
+                        date: date,
+                        stageCode: stageCode != null ? stageCode : '',
+                        stageName: stageCode != null ? getStageName(stageCode as StageCode) : '',
+                        roundId: roundId,
+                        binCode: getRoleName(roleCode),
+                        positionIndex: k + 1,
+                        originalUnits: original,
+                        deductedUnits: 0,
+                        penaltyReason: '',
+                        expanded: false
+                      } as PointsRecord)
+
+                      totalOriginal = totalOriginal + original
+                    }
+                  }
                 }
               }
             }
