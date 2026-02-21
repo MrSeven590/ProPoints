@@ -344,6 +344,7 @@ import {
   addDaysToDate,
   formatPointsUnits,
   pointsToUnits,
+  LIANG_TANG_ROLES,
 } from "../../domain/models/types.uts";
 import type {
   StageCode,
@@ -363,7 +364,7 @@ import {
 } from "../../domain/services/StageCoefService.uts";
 import type { BinCode, StageBinInfo } from "../../domain/models/ferment.uts";
 import type { AssignmentSourceCreateParams } from "../../domain/models/assignment.uts";
-import { getRoleName } from "../../domain/models/assignment.uts";
+import { getRoleName as _getRoleName } from "../../domain/models/assignment.uts";
 import type { BinInfo } from "../../domain/services/ScoreAllocator.uts";
 import { allocateCrossBinPoints } from "../../domain/services/ScoreAllocator.uts";
 import { getBinKojiCountFromAnQu } from "../../domain/services/DuiQuBaseService.uts";
@@ -391,9 +392,6 @@ import {
 
 // 系数版本常量
 const DEFAULT_COEF_SET_ID = 260000;
-
-// 晾堂岗位角色列表（修复 L2：提取为常量）
-const LIANG_TANG_ROLES: RoleCode[] = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER', 'MICRO_OPERATOR'];
 
 /**
  * 仓内工人分配数据类型
@@ -616,7 +614,7 @@ export default {
      * 获取岗位显示名称（模板辅助方法）
      */
     getRoleName(roleCode: RoleCode): string {
-      return getRoleName(roleCode)
+      return _getRoleName(roleCode)
     },
 
     /**

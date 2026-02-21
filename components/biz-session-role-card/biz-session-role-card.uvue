@@ -161,8 +161,14 @@
         const occupied = this.occupiedPersonIds as number[]
         const result: number[] = []
 
-        // 添加外部传入的占用ID
+        // 当前编辑槽位的人员ID（需要从外部列表中排除）
+        const editingPersonId = this.currentEditingPersonId as number | null
+
+        // 添加外部传入的占用ID（排除当前编辑槽位的人员）
         for (let i = 0; i < occupied.length; i++) {
+          if (editingPersonId != null && occupied[i] == editingPersonId) {
+            continue
+          }
           result.push(occupied[i])
         }
 

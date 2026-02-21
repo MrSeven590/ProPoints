@@ -575,9 +575,7 @@ function buildRuntimeContext(data: NormalizedSessionData): RuntimeContext {
     }
   }
 
-  // 记录晾堂人员位置（修复 M1：遍历所有可能的岗位而非仅 Map 中存在的）
-  // 注意：这里不需要检查必需性，只是记录已存在的人员位置，所以保持 forEach 即可
-  // 但为了一致性和未来扩展性，改为显式遍历
+  // 记录晾堂人员位置（遍历所有岗位角色）
   const allLiangTangRoles: RoleCode[] = [...LIANG_TANG_REQUIRED_ROLES, ...LIANG_TANG_OPTIONAL_ROLES]
   for (let r = 0; r < allLiangTangRoles.length; r++) {
     const roleKey = allLiangTangRoles[r]

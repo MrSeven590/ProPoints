@@ -181,7 +181,7 @@ export function getRoleName(roleCode: RoleCode): string {
   } else if (roleCode == 'HELPER') {
     return '打杂'
   } else if (roleCode == 'WHEAT_MATERIAL') {
-    return '麦料'
+    return '麦料参数'
   } else if (roleCode == 'MACHINE_GUARD') {
     return '守机'
   } else if (roleCode == 'KOJI_UNLOADER') {

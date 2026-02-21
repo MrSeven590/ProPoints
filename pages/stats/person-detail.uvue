@@ -83,14 +83,11 @@
 </template>
 
 <script lang="uts">
-  import { getTodayDateString, addDaysToDate, formatPointsUnits } from '../../domain/models/types.uts'
+  import { getTodayDateString, addDaysToDate, formatPointsUnits, LIANG_TANG_ROLES } from '../../domain/models/types.uts'
   import type { PointsUnits, StageCode, RoleCode } from '../../domain/models/types.uts'
   import { getStageName } from '../../domain/models/stage-session.uts'
   import { calcFinalPoints, getRoleName } from '../../domain/models/assignment.uts'
   import { getSessionsByDate } from '../../domain/stores/AppStore.uts'
-
-  // 晾堂岗位角色列表
-  const LIANG_TANG_ROLES: RoleCode[] = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER', 'MICRO_OPERATOR']
 
   type PointsRecord = {
     date: string

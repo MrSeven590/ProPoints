@@ -34,6 +34,11 @@ export type RoleCode =
   | 'STACKING_WORKER' // 堆曲工人
 
 /**
+ * 晾堂岗位角色列表（共享常量）
+ */
+export const LIANG_TANG_ROLES: RoleCode[] = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER', 'MICRO_OPERATOR']
+
+/**
  * 同步状态
  */
 export type SyncStatus = 'local' | 'pending' | 'synced'
