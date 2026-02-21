@@ -613,6 +613,13 @@ export default {
   },
   methods: {
     /**
+     * 获取岗位显示名称（模板辅助方法）
+     */
+    getRoleName(roleCode: RoleCode): string {
+      return getRoleName(roleCode)
+    },
+
+    /**
      * 切换到前一天
      */
     onPrevDay() {
