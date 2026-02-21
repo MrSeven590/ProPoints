@@ -23,6 +23,12 @@
         </view>
       </view>
 
+      <view class="bulletin-btn-wrap">
+        <view class="bulletin-btn" @click="goToDailyBulletin">
+          <text class="bulletin-btn-text">每日公示</text>
+        </view>
+      </view>
+
       <view class="section">
         <text class="section-title">本月概览</text>
         <view class="stats-row">
@@ -265,6 +271,11 @@
         }
       },
 
+      goToDailyBulletin() {
+        uni.navigateTo({
+          url: '/pages/stats/daily-bulletin'
+        })
+      },
       goToDateDetail() {
         uni.navigateTo({
           url: '/pages/stats/date-detail'
@@ -353,6 +364,24 @@
     font-size: 12px;
     color: #666666;
     margin-top: 8px;
+  }
+
+  .bulletin-btn-wrap {
+    margin: 0 12px 12px;
+  }
+
+  .bulletin-btn {
+    background-color: #007aff;
+    border-radius: 8px;
+    height: 44px;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .bulletin-btn-text {
+    font-size: 15px;
+    font-weight: bold;
+    color: #ffffff;
   }
 
   .stats-row {

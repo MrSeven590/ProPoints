@@ -25,6 +25,12 @@
       }
     },
     {
+      "path": "pages/stats/daily-bulletin",
+      "style": {
+        "navigationBarTitleText": "每日公示"
+      }
+    },
+    {
       "path": "pages/stats/person-detail",
       "style": {
         "navigationBarTitleText": "工资条"

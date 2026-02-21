@@ -1,0 +1,402 @@
+<template>
+  <view class="page-container">
+    <!-- 日期选择区域 -->
+    <view class="date-section">
+      <view class="date-nav">
+        <view class="date-btn" @click="onPrevDay">
+          <text class="date-btn-text">前一天</text>
+        </view>
+        <text class="date-display">{{ selectedDate }}</text>
+        <view class="date-btn" @click="onNextDay">
+          <text class="date-btn-text">后一天</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 公示列表 -->
+    <scroll-view class="content" scroll-y="true">
+      <view v-if="displayList.length > 0" ref="listContainer" class="list-container">
+        <!-- 表头 -->
+        <view class="list-header">
+          <text class="header-cell col-name">姓名</text>
+          <text class="header-cell col-bin">仓号</text>
+          <text class="header-cell col-pts">原始分</text>
+          <text class="header-cell col-pts">扣分</text>
+          <text class="header-cell col-pts">最终分</text>
+        </view>
+        <!-- 数据行 -->
+        <view
+          v-for="(item, index) in displayList"
+          :key="index"
+          class="list-row"
+          :class="index % 2 == 0 ? 'row-even' : 'row-odd'"
+        >
+          <text class="row-cell col-name">{{ item.personName }}</text>
+          <text class="row-cell col-bin">{{ item.binCode }}</text>
+          <text class="row-cell col-pts">{{ fmt(item.originalUnits) }}</text>
+          <text class="row-cell col-pts" :class="item.deductedUnits > 0 ? 'points-negative' : ''">{{ item.deductedUnits > 0 ? fmt(item.deductedUnits) : '' }}</text>
+          <text class="row-cell col-pts">{{ fmt(item.finalUnits) }}</text>
+        </view>
+        <!-- 汇总行 -->
+        <view class="list-footer">
+          <text class="footer-cell col-name footer-label">合计{{ displayList.length }}人</text>
+          <text class="footer-cell col-bin"></text>
+          <text class="footer-cell col-pts footer-total">{{ fmt(totalOriginal) }}</text>
+          <text class="footer-cell col-pts footer-total points-negative">{{ fmt(totalDeducted) }}</text>
+          <text class="footer-cell col-pts footer-total">{{ fmt(totalFinal) }}</text>
+        </view>
+      </view>
+      <view v-else class="empty-hint">
+        <text class="empty-hint-text">{{ selectedDate }} 暂无录入记录</text>
+      </view>
+    </scroll-view>
+
+    <!-- 底部操作 -->
+    <view class="footer">
+      <view class="btn" :class="displayList.length > 0 ? 'btn-primary' : 'btn-disabled'" @click="shareToGroup">
+        <text class="btn-text">分享到群</text>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+  import { getTodayDateString, addDaysToDate, formatPointsUnits } from '../../domain/models/types.uts'
+  import type { PointsUnits } from '../../domain/models/types.uts'
+  import { calcFinalPoints } from '../../domain/models/assignment.uts'
+  import { getSessionsByDate } from '../../domain/stores/AppStore.uts'
+
+  type DisplayItem = {
+    personId: number
+    personName: string
+    binCode: string
+    positionIndex: number
+    originalUnits: PointsUnits
+    deductedUnits: PointsUnits
+    finalUnits: PointsUnits
+    penaltyReason: string
+  }
+
+  export default {
+    data() {
+      return {
+        selectedDate: '',
+        displayList: [] as DisplayItem[],
+        totalOriginal: 0 as PointsUnits,
+        totalDeducted: 0 as PointsUnits,
+        totalFinal: 0 as PointsUnits
+      }
+    },
+    onLoad() {
+      this.selectedDate = getTodayDateString()
+      this.loadData()
+    },
+    methods: {
+      fmt(units: PointsUnits): string {
+        return formatPointsUnits(units)
+      },
+      onPrevDay() {
+        this.selectedDate = addDaysToDate(this.selectedDate, -1)
+        this.loadData()
+      },
+      onNextDay() {
+        this.selectedDate = addDaysToDate(this.selectedDate, 1)
+        this.loadData()
+      },
+      loadData() {
+        const sessions = getSessionsByDate(this.selectedDate)
+        const items: DisplayItem[] = []
+
+        for (let i = 0; i < sessions.length; i++) {
+          const session = sessions[i]
+          const status = session['status'] as string | null
+          if (status == 'draft') {
+            continue
+          }
+
+          const binsData = session['bins'] as UTSJSONObject[] | null
+          if (binsData != null) {
+            for (let j = 0; j < binsData.length; j++) {
+              const bin = binsData[j]
+              const binCode = bin['bin_code'] as string | null
+              const workers = bin['workers'] as UTSJSONObject[] | null
+
+              if (workers != null && binCode != null) {
+                for (let k = 0; k < workers.length; k++) {
+                  const worker = workers[k]
+                  const personId = worker['personId'] as number | null
+                  const personName = worker['personName'] as string | null
+                  const pointsUnits = worker['pointsUnits'] as number | null
+                  const deductedUnits = worker['deductedUnits'] as number | null
+                  const positionIndex = worker['positionIndex'] as number | null
+                  const penaltyReason = worker['penaltyReason'] as string | null
+
+                  if (personId != null && personName != null) {
+                    const original = pointsUnits != null ? pointsUnits : 0
+                    const deducted = deductedUnits != null ? deductedUnits : 0
+                    items.push({
+                      personId: personId,
+                      personName: personName,
+                      binCode: binCode,
+                      positionIndex: positionIndex != null ? positionIndex : 0,
+                      originalUnits: original,
+                      deductedUnits: deducted,
+                      finalUnits: calcFinalPoints(original, deducted),
+                      penaltyReason: penaltyReason != null ? penaltyReason : ''
+                    } as DisplayItem)
+                  }
+                }
+              }
+            }
+          }
+
+          const crossBin = session['cross_bin'] as UTSJSONObject | null
+          if (crossBin != null) {
+            const enabled = crossBin['enabled'] as boolean | null
+            if (enabled == true) {
+              const personId = crossBin['person_id'] as number | null
+              const personName = crossBin['person_name'] as string | null
+              const pointsUnits = crossBin['points_units'] as number | null
+              const roleName = crossBin['role_name'] as string | null
+
+              if (personId != null && personName != null) {
+                items.push({
+                  personId: personId,
+                  personName: personName,
+                  binCode: roleName != null ? roleName : '跨仓',
+                  positionIndex: 0,
+                  originalUnits: pointsUnits != null ? pointsUnits : 0,
+                  deductedUnits: 0,
+                  finalUnits: pointsUnits != null ? pointsUnits : 0,
+                  penaltyReason: ''
+                } as DisplayItem)
+              }
+            }
+          }
+        }
+
+        items.sort((a: DisplayItem, b: DisplayItem): number => {
+          if (a.binCode != b.binCode) {
+            const aParts = a.binCode.split('-')
+            const bParts = b.binCode.split('-')
+            if (aParts.length == 3 && bParts.length == 3) {
+              const aClass = parseInt(aParts[0])
+              const aFloor = parseInt(aParts[1])
+              const aSeq = parseInt(aParts[2])
+              const bClass = parseInt(bParts[0])
+              const bFloor = parseInt(bParts[1])
+              const bSeq = parseInt(bParts[2])
+              if (aClass != bClass) return aClass - bClass
+              if (aFloor != bFloor) return aFloor - bFloor
+              return aSeq - bSeq
+            }
+            if (a.binCode < b.binCode) return -1
+            return 1
+          }
+          return a.positionIndex - b.positionIndex
+        })
+
+        this.displayList = items
+
+        let o = 0
+        let d = 0
+        let f = 0
+        for (let i = 0; i < items.length; i++) {
+          o = o + items[i].originalUnits
+          d = d + items[i].deductedUnits
+          f = f + items[i].finalUnits
+        }
+        this.totalOriginal = o
+        this.totalDeducted = d
+        this.totalFinal = f
+      },
+      shareToGroup() {
+        if (this.displayList.length == 0) {
+          return
+        }
+        const el = this.$refs['listContainer'] as UniElement | null
+        if (el == null) {
+          return
+        }
+        el.takeSnapshot({
+          format: 'jpg',
+          success: (res) => {
+            uni.shareWithSystem({
+              type: 'image',
+              imageUrl: res.tempFilePath,
+              fail: () => {
+                uni.showToast({ title: '分享失败', icon: 'none' })
+              }
+            })
+          },
+          fail: () => {
+            uni.showToast({ title: '截图失败', icon: 'none' })
+          }
+        })
+      }
+    }
+  }
+</script>
+
+<style>
+  .page-container {
+    flex: 1;
+    flex-direction: column;
+    background-color: #f5f5f5;
+  }
+
+  .date-section {
+    background-color: #ffffff;
+    padding: 12px 16px;
+  }
+
+  .date-nav {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .date-btn {
+    padding: 8px 16px;
+    background-color: #f0f2f5;
+    border-radius: 6px;
+  }
+
+  .date-btn-text {
+    font-size: 14px;
+    color: #333333;
+  }
+
+  .date-display {
+    font-size: 18px;
+    font-weight: bold;
+    color: #333333;
+  }
+
+  .content {
+    flex: 1;
+    margin: 12px;
+  }
+
+  .list-container {
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 12px;
+  }
+
+  .list-header {
+    flex-direction: row;
+    padding: 8px 0;
+    border-bottom-width: 2px;
+    border-bottom-color: #007aff;
+    border-bottom-style: solid;
+  }
+
+  .header-cell {
+    font-size: 13px;
+    font-weight: bold;
+    color: #333333;
+    text-align: center;
+  }
+
+  .col-name {
+    flex: 2;
+    text-align: left;
+  }
+
+  .col-bin {
+    flex: 2;
+    text-align: center;
+  }
+
+  .col-pts {
+    flex: 1;
+    text-align: right;
+  }
+
+  .list-row {
+    flex-direction: row;
+    padding: 10px 0;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .row-even {
+    background-color: #ffffff;
+  }
+
+  .row-odd {
+    background-color: #fafafa;
+  }
+
+  .row-cell {
+    font-size: 13px;
+    color: #333333;
+  }
+
+  .points-negative {
+    color: #ff4d4f;
+  }
+
+  .list-footer {
+    flex-direction: row;
+    padding: 12px 0;
+    border-top-width: 2px;
+    border-top-color: #007aff;
+    border-top-style: solid;
+    margin-top: 4px;
+  }
+
+  .footer-cell {
+    font-size: 13px;
+    font-weight: bold;
+  }
+
+  .footer-label {
+    color: #333333;
+  }
+
+  .footer-total {
+    text-align: right;
+    color: #007aff;
+  }
+
+  .empty-hint {
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 40px;
+    align-items: center;
+  }
+
+  .empty-hint-text {
+    font-size: 14px;
+    color: #999999;
+  }
+
+  .footer {
+    padding: 12px 16px;
+    background-color: #ffffff;
+  }
+
+  .btn {
+    height: 44px;
+    border-radius: 8px;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .btn-primary {
+    background-color: #007aff;
+  }
+
+  .btn-disabled {
+    background-color: #cccccc;
+  }
+
+  .btn-text {
+    font-size: 16px;
+    font-weight: bold;
+    color: #ffffff;
+  }
+</style>
