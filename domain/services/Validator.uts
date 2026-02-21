@@ -891,17 +891,23 @@ registerRule({
 
 /**
  * 规则 4: perm.strict.single.roles
- * 严格单人岗位校验（仅 submit 模式）
+ * 严格单人岗位校验（draft + submit）
+ * 修复 H1: 数据层校验严格单人岗位，防止绕过 UI 写入多人
  */
 registerRule({
   id: 'perm.strict.single.roles',
   category: 'permission',
-  modes: ['submit'],
+  modes: ['draft', 'submit'],
   fn: (data: NormalizedSessionData, ctx: ValidationContext, runtime: RuntimeContext): ValidationError[] => {
     const errors: ValidationError[] = []
 
-    // 严格单人岗位列表
-    const strictSingleRoles = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'MICRO_OPERATOR']
+    // 仅在安曲环节检查
+    if (ctx.stage_code != 'AN_QU') {
+      return errors
+    }
+
+    // 严格单人岗位列表：麦料参数、守机、微机
+    const strictSingleRoles: RoleCode[] = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'MICRO_OPERATOR']
 
     for (let i = 0; i < strictSingleRoles.length; i++) {
       const roleKey = strictSingleRoles[i]
