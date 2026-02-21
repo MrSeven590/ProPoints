@@ -13,6 +13,10 @@
 import { PointsUnits, formatPointsUnits, StageCode, RoleCode } from '../models/types.uts'
 import { calcLiangTangPoolUnits } from './ScoreCalculator.uts'
 
+// 晾堂岗位角色列表常量（修复 M1：统一定义必需岗位）
+const LIANG_TANG_REQUIRED_ROLES: RoleCode[] = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER']
+const LIANG_TANG_OPTIONAL_ROLES: RoleCode[] = ['MICRO_OPERATOR']  // 微机根据轮次启用状态决定
+
 // ============================================
 // 类型定义
 // ============================================
@@ -571,21 +575,28 @@ function buildRuntimeContext(data: NormalizedSessionData): RuntimeContext {
     }
   }
 
-  // 记录晾堂人员位置
-  data.liang_tang.forEach((role: NormalizedLiangTangRole, _key: string) => {
-    for (let i = 0; i < role.workers.length; i++) {
-      const worker = role.workers[i]
-      if (worker.person_id != null) {
-        const locations = personLocations.get(worker.person_id as number)
-        const location = `晾堂岗位（${role.role_name}）`
-        if (locations != null) {
-          locations.push(location)
-        } else {
-          personLocations.set(worker.person_id as number, [location])
+  // 记录晾堂人员位置（修复 M1：遍历所有可能的岗位而非仅 Map 中存在的）
+  // 注意：这里不需要检查必需性，只是记录已存在的人员位置，所以保持 forEach 即可
+  // 但为了一致性和未来扩展性，改为显式遍历
+  const allLiangTangRoles: RoleCode[] = [...LIANG_TANG_REQUIRED_ROLES, ...LIANG_TANG_OPTIONAL_ROLES]
+  for (let r = 0; r < allLiangTangRoles.length; r++) {
+    const roleKey = allLiangTangRoles[r]
+    const role = data.liang_tang.get(roleKey)
+    if (role != null) {
+      for (let i = 0; i < role.workers.length; i++) {
+        const worker = role.workers[i]
+        if (worker.person_id != null) {
+          const locations = personLocations.get(worker.person_id as number)
+          const location = `晾堂岗位（${role.role_name}）`
+          if (locations != null) {
+            locations.push(location)
+          } else {
+            personLocations.set(worker.person_id as number, [location])
+          }
         }
       }
     }
-  })
+  }
 
   return {
     bin_map: binMap,
@@ -788,32 +799,44 @@ registerRule({
       }
     }
 
-    // 检查晾堂岗位
-    data.liang_tang.forEach((role: NormalizedLiangTangRole, roleKey: string) => {
-      for (let i = 0; i < role.workers.length; i++) {
-        const worker = role.workers[i]
-        if (worker.points_units > 0 && worker.person_id == null) {
-          const location = createEmptyLocation(ctx.stage_code)
-          location.role_code = role.role_code
-          location.role_name = role.role_name
-          location.session_worker_index = i
+    // 检查晾堂岗位（修复 M1：遍历所有必需岗位而非仅 Map 中存在的）
+    if (ctx.stage_code == 'AN_QU') {
+      const rolesToCheck: RoleCode[] = [...LIANG_TANG_REQUIRED_ROLES]
+      if (ctx.micro_enabled == true) {
+        rolesToCheck.push('MICRO_OPERATOR')
+      }
 
-          errors.push(makeError(
-            'struct.person.required.when.points',
-            'structure',
-            'error',
-            'STRUCT_PERSON_REQUIRED_WHEN_POINTS',
-            {
-              scope: '晾堂岗位',
-              where: `${role.role_name} 第 ${i + 1} 人`
-            } as UTSJSONObject,
-            `liang_tang.${roleKey}.workers[${i}]`,
-            location,
-            ctx.locale
-          ))
+      for (let r = 0; r < rolesToCheck.length; r++) {
+        const roleKey = rolesToCheck[r]
+        const role = data.liang_tang.get(roleKey)
+
+        if (role != null) {
+          for (let i = 0; i < role.workers.length; i++) {
+            const worker = role.workers[i]
+            if (worker.points_units > 0 && worker.person_id == null) {
+              const location = createEmptyLocation(ctx.stage_code)
+              location.role_code = role.role_code
+              location.role_name = role.role_name
+              location.session_worker_index = i
+
+              errors.push(makeError(
+                'struct.person.required.when.points',
+                'structure',
+                'error',
+                'STRUCT_PERSON_REQUIRED_WHEN_POINTS',
+                {
+                  scope: '晾堂岗位',
+                  where: `${role.role_name} 第 ${i + 1} 人`
+                } as UTSJSONObject,
+                `liang_tang.${roleKey}.workers[${i}]`,
+                location,
+                ctx.locale
+              ))
+            }
+          }
         }
       }
-    })
+    }
 
     return errors
   }
@@ -979,16 +1002,23 @@ registerRule({
         if (personName == '' && data.cross_bin.person_id == personId) {
           personName = data.cross_bin.person_name
         }
-        // 从晾堂岗位查找
+        // 从晾堂岗位查找（修复 M1：遍历所有可能的岗位）
         if (personName == '') {
-          data.liang_tang.forEach((role: NormalizedLiangTangRole, _key: string) => {
-            for (let i = 0; i < role.workers.length; i++) {
-              if (role.workers[i].person_id == personId) {
-                personName = role.workers[i].person_name
+          const allLiangTangRoles: RoleCode[] = [...LIANG_TANG_REQUIRED_ROLES, ...LIANG_TANG_OPTIONAL_ROLES]
+          for (let r = 0; r < allLiangTangRoles.length; r++) {
+            const role = data.liang_tang.get(allLiangTangRoles[r])
+            if (role != null) {
+              for (let i = 0; i < role.workers.length; i++) {
+                if (role.workers[i].person_id == personId) {
+                  personName = role.workers[i].person_name
+                  break
+                }
+              }
+              if (personName != '') {
                 break
               }
             }
-          })
+          }
         }
 
         location.person_name = personName
@@ -1169,8 +1199,8 @@ registerRule({
       return errors
     }
 
-    // 需要校验的晾堂岗位
-    const rolesToValidate = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER']
+    // 需要校验的晾堂岗位（修复 M1：使用常量）
+    const rolesToValidate: RoleCode[] = [...LIANG_TANG_REQUIRED_ROLES]
     // 如果微机启用，也校验微机岗位
     if (ctx.micro_enabled == true) {
       rolesToValidate.push('MICRO_OPERATOR')
