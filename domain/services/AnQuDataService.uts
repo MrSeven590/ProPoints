@@ -82,9 +82,8 @@ export type ImportedAnQuSnapshot = {
   classNo: number
   roundId: number
   importedAt: number
-  source: string  // 'clipboard'
   bins: ImportedAnQuBin[]
-  skippedCrossClassBins: string[]  // 跨班级被跳过的 binCode 列表
+  skippedCrossClassBins: string[]
 }
 
 /**
@@ -559,7 +558,7 @@ export function saveAnQuImportSnapshot(classNo: number, roundId: number, items: 
 
   // 如果有跨班级数据被跳过，记录日志
   if (skippedCrossClassBins.length > 0) {
-    console.log(`[AnQuImport] 跨班级数据已跳过: ${skippedCrossClassBins.join(', ')}`)
+    console.log(`跨班级数据已跳过: ${skippedCrossClassBins.join(', ')}`)
   }
 
   // 构建快照
@@ -567,22 +566,13 @@ export function saveAnQuImportSnapshot(classNo: number, roundId: number, items: 
     classNo: classNo,
     roundId: roundId,
     importedAt: Date.now(),
-    source: 'clipboard',
     bins: bins,
     skippedCrossClassBins: skippedCrossClassBins
   }
 
   // 保存到 Storage
   const key = getAnQuImportSnapshotKey(classNo, roundId)
-  const data = {
-    classNo: snapshot.classNo,
-    roundId: snapshot.roundId,
-    importedAt: snapshot.importedAt,
-    source: snapshot.source,
-    bins: snapshot.bins,
-    skippedCrossClassBins: snapshot.skippedCrossClassBins
-  } as UTSJSONObject
-  saveData(key, data)
+  saveData(key, snapshot as UTSJSONObject)
 
   return snapshot
 }
@@ -601,10 +591,8 @@ export function loadAnQuImportSnapshot(classNo: number, roundId: number): Import
     return null
   }
 
-  // 容错处理：检查 bins 字段
   const binsData = data['bins']
   if (binsData == null) {
-    console.warn(`[AnQuImport] 快照数据缺少 bins 字段: ${key}`)
     return null
   }
 
@@ -620,7 +608,6 @@ export function loadAnQuImportSnapshot(classNo: number, roundId: number): Import
     })
   }
 
-  // 读取跨班级跳过列表（兼容旧数据）
   const skippedData = data['skippedCrossClassBins']
   const skippedCrossClassBins: string[] = skippedData != null ? (skippedData as string[]) : []
 
@@ -628,7 +615,6 @@ export function loadAnQuImportSnapshot(classNo: number, roundId: number): Import
     classNo: data['classNo'] as number,
     roundId: data['roundId'] as number,
     importedAt: data['importedAt'] as number,
-    source: data['source'] as string,
     bins: importedBins,
     skippedCrossClassBins: skippedCrossClassBins
   }
