@@ -9,7 +9,8 @@ import {
 } from '../stores/AppStore.uts'
 
 import {
-  parseBinCode
+  parseBinCode,
+  normalizeBinCode
 } from '../models/ferment.uts'
 
 import {
@@ -83,6 +84,7 @@ export type ImportedAnQuSnapshot = {
   importedAt: number
   source: string  // 'clipboard'
   bins: ImportedAnQuBin[]
+  skippedCrossClassBins: string[]  // 跨班级被跳过的 binCode 列表
 }
 
 /**
@@ -298,8 +300,11 @@ function getSessionsByRound(roundInfo: UTSJSONObject): UTSJSONObject[] {
   const scanStart = new Date(startDate.getTime() - BUFFER_DAYS * 24 * 60 * 60 * 1000)
   const scanEnd = new Date(endDate.getTime() + BUFFER_DAYS * 24 * 60 * 60 * 1000)
 
-  let currentDate = new Date(scanStart.getTime())
-  while (currentDate.getTime() <= scanEnd.getTime()) {
+  // 使用日历安全的日期迭代（避免 DST 问题）
+  let currentDate = new Date(scanStart.getFullYear(), scanStart.getMonth(), scanStart.getDate())
+  const endDateCalendar = new Date(scanEnd.getFullYear(), scanEnd.getMonth(), scanEnd.getDate())
+
+  while (currentDate.getTime() <= endDateCalendar.getTime()) {
     const dateStr = formatDate(currentDate)
     const daySessions = getSessionsByDateAndStage(dateStr, 'AN_QU')
     for (let j = 0; j < daySessions.length; j++) {
@@ -317,7 +322,8 @@ function getSessionsByRound(roundInfo: UTSJSONObject): UTSJSONObject[] {
         sessions.push(session)
       }
     }
-    currentDate = new Date(currentDate.getTime() + 24 * 60 * 60 * 1000)
+    // 日历安全的日期递增
+    currentDate.setDate(currentDate.getDate() + 1)
   }
 
   return sessions
@@ -375,14 +381,14 @@ export function parseAnQuData(text: string): ParsedAnQuItem[] {
       continue
     }
 
-    const binCode = parts[0].trim()
+    const binCodeRaw = parts[0].trim()
     const kojiCountStr = parts[1].trim()
 
-    // 验证仓号格式
-    const parsedBin = parseBinCode(binCode)
-    if (parsedBin == null) {
+    // 验证并规范化仓号格式
+    const normalizedBinCode = normalizeBinCode(binCodeRaw)
+    if (normalizedBinCode == null) {
       items.push({
-        binCode: binCode,
+        binCode: binCodeRaw,
         kojiCount: 0,
         lineNumber: i + 1,
         hasError: true,
@@ -396,7 +402,7 @@ export function parseAnQuData(text: string): ParsedAnQuItem[] {
     const kojiCount = parseInt(kojiCountStr, 10)
     if (isNaN(kojiCount)) {
       items.push({
-        binCode: binCode,
+        binCode: normalizedBinCode,
         kojiCount: 0,
         lineNumber: i + 1,
         hasError: true,
@@ -409,7 +415,7 @@ export function parseAnQuData(text: string): ParsedAnQuItem[] {
     // 验证曲坯数量范围
     if (kojiCount < 1 || kojiCount > 200) {
       items.push({
-        binCode: binCode,
+        binCode: normalizedBinCode,
         kojiCount: kojiCount,
         lineNumber: i + 1,
         hasError: true,
@@ -419,9 +425,9 @@ export function parseAnQuData(text: string): ParsedAnQuItem[] {
       continue
     }
 
-    // 正常数据
+    // 正常数据（使用规范化后的 binCode）
     items.push({
-      binCode: binCode,
+      binCode: normalizedBinCode,
       kojiCount: kojiCount,
       lineNumber: i + 1,
       hasError: false,
@@ -562,7 +568,8 @@ export function saveAnQuImportSnapshot(classNo: number, roundId: number, items: 
     roundId: roundId,
     importedAt: Date.now(),
     source: 'clipboard',
-    bins: bins
+    bins: bins,
+    skippedCrossClassBins: skippedCrossClassBins
   }
 
   // 保存到 Storage
@@ -572,7 +579,8 @@ export function saveAnQuImportSnapshot(classNo: number, roundId: number, items: 
     roundId: snapshot.roundId,
     importedAt: snapshot.importedAt,
     source: snapshot.source,
-    bins: snapshot.bins
+    bins: snapshot.bins,
+    skippedCrossClassBins: snapshot.skippedCrossClassBins
   } as UTSJSONObject
   saveData(key, data)
 
@@ -612,12 +620,17 @@ export function loadAnQuImportSnapshot(classNo: number, roundId: number): Import
     })
   }
 
+  // 读取跨班级跳过列表（兼容旧数据）
+  const skippedData = data['skippedCrossClassBins']
+  const skippedCrossClassBins: string[] = skippedData != null ? (skippedData as string[]) : []
+
   return {
     classNo: data['classNo'] as number,
     roundId: data['roundId'] as number,
     importedAt: data['importedAt'] as number,
     source: data['source'] as string,
-    bins: importedBins
+    bins: importedBins,
+    skippedCrossClassBins: skippedCrossClassBins
   }
 }
 

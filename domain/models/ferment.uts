@@ -91,6 +91,20 @@ export function parseBinCode(code: string): BinCode | null {
   } as BinCode
 }
 
+/**
+ * 规范化发酵仓编号字符串
+ * 将 "03-3-1" 或 "3-03-01" 等格式统一为 "3-3-1"
+ * @param code 编号字符串
+ * @returns 规范化后的编号字符串，解析失败返回 null
+ */
+export function normalizeBinCode(code: string): string | null {
+  const parsed = parseBinCode(code)
+  if (parsed == null) {
+    return null
+  }
+  return formatBinCode(parsed)
+}
+
 // ============================================
 // 轮次类型
 // ============================================
