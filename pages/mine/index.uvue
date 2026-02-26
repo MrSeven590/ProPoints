@@ -23,6 +23,19 @@
     </view>
 
     <view class="section">
+      <view class="menu-item" @click="goToAnQuExport">
+        <text class="menu-icon">出</text>
+        <text class="menu-text">安曲数据导出</text>
+        <text class="menu-arrow">></text>
+      </view>
+      <view class="menu-item" @click="goToAnQuImport">
+        <text class="menu-icon">入</text>
+        <text class="menu-text">安曲数据导入</text>
+        <text class="menu-arrow">></text>
+      </view>
+    </view>
+
+    <view class="section">
       <view class="menu-item danger-item" @click="clearAllData">
         <text class="menu-icon danger-icon">清</text>
         <text class="menu-text danger-text">清除所有数据</text>
@@ -62,6 +75,16 @@
       goToRosterImport() {
         uni.navigateTo({
           url: '/pages/mine/roster-import'
+        })
+      },
+      goToAnQuExport() {
+        uni.navigateTo({
+          url: '/pages/work/anqu-export'
+        })
+      },
+      goToAnQuImport() {
+        uni.navigateTo({
+          url: '/pages/work/anqu-import'
         })
       },
       clearAllData() {

@@ -1,0 +1,612 @@
+<template>
+  <view class="page-container">
+    <view class="header">
+      <text class="header-title">安曲数据导入</text>
+    </view>
+
+    <!-- #ifdef APP -->
+    <scroll-view class="content" scroll-y="true">
+    <!-- #endif -->
+      <!-- 粘贴输入区域 -->
+      <view class="section" v-if="step == 'input'">
+        <text class="section-title">粘贴数据</text>
+        <view class="input-box">
+          <textarea
+            class="input-textarea"
+            placeholder="请粘贴安曲数据&#10;格式示例:&#10;3-3-1 120&#10;3-3-2 115"
+            v-model="inputText"
+            :maxlength="-1"
+          />
+        </view>
+        <view class="hint-row">
+          <text class="hint-text">支持格式: 仓号 曲坯数量（每行一条）</text>
+        </view>
+      </view>
+
+      <!-- 操作按钮 -->
+      <view class="section" v-if="step == 'input'">
+        <view class="action-btn primary-btn" @click="onParse">
+          <text class="action-btn-text">解析数据</text>
+        </view>
+      </view>
+
+      <!-- 校对列表 -->
+      <view class="section" v-if="step == 'review'">
+        <view class="section-header">
+          <text class="section-title">数据校对</text>
+          <view class="stats-badge" :class="validationResult.valid ? 'success-badge' : 'error-badge'">
+            <text class="stats-badge-text">{{ validationResult.valid ? '校验通过' : '存在错误' }}</text>
+          </view>
+        </view>
+        <view class="stats-row">
+          <text class="stats-text">共 {{ validationResult.totalBins }} 仓，总曲坯数: {{ validationResult.totalKoji }}</text>
+        </view>
+      </view>
+
+      <!-- 数据项列表 -->
+      <view class="section list-section" v-if="step == 'review'">
+        <view
+          class="data-item"
+          v-for="(item, index) in validationResult.items"
+          :key="index"
+          :class="item.hasError ? 'error-item' : ''"
+        >
+          <view class="item-left">
+            <text class="item-line">行 {{ item.lineNumber }}</text>
+            <text class="item-bin">{{ item.binCode }}</text>
+            <text class="item-koji" v-if="!item.hasError">{{ item.kojiCount }} 块</text>
+          </view>
+          <view class="item-right">
+            <text class="item-error" v-if="item.hasError">{{ item.errorMessage }}</text>
+            <view class="item-actions" v-if="!item.hasError">
+              <view class="action-icon" @click="onEditItem(index)">
+                <text class="action-icon-text">编辑</text>
+              </view>
+              <view class="action-icon delete-icon" @click="onDeleteItem(index)">
+                <text class="action-icon-text">删除</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- 底部操作按钮 -->
+      <view class="section" v-if="step == 'review'">
+        <view class="action-btn secondary-btn" @click="onBackToInput">
+          <text class="action-btn-text">返回编辑</text>
+        </view>
+        <view
+          class="action-btn primary-btn"
+          @click="onConfirmImport"
+          :class="getConfirmButtonClass()"
+          :style="getConfirmButtonStyle()"
+        >
+          <text class="action-btn-text">确认导入</text>
+        </view>
+      </view>
+
+      <!-- 空状态提示 -->
+      <view class="section hint-section" v-if="step == 'input' && inputText == ''">
+        <text class="hint-text">请粘贴安曲数据文本</text>
+      </view>
+    <!-- #ifdef APP -->
+    </scroll-view>
+    <!-- #endif -->
+
+    <!-- 编辑弹窗 -->
+    <view class="modal-mask" v-if="showEditModal" @click="onCloseEditModal">
+      <view class="modal-content" @click.stop="">
+        <view class="modal-header">
+          <text class="modal-title">编辑数据</text>
+        </view>
+        <view class="modal-body">
+          <view class="form-row">
+            <text class="form-label">仓号</text>
+            <input
+              class="form-input"
+              type="text"
+              v-model="editBinCode"
+              placeholder="如: 3-3-1"
+            />
+          </view>
+          <view class="form-row">
+            <text class="form-label">曲坯数量</text>
+            <input
+              class="form-input"
+              type="number"
+              v-model="editKojiCount"
+              placeholder="1-200"
+            />
+          </view>
+        </view>
+        <view class="modal-footer">
+          <view class="modal-btn cancel-btn" @click="onCloseEditModal">
+            <text class="modal-btn-text">取消</text>
+          </view>
+          <view class="modal-btn confirm-btn" @click="onSaveEdit">
+            <text class="modal-btn-text">保存</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+  import {
+    parseAnQuData,
+    validateAnQuData,
+    ParsedAnQuItem,
+    ValidationResult
+  } from '../../domain/services/AnQuDataService.uts'
+
+  import {
+    parseBinCode
+  } from '../../domain/models/ferment.uts'
+
+  export default {
+    data() {
+      return {
+        step: 'input' as string,
+        inputText: '' as string,
+        validationResult: {
+          valid: false,
+          items: [],
+          totalBins: 0,
+          totalKoji: 0,
+          duplicateBins: []
+        } as ValidationResult,
+        showEditModal: false as boolean,
+        editIndex: -1 as number,
+        editBinCode: '' as string,
+        editKojiCount: '' as string
+      }
+    },
+
+    methods: {
+      onParse() {
+        if (this.inputText.trim() == '') {
+          uni.showToast({
+            title: '请输入数据',
+            icon: 'none'
+          })
+          return
+        }
+
+        // 解析数据
+        const items = parseAnQuData(this.inputText)
+
+        if (items.length == 0) {
+          uni.showToast({
+            title: '未识别到有效数据',
+            icon: 'none'
+          })
+          return
+        }
+
+        // 校验数据
+        const result = validateAnQuData(items)
+        this.validationResult = result
+
+        // 切换到校对步骤
+        this.step = 'review'
+      },
+
+      onBackToInput() {
+        this.step = 'input'
+      },
+
+      onEditItem(index: number) {
+        const item = this.validationResult.items[index]
+        this.editIndex = index
+        this.editBinCode = item.binCode
+        this.editKojiCount = item.kojiCount.toString()
+        this.showEditModal = true
+      },
+
+      onDeleteItem(index: number) {
+        uni.showModal({
+          title: '确认删除',
+          content: '确定要删除这条数据吗？',
+          success: (res) => {
+            if (res.confirm == true) {
+              // 删除项
+              const newItems: ParsedAnQuItem[] = []
+              for (let i = 0; i < this.validationResult.items.length; i++) {
+                if (i != index) {
+                  newItems.push(this.validationResult.items[i])
+                }
+              }
+
+              // 重新校验
+              const result = validateAnQuData(newItems)
+              this.validationResult = result
+            }
+          }
+        })
+      },
+
+      onCloseEditModal() {
+        this.showEditModal = false
+        this.editIndex = -1
+        this.editBinCode = ''
+        this.editKojiCount = ''
+      },
+
+      onSaveEdit() {
+        // 验证仓号
+        const binCode = this.editBinCode.trim()
+        const parsedBin = parseBinCode(binCode)
+        if (parsedBin == null) {
+          uni.showToast({
+            title: '仓号格式错误',
+            icon: 'none'
+          })
+          return
+        }
+
+        // 验证曲坯数量
+        const kojiCount = parseInt(this.editKojiCount, 10)
+        if (isNaN(kojiCount) || kojiCount < 1 || kojiCount > 200) {
+          uni.showToast({
+            title: '曲坯数量范围: 1-200',
+            icon: 'none'
+          })
+          return
+        }
+
+        // 更新数据
+        if (this.editIndex >= 0 && this.editIndex < this.validationResult.items.length) {
+          const item = this.validationResult.items[this.editIndex]
+          item.binCode = binCode
+          item.kojiCount = kojiCount
+          item.hasError = false
+          item.errorMessage = ''
+          item.errorCode = ''
+
+          // 重新校验
+          const result = validateAnQuData(this.validationResult.items)
+          this.validationResult = result
+        }
+
+        this.onCloseEditModal()
+      },
+
+      getConfirmButtonClass(): string {
+        return this.validationResult.valid == false ? 'disabled-btn' : ''
+      },
+
+      getConfirmButtonStyle(): string {
+        return this.validationResult.valid == false ? 'pointer-events: none;' : ''
+      },
+
+      onConfirmImport() {
+        if (this.validationResult.valid == false) {
+          uni.showToast({
+            title: '请先修正错误',
+            icon: 'none'
+          })
+          return
+        }
+
+        uni.showModal({
+          title: '确认导入',
+          content: `即将导入 ${this.validationResult.totalBins} 仓数据，总曲坯数 ${this.validationResult.totalKoji}。\n\n注意: 导入功能暂未实现，请联系开发人员。`,
+          success: (res) => {
+            if (res.confirm == true) {
+              // TODO: 实现导入逻辑
+              uni.showToast({
+                title: '导入功能开发中',
+                icon: 'none'
+              })
+            }
+          }
+        })
+      }
+    }
+  }
+</script>
+
+<style>
+  .page-container {
+    flex: 1;
+    background-color: #f5f5f5;
+  }
+
+  .header {
+    background-color: #007aff;
+    padding: 20px 16px;
+  }
+
+  .header-title {
+    font-size: 24px;
+    font-weight: bold;
+    color: #ffffff;
+  }
+
+  .content {
+    flex: 1;
+  }
+
+  .section {
+    margin: 12px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  .section-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333333;
+    margin-bottom: 12px;
+  }
+
+  .section-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .input-box {
+    margin-top: 8px;
+  }
+
+  .input-textarea {
+    width: 100%;
+    min-height: 200px;
+    padding: 12px;
+    background-color: #f8f8f8;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: #e0e0e0;
+    border-style: solid;
+    font-size: 14px;
+    color: #333333;
+    line-height: 20px;
+  }
+
+  .hint-row {
+    margin-top: 8px;
+  }
+
+  .hint-text {
+    font-size: 12px;
+    color: #999999;
+  }
+
+  .stats-badge {
+    padding: 4px 12px;
+    border-radius: 12px;
+  }
+
+  .success-badge {
+    background-color: #e8f8f0;
+  }
+
+  .error-badge {
+    background-color: #ffe8e8;
+  }
+
+  .stats-badge-text {
+    font-size: 12px;
+    font-weight: bold;
+  }
+
+  .success-badge .stats-badge-text {
+    color: #00c853;
+  }
+
+  .error-badge .stats-badge-text {
+    color: #ff3b30;
+  }
+
+  .stats-row {
+    padding: 8px;
+    background-color: #e8f4ff;
+    border-radius: 6px;
+  }
+
+  .stats-text {
+    font-size: 14px;
+    color: #007aff;
+    font-weight: bold;
+  }
+
+  .list-section {
+    padding: 0;
+  }
+
+  .data-item {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .error-item {
+    background-color: #fff5f5;
+  }
+
+  .item-left {
+    flex: 1;
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .item-line {
+    font-size: 12px;
+    color: #999999;
+    margin-right: 8px;
+  }
+
+  .item-bin {
+    font-size: 16px;
+    color: #333333;
+    font-weight: bold;
+    margin-right: 8px;
+  }
+
+  .item-koji {
+    font-size: 14px;
+    color: #666666;
+  }
+
+  .item-right {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .item-error {
+    font-size: 12px;
+    color: #ff3b30;
+  }
+
+  .item-actions {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .action-icon {
+    padding: 4px 8px;
+    background-color: #007aff;
+    border-radius: 4px;
+    margin-left: 8px;
+  }
+
+  .delete-icon {
+    background-color: #ff3b30;
+  }
+
+  .action-icon-text {
+    font-size: 12px;
+    color: #ffffff;
+  }
+
+  .action-btn {
+    padding: 14px;
+    border-radius: 6px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 12px;
+  }
+
+  .primary-btn {
+    background-color: #007aff;
+  }
+
+  .secondary-btn {
+    background-color: #f0f0f0;
+  }
+
+  .secondary-btn .action-btn-text {
+    color: #333333;
+  }
+
+  .disabled-btn {
+    background-color: #cccccc;
+  }
+
+  .action-btn-text {
+    font-size: 16px;
+    color: #ffffff;
+    font-weight: bold;
+  }
+
+  .hint-section {
+    align-items: center;
+    padding: 40px 16px;
+  }
+
+  /* 弹窗样式 */
+  .modal-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .modal-content {
+    width: 300px;
+    background-color: #ffffff;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .modal-header {
+    padding: 16px;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .modal-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #333333;
+  }
+
+  .modal-body {
+    padding: 16px;
+  }
+
+  .form-row {
+    margin-bottom: 16px;
+  }
+
+  .form-label {
+    font-size: 14px;
+    color: #666666;
+    margin-bottom: 8px;
+  }
+
+  .form-input {
+    width: 100%;
+    padding: 10px;
+    background-color: #f8f8f8;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: #e0e0e0;
+    border-style: solid;
+    font-size: 14px;
+    color: #333333;
+  }
+
+  .modal-footer {
+    flex-direction: row;
+    border-top-width: 1px;
+    border-top-color: #f0f0f0;
+    border-top-style: solid;
+  }
+
+  .modal-btn {
+    flex: 1;
+    padding: 14px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cancel-btn {
+    border-right-width: 1px;
+    border-right-color: #f0f0f0;
+    border-right-style: solid;
+  }
+
+  .modal-btn-text {
+    font-size: 16px;
+    color: #007aff;
+  }
+
+  .cancel-btn .modal-btn-text {
+    color: #999999;
+  }
+</style>

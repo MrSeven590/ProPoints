@@ -65,6 +65,18 @@
       "style": {
         "navigationBarTitleText": "花名册导入"
       }
+    },
+    {
+      "path": "pages/work/anqu-export",
+      "style": {
+        "navigationBarTitleText": "安曲数据导出"
+      }
+    },
+    {
+      "path": "pages/work/anqu-import",
+      "style": {
+        "navigationBarTitleText": "安曲数据导入"
+      }
     }
   ],
   "globalStyle": {

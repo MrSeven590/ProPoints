@@ -1,0 +1,464 @@
+/**
+ * 安曲数据导出导入服务
+ */
+
+import {
+  getSessionsByDateAndStage,
+  getCurrentClassNo,
+  loadRounds
+} from '../stores/AppStore.uts'
+
+import {
+  parseBinCode
+} from '../models/ferment.uts'
+
+// ============================================
+// 常量定义
+// ============================================
+
+/**
+ * 会话状态常量
+ */
+const SESSION_STATUS_SUBMITTED = 'submitted'
+
+/**
+ * 错误代码
+ */
+const ERROR_CODE_DUPLICATE = 'DUPLICATE_BIN'
+const ERROR_CODE_PARSE = 'PARSE_ERROR'
+
+// ============================================
+// 类型定义
+// ============================================
+
+/**
+ * 解析后的安曲数据项
+ */
+export type ParsedAnQuItem = {
+  binCode: string
+  kojiCount: number
+  lineNumber: number
+  hasError: boolean
+  errorMessage: string
+  errorCode: string
+}
+
+/**
+ * 校验结果
+ */
+export type ValidationResult = {
+  valid: boolean
+  items: ParsedAnQuItem[]
+  totalBins: number
+  totalKoji: number
+  duplicateBins: string[]
+}
+
+/**
+ * 导出数据项
+ */
+type ExportBinItem = {
+  binCode: string
+  kojiCount: number
+}
+
+/**
+ * 导出结果（结构化数据）
+ */
+export type ExportResult = {
+  text: string
+  totalBins: number
+  totalKoji: number
+  roundNo: number
+  classNo: number
+}
+
+// ============================================
+// 导出功能
+// ============================================
+
+/**
+ * 导出指定轮次的安曲数据
+ * @param roundId 轮次ID
+ * @returns 导出结果（结构化数据）
+ */
+export function exportAnQuData(roundId: number): ExportResult {
+  const classNo = getCurrentClassNo()
+
+  // 获取轮次信息
+  const allRounds = loadRounds()
+  let roundInfo: UTSJSONObject | null = null
+  for (let i = 0; i < allRounds.length; i++) {
+    const id = allRounds[i]['id'] as number
+    if (id == roundId) {
+      roundInfo = allRounds[i]
+      break
+    }
+  }
+
+  if (roundInfo == null) {
+    return {
+      text: '错误: 轮次不存在',
+      totalBins: 0,
+      totalKoji: 0,
+      roundNo: 0,
+      classNo: classNo
+    }
+  }
+
+  const roundNo = roundInfo['round_no'] as number
+
+  // 收集该轮次的所有安曲会话
+  const binItems: ExportBinItem[] = []
+  const allSessions = getSessionsByRound(roundInfo)
+
+  for (let i = 0; i < allSessions.length; i++) {
+    const session = allSessions[i]
+    const sessionRoundId = session['round_id'] as number | null
+    const sessionStatus = session['status'] as string | null
+
+    // 只处理已提交的数据（白名单模式）
+    if (sessionStatus != SESSION_STATUS_SUBMITTED) {
+      continue
+    }
+
+    // 过滤轮次
+    if (sessionRoundId != roundId) {
+      continue
+    }
+
+    // 提取 bins 数据
+    const bins = session['bins']
+    if (bins != null) {
+      const binArray = bins as UTSJSONObject[]
+      for (let j = 0; j < binArray.length; j++) {
+        const bin = binArray[j]
+        const binCode = bin['bin_code'] as string
+        const kojiCount = bin['koji_count'] as number
+
+        binItems.push({
+          binCode: binCode,
+          kojiCount: kojiCount
+        })
+      }
+    }
+  }
+
+  // 按仓号排序（使用数值比较）
+  binItems.sort((a: ExportBinItem, b: ExportBinItem): number => {
+    return compareBinCodes(a.binCode, b.binCode)
+  })
+
+  // 计算统计信息
+  const totalBins = binItems.length
+  let totalKoji = 0
+  for (let i = 0; i < binItems.length; i++) {
+    totalKoji += binItems[i].kojiCount
+  }
+
+  // 构造导出文本
+  let text = `轮次: ${roundNo}\n`
+  text += `班级: ${classNo}\n`
+  text += `------------------------\n`
+
+  for (let i = 0; i < binItems.length; i++) {
+    const item = binItems[i]
+    text += `${item.binCode} ${item.kojiCount}\n`
+  }
+
+  text += `------------------------\n`
+  text += `共 ${totalBins} 仓，总曲坯数: ${totalKoji}\n`
+
+  return {
+    text: text,
+    totalBins: totalBins,
+    totalKoji: totalKoji,
+    roundNo: roundNo,
+    classNo: classNo
+  }
+}
+
+/**
+ * 比较两个仓号（数值比较）
+ */
+function compareBinCodes(a: string, b: string): number {
+  const parsedA = parseBinCode(a)
+  const parsedB = parseBinCode(b)
+
+  if (parsedA == null || parsedB == null) {
+    return a.localeCompare(b)
+  }
+
+  // 先比较班级
+  if (parsedA.class_no != parsedB.class_no) {
+    return parsedA.class_no - parsedB.class_no
+  }
+
+  // 再比较楼层
+  if (parsedA.floor_no != parsedB.floor_no) {
+    return parsedA.floor_no - parsedB.floor_no
+  }
+
+  // 最后比较序号
+  return parsedA.seq_no - parsedB.seq_no
+}
+
+/**
+ * 获取指定轮次的所有安曲会话
+ * 根据轮次的日期范围动态扫描，确保完整覆盖
+ * @param roundInfo 轮次信息
+ * @returns 安曲会话列表
+ */
+function getSessionsByRound(roundInfo: UTSJSONObject): UTSJSONObject[] {
+  const sessions: UTSJSONObject[] = []
+  const sessionIdSet: Set<string> = new Set()
+
+  const startedAt = roundInfo['started_at'] as number | null
+  const endedAt = roundInfo['ended_at'] as number | null
+
+  // 如果轮次没有开始时间，使用保守的回溯窗口（最近60天）
+  if (startedAt == null) {
+    const today = new Date()
+    const FALLBACK_DAYS = 60
+    for (let i = 0; i < FALLBACK_DAYS; i++) {
+      const date = new Date(today.getTime() - i * 24 * 60 * 60 * 1000)
+      const dateStr = formatDate(date)
+
+      const daySessions = getSessionsByDateAndStage(dateStr, 'AN_QU')
+      for (let j = 0; j < daySessions.length; j++) {
+        const session = daySessions[j]
+        const sessionId = session['id']
+        // 处理各种类型的 id（string | number | null）
+        if (sessionId != null) {
+          const idKey = `${sessionId}`
+          if (!sessionIdSet.has(idKey)) {
+            sessionIdSet.add(idKey)
+            sessions.push(session)
+          }
+        } else {
+          // id 为 null 的会话也保留，但不去重
+          sessions.push(session)
+        }
+      }
+    }
+    return sessions
+  }
+
+  // 检测时间戳单位（毫秒 vs 秒）
+  // 如果时间戳小于 1e12（约 2001-09-09 的毫秒数），则认为是秒
+  const startTimestamp = startedAt < 1e12 ? startedAt * 1000 : startedAt
+  const endTimestamp = endedAt != null
+    ? (endedAt < 1e12 ? endedAt * 1000 : endedAt)
+    : Date.now()
+
+  const startDate = new Date(startTimestamp)
+  const endDate = new Date(endTimestamp)
+
+  // 处理日期范围倒置的情况
+  if (startDate.getTime() > endDate.getTime()) {
+    // 交换日期
+    const temp = startDate.getTime()
+    startDate.setTime(endDate.getTime())
+    endDate.setTime(temp)
+  }
+
+  // 扫描该轮次的日期范围（加上前后各3天的缓冲）
+  const BUFFER_DAYS = 3
+  const scanStart = new Date(startDate.getTime() - BUFFER_DAYS * 24 * 60 * 60 * 1000)
+  const scanEnd = new Date(endDate.getTime() + BUFFER_DAYS * 24 * 60 * 60 * 1000)
+
+  let currentDate = new Date(scanStart.getTime())
+  while (currentDate.getTime() <= scanEnd.getTime()) {
+    const dateStr = formatDate(currentDate)
+    const daySessions = getSessionsByDateAndStage(dateStr, 'AN_QU')
+    for (let j = 0; j < daySessions.length; j++) {
+      const session = daySessions[j]
+      const sessionId = session['id']
+      // 处理各种类型的 id（string | number | null）
+      if (sessionId != null) {
+        const idKey = `${sessionId}`
+        if (!sessionIdSet.has(idKey)) {
+          sessionIdSet.add(idKey)
+          sessions.push(session)
+        }
+      } else {
+        // id 为 null 的会话也保留，但不去重
+        sessions.push(session)
+      }
+    }
+    currentDate = new Date(currentDate.getTime() + 24 * 60 * 60 * 1000)
+  }
+
+  return sessions
+}
+
+/**
+ * 格式化日期为 YYYY-MM-DD
+ */
+function formatDate(date: Date): string {
+  const year = date.getFullYear()
+  const month = (date.getMonth() + 1).toString().padStart(2, '0')
+  const day = date.getDate().toString().padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+// ============================================
+// 导入功能
+// ============================================
+
+/**
+ * 解析粘贴的安曲数据文本
+ * @param text 粘贴的文本内容
+ * @returns 解析后的数据项列表
+ */
+export function parseAnQuData(text: string): ParsedAnQuItem[] {
+  const items: ParsedAnQuItem[] = []
+  const lines = text.split('\n')
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim()
+
+    // 跳过空行和分隔线
+    if (line == '' || line.startsWith('-')) {
+      continue
+    }
+
+    // 跳过标题行
+    if (line.startsWith('轮次:') || line.startsWith('班级:') || line.startsWith('日期:') || line.startsWith('共')) {
+      continue
+    }
+
+    // 解析数据行（格式: "3-3-1 120"）
+    // 使用正则分割，支持多个空格/制表符
+    const parts = line.split(/\s+/).filter((p: string): boolean => p != '')
+    if (parts.length < 2) {
+      // 格式错误
+      items.push({
+        binCode: line,
+        kojiCount: 0,
+        lineNumber: i + 1,
+        hasError: true,
+        errorMessage: '格式错误: 缺少曲坯数量',
+        errorCode: ERROR_CODE_PARSE
+      })
+      continue
+    }
+
+    const binCode = parts[0].trim()
+    const kojiCountStr = parts[1].trim()
+
+    // 验证仓号格式
+    const parsedBin = parseBinCode(binCode)
+    if (parsedBin == null) {
+      items.push({
+        binCode: binCode,
+        kojiCount: 0,
+        lineNumber: i + 1,
+        hasError: true,
+        errorMessage: '仓号格式错误',
+        errorCode: ERROR_CODE_PARSE
+      })
+      continue
+    }
+
+    // 验证曲坯数量
+    const kojiCount = parseInt(kojiCountStr, 10)
+    if (isNaN(kojiCount)) {
+      items.push({
+        binCode: binCode,
+        kojiCount: 0,
+        lineNumber: i + 1,
+        hasError: true,
+        errorMessage: '曲坯数量格式错误',
+        errorCode: ERROR_CODE_PARSE
+      })
+      continue
+    }
+
+    // 验证曲坯数量范围
+    if (kojiCount < 1 || kojiCount > 200) {
+      items.push({
+        binCode: binCode,
+        kojiCount: kojiCount,
+        lineNumber: i + 1,
+        hasError: true,
+        errorMessage: '曲坯数量超出范围 (1-200)',
+        errorCode: ERROR_CODE_PARSE
+      })
+      continue
+    }
+
+    // 正常数据
+    items.push({
+      binCode: binCode,
+      kojiCount: kojiCount,
+      lineNumber: i + 1,
+      hasError: false,
+      errorMessage: '',
+      errorCode: ''
+    })
+  }
+
+  return items
+}
+
+/**
+ * 校验解析后的数据
+ * @param items 解析后的数据项列表
+ * @returns 校验结果
+ */
+export function validateAnQuData(items: ParsedAnQuItem[]): ValidationResult {
+  let valid = true
+  let totalBins = 0
+  let totalKoji = 0
+  const duplicateBinsSet: Set<string> = new Set()
+  const binCodeSet: Set<string> = new Set()
+
+  // 重新计算所有项的校验状态
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+
+    // 重置重复错误（使用 errorCode 判断）
+    if (item.errorCode == ERROR_CODE_DUPLICATE) {
+      item.hasError = false
+      item.errorMessage = ''
+      item.errorCode = ''
+    }
+
+    // 检查解析错误
+    if (item.hasError == true) {
+      valid = false
+      continue
+    }
+
+    // 检查重复仓号
+    if (binCodeSet.has(item.binCode)) {
+      item.hasError = true
+      item.errorMessage = '重复的仓号'
+      item.errorCode = ERROR_CODE_DUPLICATE
+      duplicateBinsSet.add(item.binCode)
+      valid = false
+      continue
+    } else {
+      binCodeSet.add(item.binCode)
+    }
+
+    // 只统计有效项
+    totalBins++
+    totalKoji += item.kojiCount
+  }
+
+  // 转换为唯一的数组
+  const duplicateBins: string[] = []
+  duplicateBinsSet.forEach((binCode: string) => {
+    duplicateBins.push(binCode)
+  })
+
+  return {
+    valid: valid,
+    items: items,
+    totalBins: totalBins,
+    totalKoji: totalKoji,
+    duplicateBins: duplicateBins
+  }
+}
