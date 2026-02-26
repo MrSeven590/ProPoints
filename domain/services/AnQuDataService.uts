@@ -12,6 +12,17 @@ import {
   parseBinCode
 } from '../models/ferment.uts'
 
+import {
+  getAnQuImportSnapshotKey
+} from '../../storage/storage-keys.uts'
+
+import {
+  saveData,
+  loadData,
+  removeData,
+  loadBins
+} from '../../storage/storage-repository.uts'
+
 // ============================================
 // 常量定义
 // ============================================
@@ -52,6 +63,26 @@ export type ValidationResult = {
   totalBins: number
   totalKoji: number
   duplicateBins: string[]
+}
+
+/**
+ * 导入的安曲快照数据项
+ */
+export type ImportedAnQuBin = {
+  binCode: string
+  binId: number | null  // 映射结果，null 表示未映射
+  kojiCount: number
+}
+
+/**
+ * 导入的安曲快照
+ */
+export type ImportedAnQuSnapshot = {
+  classNo: number
+  roundId: number
+  importedAt: number
+  source: string  // 'clipboard'
+  bins: ImportedAnQuBin[]
 }
 
 /**
@@ -461,4 +492,392 @@ export function validateAnQuData(items: ParsedAnQuItem[]): ValidationResult {
     totalKoji: totalKoji,
     duplicateBins: duplicateBins
   }
+}
+
+// ============================================
+// 导入快照功能
+// ============================================
+
+/**
+ * 保存导入的安曲快照
+ * @param classNo 班级编号
+ * @param roundId 轮次ID
+ * @param items 校验通过的数据项
+ * @returns 保存的快照数据
+ */
+export function saveAnQuImportSnapshot(classNo: number, roundId: number, items: ParsedAnQuItem[]): ImportedAnQuSnapshot {
+  // 加载所有曲块数据用于映射
+  const allBins = loadBins()
+
+  // 构建 binCode -> bin_id 映射表
+  const binCodeMap = new Map<string, number>()
+  for (let i = 0; i < allBins.length; i++) {
+    const bin = allBins[i]
+    const binClassNo = bin['class_no'] as number
+    const floorNo = bin['floor_no'] as number
+    const seqNo = bin['seq_no'] as number
+    const binId = bin['id'] as number
+    const binCode = `${binClassNo}-${floorNo}-${seqNo}`
+    binCodeMap.set(binCode, binId)
+  }
+
+  // 转换为快照格式，尝试映射 bin_id
+  const bins: ImportedAnQuBin[] = []
+  const skippedCrossClassBins: string[] = []
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+
+    // 跳过有错误的项
+    if (item.hasError) {
+      continue
+    }
+
+    // 验证 binCode 是否属于当前班级
+    const parsed = parseBinCode(item.binCode)
+    if (parsed != null && parsed.class_no != classNo) {
+      // 跨班级数据，记录并跳过
+      skippedCrossClassBins.push(item.binCode)
+      continue
+    }
+
+    // 尝试映射 bin_id
+    const binId = binCodeMap.get(item.binCode)
+
+    bins.push({
+      binCode: item.binCode,
+      binId: binId != null ? binId : null,
+      kojiCount: item.kojiCount
+    })
+  }
+
+  // 如果有跨班级数据被跳过，记录日志
+  if (skippedCrossClassBins.length > 0) {
+    console.log(`[AnQuImport] 跨班级数据已跳过: ${skippedCrossClassBins.join(', ')}`)
+  }
+
+  // 构建快照
+  const snapshot: ImportedAnQuSnapshot = {
+    classNo: classNo,
+    roundId: roundId,
+    importedAt: Date.now(),
+    source: 'clipboard',
+    bins: bins
+  }
+
+  // 保存到 Storage
+  const key = getAnQuImportSnapshotKey(classNo, roundId)
+  const data = {
+    classNo: snapshot.classNo,
+    roundId: snapshot.roundId,
+    importedAt: snapshot.importedAt,
+    source: snapshot.source,
+    bins: snapshot.bins
+  } as UTSJSONObject
+  saveData(key, data)
+
+  return snapshot
+}
+
+/**
+ * 加载导入的安曲快照
+ * @param classNo 班级编号
+ * @param roundId 轮次ID
+ * @returns 快照数据，不存在返回 null
+ */
+export function loadAnQuImportSnapshot(classNo: number, roundId: number): ImportedAnQuSnapshot | null {
+  const key = getAnQuImportSnapshotKey(classNo, roundId)
+  const data = loadData(key)
+
+  if (data == null) {
+    return null
+  }
+
+  // 容错处理：检查 bins 字段
+  const binsData = data['bins']
+  if (binsData == null) {
+    console.warn(`[AnQuImport] 快照数据缺少 bins 字段: ${key}`)
+    return null
+  }
+
+  const bins = binsData as UTSJSONObject[]
+  const importedBins: ImportedAnQuBin[] = []
+
+  for (let i = 0; i < bins.length; i++) {
+    const bin = bins[i]
+    importedBins.push({
+      binCode: bin['binCode'] as string,
+      binId: bin['binId'] as number | null,
+      kojiCount: bin['kojiCount'] as number
+    })
+  }
+
+  return {
+    classNo: data['classNo'] as number,
+    roundId: data['roundId'] as number,
+    importedAt: data['importedAt'] as number,
+    source: data['source'] as string,
+    bins: importedBins
+  }
+}
+
+/**
+ * 删除导入的安曲快照
+ * @param classNo 班级编号
+ * @param roundId 轮次ID
+ */
+export function deleteAnQuImportSnapshot(classNo: number, roundId: number): void {
+  const key = getAnQuImportSnapshotKey(classNo, roundId)
+  removeData(key)
+}
+
+// ============================================
+// 曲坯数量查询 API
+// ============================================
+
+/**
+ * 曲坯数量查询结果
+ */
+export type KojiLookupResult = {
+  kojiCount: number | null
+  source: string  // 'real' | 'imported' | 'none'
+  binCode: string
+  binId: number | null
+}
+
+/**
+ * 查询指定轮次和曲块的曲坯数量
+ * 优先从真实AN_QU会话读取，如果没有则从导入快照读取
+ * @param roundId 轮次ID
+ * @param binCode 曲块编号
+ * @param binId 曲块ID（可选，用于加速查询）
+ * @returns 查询结果
+ */
+export function lookupKojiCount(roundId: number, binCode: string, binId: number | null): KojiLookupResult {
+  const classNo = getCurrentClassNo()
+
+  // 1. 尝试从真实AN_QU会话读取
+  const realKojiCount = getKojiCountFromRealSessions(roundId, binCode, binId)
+  if (realKojiCount != null) {
+    return {
+      kojiCount: realKojiCount,
+      source: 'real',
+      binCode: binCode,
+      binId: binId
+    }
+  }
+
+  // 2. 尝试从导入快照读取
+  const snapshot = loadAnQuImportSnapshot(classNo, roundId)
+  if (snapshot != null) {
+    for (let i = 0; i < snapshot.bins.length; i++) {
+      const bin = snapshot.bins[i]
+      if (bin.binCode == binCode) {
+        return {
+          kojiCount: bin.kojiCount,
+          source: 'imported',
+          binCode: binCode,
+          binId: bin.binId
+        }
+      }
+    }
+  }
+
+  // 3. 未找到数据
+  return {
+    kojiCount: null,
+    source: 'none',
+    binCode: binCode,
+    binId: binId
+  }
+}
+
+/**
+ * 批量查询曲坯数量（优化版本）
+ * @param roundId 轮次ID
+ * @param binCodes 曲块编号列表
+ * @returns 查询结果列表
+ */
+export function lookupKojiCountBatch(roundId: number, binCodes: string[]): KojiLookupResult[] {
+  const classNo = getCurrentClassNo()
+
+  // 1. 预构建真实会话的 binCode -> kojiCount 映射
+  const realKojiMap = buildRealKojiMap(roundId)
+
+  // 2. 加载导入快照（一次性）
+  const snapshot = loadAnQuImportSnapshot(classNo, roundId)
+  const importedKojiMap = new Map<string, number>()
+  if (snapshot != null) {
+    for (let i = 0; i < snapshot.bins.length; i++) {
+      const bin = snapshot.bins[i]
+      importedKojiMap.set(bin.binCode, bin.kojiCount)
+    }
+  }
+
+  // 3. 批量查询
+  const results: KojiLookupResult[] = []
+  for (let i = 0; i < binCodes.length; i++) {
+    const binCode = binCodes[i]
+
+    // 优先从真实数据查询
+    const realKoji = realKojiMap.get(binCode)
+    if (realKoji != null) {
+      results.push({
+        kojiCount: realKoji,
+        source: 'real',
+        binCode: binCode,
+        binId: null
+      })
+      continue
+    }
+
+    // 从导入数据查询
+    const importedKoji = importedKojiMap.get(binCode)
+    if (importedKoji != null) {
+      results.push({
+        kojiCount: importedKoji,
+        source: 'imported',
+        binCode: binCode,
+        binId: null
+      })
+      continue
+    }
+
+    // 未找到
+    results.push({
+      kojiCount: null,
+      source: 'none',
+      binCode: binCode,
+      binId: null
+    })
+  }
+
+  return results
+}
+
+/**
+ * 构建真实会话的 binCode -> kojiCount 映射
+ * @param roundId 轮次ID
+ * @returns Map<binCode, kojiCount>
+ */
+function buildRealKojiMap(roundId: number): Map<string, number> {
+  const kojiMap = new Map<string, number>()
+
+  // 获取轮次信息
+  const allRounds = loadRounds()
+  let roundInfo: UTSJSONObject | null = null
+  for (let i = 0; i < allRounds.length; i++) {
+    const id = allRounds[i]['id'] as number
+    if (id == roundId) {
+      roundInfo = allRounds[i]
+      break
+    }
+  }
+
+  if (roundInfo == null) {
+    return kojiMap
+  }
+
+  // 收集该轮次的所有安曲会话
+  const allSessions = getSessionsByRound(roundInfo)
+
+  // 遍历会话构建映射
+  for (let i = 0; i < allSessions.length; i++) {
+    const session = allSessions[i]
+    const sessionRoundId = session['round_id'] as number | null
+    const sessionStatus = session['status'] as string | null
+
+    // 只处理已提交的数据
+    if (sessionStatus != SESSION_STATUS_SUBMITTED) {
+      continue
+    }
+
+    // 过滤轮次
+    if (sessionRoundId != roundId) {
+      continue
+    }
+
+    // 提取 bins 数据
+    const bins = session['bins']
+    if (bins != null) {
+      const binArray = bins as UTSJSONObject[]
+      for (let j = 0; j < binArray.length; j++) {
+        const bin = binArray[j]
+        const binCode = bin['bin_code'] as string
+        const kojiCount = bin['koji_count'] as number
+        kojiMap.set(binCode, kojiCount)
+      }
+    }
+  }
+
+  return kojiMap
+}
+
+/**
+ * 从真实AN_QU会话中获取曲坯数量
+ * @param roundId 轮次ID
+ * @param binCode 曲块编号
+ * @param binId 曲块ID（可选）
+ * @returns 曲坯数量，未找到返回 null
+ */
+function getKojiCountFromRealSessions(roundId: number, binCode: string, binId: number | null): number | null {
+  // 获取轮次信息
+  const allRounds = loadRounds()
+  let roundInfo: UTSJSONObject | null = null
+  for (let i = 0; i < allRounds.length; i++) {
+    const id = allRounds[i]['id'] as number
+    if (id == roundId) {
+      roundInfo = allRounds[i]
+      break
+    }
+  }
+
+  if (roundInfo == null) {
+    return null
+  }
+
+  // 收集该轮次的所有安曲会话
+  const allSessions = getSessionsByRound(roundInfo)
+
+  // 遍历会话查找匹配的曲块
+  for (let i = 0; i < allSessions.length; i++) {
+    const session = allSessions[i]
+    const sessionRoundId = session['round_id'] as number | null
+    const sessionStatus = session['status'] as string | null
+
+    // 只处理已提交的数据
+    if (sessionStatus != SESSION_STATUS_SUBMITTED) {
+      continue
+    }
+
+    // 过滤轮次
+    if (sessionRoundId != roundId) {
+      continue
+    }
+
+    // 查找 bins 数据
+    const bins = session['bins']
+    if (bins != null) {
+      const binArray = bins as UTSJSONObject[]
+      for (let j = 0; j < binArray.length; j++) {
+        const bin = binArray[j]
+        const sessionBinCode = bin['bin_code'] as string
+
+        // 匹配 binCode
+        if (sessionBinCode == binCode) {
+          return bin['koji_count'] as number
+        }
+
+        // 如果提供了 binId，也尝试匹配
+        if (binId != null) {
+          const sessionBinId = bin['bin_id'] as number | null
+          if (sessionBinId == binId) {
+            return bin['koji_count'] as number
+          }
+        }
+      }
+    }
+  }
+
+  return null
 }

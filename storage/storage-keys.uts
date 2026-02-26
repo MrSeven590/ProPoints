@@ -302,3 +302,14 @@ export function isConfigKey(key: string): boolean {
 export function isDataKey(key: string): boolean {
   return key.startsWith(`${KEY_PREFIX}:data:`)
 }
+
+// ============ 安曲导入快照 Key ============
+
+/**
+ * 安曲导入快照 Key
+ * 格式: pp:import:anqu:{classNo}:{roundId}
+ * 存储: 导入的安曲数据快照
+ */
+export function getAnQuImportSnapshotKey(classNo: number, roundId: number): string {
+  return `${KEY_PREFIX}:import:anqu:${classNo}:${roundId}`
+}

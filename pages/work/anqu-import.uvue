@@ -7,6 +7,15 @@
     <!-- #ifdef APP -->
     <scroll-view class="content" scroll-y="true">
     <!-- #endif -->
+      <!-- 轮次选择 -->
+      <view class="section" v-if="step == 'input'">
+        <text class="section-title">选择轮次</text>
+        <view class="round-selector" @click="onShowRoundPicker">
+          <text class="round-selector-text">{{ getSelectedRoundText() }}</text>
+          <text class="round-selector-arrow">›</text>
+        </view>
+      </view>
+
       <!-- 粘贴输入区域 -->
       <view class="section" v-if="step == 'input'">
         <text class="section-title">粘贴数据</text>
@@ -129,6 +138,32 @@
         </view>
       </view>
     </view>
+
+    <!-- 轮次选择器 -->
+    <view class="modal-mask" v-if="showRoundPicker" @click="onRoundPickerCancel">
+      <view class="modal-content picker-modal" @click.stop="">
+        <view class="modal-header">
+          <text class="modal-title">选择轮次</text>
+        </view>
+        <view class="picker-body">
+          <picker-view class="picker-view" :value="[pickerSelectedIndex]" @change="onRoundPickerChange">
+            <picker-view-column>
+              <view class="picker-item" v-for="(round, index) in rounds" :key="index">
+                <text class="picker-item-text">{{ round['year'] }}年 第{{ round['round_no'] }}轮{{ round['micro_enabled'] ? ' (微生物)' : '' }}</text>
+              </view>
+            </picker-view-column>
+          </picker-view>
+        </view>
+        <view class="modal-footer">
+          <view class="modal-btn cancel-btn" @click="onRoundPickerCancel">
+            <text class="modal-btn-text">取消</text>
+          </view>
+          <view class="modal-btn confirm-btn" @click="onRoundPickerConfirm">
+            <text class="modal-btn-text">确定</text>
+          </view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -137,12 +172,18 @@
     parseAnQuData,
     validateAnQuData,
     ParsedAnQuItem,
-    ValidationResult
+    ValidationResult,
+    saveAnQuImportSnapshot
   } from '../../domain/services/AnQuDataService.uts'
 
   import {
     parseBinCode
   } from '../../domain/models/ferment.uts'
+
+  import {
+    getCurrentClassNo,
+    loadRounds
+  } from '../../domain/stores/AppStore.uts'
 
   export default {
     data() {
@@ -159,7 +200,43 @@
         showEditModal: false as boolean,
         editIndex: -1 as number,
         editBinCode: '' as string,
-        editKojiCount: '' as string
+        editKojiCount: '' as string,
+        // 轮次选择
+        rounds: [] as UTSJSONObject[],
+        selectedRoundId: null as number | null,
+        showRoundPicker: false as boolean,
+        tempSelectedRoundId: null as number | null,
+        pickerSelectedIndex: 0 as number
+      }
+    },
+
+    onLoad() {
+      // 加载轮次列表（过滤当前班级并按ID降序排序）
+      const classNo = getCurrentClassNo()
+      const allRounds = loadRounds()
+      const filteredRounds: UTSJSONObject[] = []
+
+      for (let i = 0; i < allRounds.length; i++) {
+        const round = allRounds[i]
+        const roundClassNo = round['class_no'] as number | null
+        if (roundClassNo == null || roundClassNo == classNo) {
+          filteredRounds.push(round)
+        }
+      }
+
+      // 按 ID 降序排序（最新的在前）
+      filteredRounds.sort((a: UTSJSONObject, b: UTSJSONObject): number => {
+        const idA = a['id'] as number
+        const idB = b['id'] as number
+        return idB - idA
+      })
+
+      this.rounds = filteredRounds
+
+      // 默认选择最新轮次（第一个）
+      if (this.rounds.length > 0) {
+        const latestRound = this.rounds[0]
+        this.selectedRoundId = latestRound['id'] as number
       }
     },
 
@@ -289,19 +366,96 @@
           return
         }
 
+        if (this.selectedRoundId == null) {
+          uni.showToast({
+            title: '请选择轮次',
+            icon: 'none'
+          })
+          return
+        }
+
+        const classNo = getCurrentClassNo()
+        const roundId = this.selectedRoundId!
+
         uni.showModal({
           title: '确认导入',
-          content: `即将导入 ${this.validationResult.totalBins} 仓数据，总曲坯数 ${this.validationResult.totalKoji}。\n\n注意: 导入功能暂未实现，请联系开发人员。`,
+          content: `即将导入 ${this.validationResult.totalBins} 仓数据，总曲坯数 ${this.validationResult.totalKoji}。\n\n导入后可在其他环节查询使用。`,
           success: (res) => {
             if (res.confirm == true) {
-              // TODO: 实现导入逻辑
-              uni.showToast({
-                title: '导入功能开发中',
-                icon: 'none'
-              })
+              try {
+                // 保存导入快照
+                saveAnQuImportSnapshot(classNo, roundId, this.validationResult.items)
+
+                uni.showToast({
+                  title: '导入成功',
+                  icon: 'success',
+                  duration: 2000
+                })
+
+                // 延迟返回上一页
+                setTimeout(() => {
+                  uni.navigateBack()
+                }, 2000)
+              } catch (e) {
+                uni.showToast({
+                  title: '导入失败: ' + e,
+                  icon: 'none',
+                  duration: 3000
+                })
+              }
             }
           }
         })
+      },
+
+      onShowRoundPicker() {
+        // 保存当前选择作为临时值
+        this.tempSelectedRoundId = this.selectedRoundId
+        // 找到当前选择在列表中的索引
+        for (let i = 0; i < this.rounds.length; i++) {
+          if ((this.rounds[i]['id'] as number) == this.selectedRoundId) {
+            this.pickerSelectedIndex = i
+            break
+          }
+        }
+        this.showRoundPicker = true
+      },
+
+      onRoundPickerChange(e: UniPickerViewChangeEvent) {
+        const index = e.detail.value[0]
+        this.pickerSelectedIndex = index
+        if (index >= 0 && index < this.rounds.length) {
+          this.tempSelectedRoundId = this.rounds[index]['id'] as number
+        }
+      },
+
+      onRoundPickerCancel() {
+        // 恢复原选择
+        this.tempSelectedRoundId = this.selectedRoundId
+        this.showRoundPicker = false
+      },
+
+      onRoundPickerConfirm() {
+        // 提交临时选择
+        this.selectedRoundId = this.tempSelectedRoundId
+        this.showRoundPicker = false
+      },
+
+      getSelectedRoundText(): string {
+        if (this.selectedRoundId == null) {
+          return '请选择轮次'
+        }
+        for (let i = 0; i < this.rounds.length; i++) {
+          const round = this.rounds[i]
+          if ((round['id'] as number) == this.selectedRoundId) {
+            const year = round['year'] as number
+            const roundNo = round['round_no'] as number
+            const microEnabled = round['micro_enabled'] as boolean
+            const microText = microEnabled ? ' (微生物)' : ''
+            return `${year}年 第${roundNo}轮${microText}`
+          }
+        }
+        return '请选择轮次'
       }
     }
   }
@@ -608,5 +762,52 @@
 
   .cancel-btn .modal-btn-text {
     color: #999999;
+  }
+
+  /* 轮次选择器样式 */
+  .round-selector {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px;
+    background-color: #f8f8f8;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: #e0e0e0;
+    border-style: solid;
+  }
+
+  .round-selector-text {
+    font-size: 16px;
+    color: #333333;
+  }
+
+  .round-selector-arrow {
+    font-size: 24px;
+    color: #999999;
+  }
+
+  .picker-modal {
+    width: 320px;
+  }
+
+  .picker-body {
+    height: 200px;
+  }
+
+  .picker-view {
+    width: 100%;
+    height: 100%;
+  }
+
+  .picker-item {
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .picker-item-text {
+    font-size: 16px;
+    color: #333333;
   }
 </style>
