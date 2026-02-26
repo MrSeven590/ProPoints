@@ -219,8 +219,8 @@
 
       for (let i = 0; i < allRounds.length; i++) {
         const round = allRounds[i]
-        const roundClassNo = round['class_no'] as number | null
-        if (roundClassNo == null || roundClassNo == classNo) {
+        const roundClassNo = round['class_no'] as number
+        if (roundClassNo == classNo) {
           filteredRounds.push(round)
         }
       }

@@ -245,50 +245,14 @@ function getSessionsByRound(roundInfo: UTSJSONObject): UTSJSONObject[] {
   const sessions: UTSJSONObject[] = []
   const sessionIdSet: Set<string> = new Set()
 
-  const startedAt = roundInfo['started_at'] as number | null
+  const startedAt = roundInfo['started_at'] as number
   const endedAt = roundInfo['ended_at'] as number | null
 
-  // 如果轮次没有开始时间，使用保守的回溯窗口（最近60天）
-  if (startedAt == null) {
-    const today = new Date()
-    const FALLBACK_DAYS = 60
-    for (let i = 0; i < FALLBACK_DAYS; i++) {
-      const date = new Date(today.getTime() - i * 24 * 60 * 60 * 1000)
-      const dateStr = formatDate(date)
-
-      const daySessions = getSessionsByDateAndStage(dateStr, 'AN_QU')
-      for (let j = 0; j < daySessions.length; j++) {
-        const session = daySessions[j]
-        const sessionId = session['id']
-        // 处理各种类型的 id（string | number | null）
-        if (sessionId != null) {
-          const idKey = `${sessionId}`
-          if (!sessionIdSet.has(idKey)) {
-            sessionIdSet.add(idKey)
-            sessions.push(session)
-          }
-        } else {
-          // id 为 null 的会话也保留，但不去重
-          sessions.push(session)
-        }
-      }
-    }
-    return sessions
-  }
-
-  // 检测时间戳单位（毫秒 vs 秒）
-  // 如果时间戳小于 1e12（约 2001-09-09 的毫秒数），则认为是秒
-  const startTimestamp = startedAt < 1e12 ? startedAt * 1000 : startedAt
-  const endTimestamp = endedAt != null
-    ? (endedAt < 1e12 ? endedAt * 1000 : endedAt)
-    : Date.now()
-
-  const startDate = new Date(startTimestamp)
-  const endDate = new Date(endTimestamp)
+  const startDate = new Date(startedAt)
+  const endDate = new Date(endedAt != null ? endedAt : Date.now())
 
   // 处理日期范围倒置的情况
   if (startDate.getTime() > endDate.getTime()) {
-    // 交换日期
     const temp = startDate.getTime()
     startDate.setTime(endDate.getTime())
     endDate.setTime(temp)
@@ -299,7 +263,6 @@ function getSessionsByRound(roundInfo: UTSJSONObject): UTSJSONObject[] {
   const scanStart = new Date(startDate.getTime() - BUFFER_DAYS * 24 * 60 * 60 * 1000)
   const scanEnd = new Date(endDate.getTime() + BUFFER_DAYS * 24 * 60 * 60 * 1000)
 
-  // 使用日历安全的日期迭代（避免 DST 问题）
   let currentDate = new Date(scanStart.getFullYear(), scanStart.getMonth(), scanStart.getDate())
   const endDateCalendar = new Date(scanEnd.getFullYear(), scanEnd.getMonth(), scanEnd.getDate())
 
@@ -308,20 +271,13 @@ function getSessionsByRound(roundInfo: UTSJSONObject): UTSJSONObject[] {
     const daySessions = getSessionsByDateAndStage(dateStr, 'AN_QU')
     for (let j = 0; j < daySessions.length; j++) {
       const session = daySessions[j]
-      const sessionId = session['id']
-      // 处理各种类型的 id（string | number | null）
-      if (sessionId != null) {
-        const idKey = `${sessionId}`
-        if (!sessionIdSet.has(idKey)) {
-          sessionIdSet.add(idKey)
-          sessions.push(session)
-        }
-      } else {
-        // id 为 null 的会话也保留，但不去重
+      const sessionId = session['id'] as number
+      const idKey = sessionId.toString()
+      if (!sessionIdSet.has(idKey)) {
+        sessionIdSet.add(idKey)
         sessions.push(session)
       }
     }
-    // 日历安全的日期递增
     currentDate.setDate(currentDate.getDate() + 1)
   }
 
@@ -591,12 +547,7 @@ export function loadAnQuImportSnapshot(classNo: number, roundId: number): Import
     return null
   }
 
-  const binsData = data['bins']
-  if (binsData == null) {
-    return null
-  }
-
-  const bins = binsData as UTSJSONObject[]
+  const bins = data['bins'] as UTSJSONObject[]
   const importedBins: ImportedAnQuBin[] = []
 
   for (let i = 0; i < bins.length; i++) {
@@ -608,8 +559,7 @@ export function loadAnQuImportSnapshot(classNo: number, roundId: number): Import
     })
   }
 
-  const skippedData = data['skippedCrossClassBins']
-  const skippedCrossClassBins: string[] = skippedData != null ? (skippedData as string[]) : []
+  const skippedCrossClassBins = data['skippedCrossClassBins'] as string[]
 
   return {
     classNo: data['classNo'] as number,
