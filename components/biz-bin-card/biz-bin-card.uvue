@@ -40,7 +40,8 @@
     <view class="workers-section">
       <view class="workers-header">
         <text class="workers-title">人员分配</text>
-        <text class="workers-hint">站位：门口→里面</text>
+        <text v-if="stageCode == 'AN_QU'" class="workers-hint">岗位：安曲→辅助</text>
+        <text v-else class="workers-hint">站位：门口→里面</text>
       </view>
 
       <view class="worker-list">
@@ -48,7 +49,7 @@
           <!-- 人员分配行 -->
           <view class="worker-item">
             <view class="worker-position">
-              <text class="position-text">{{ index + 1 }}</text>
+              <text class="position-text">{{ getPositionLabel(index) }}</text>
             </view>
             <view class="bin-worker-selector" @click="onOpenWorkerSelector(index)">
               <text v-if="worker.personId == null" class="placeholder-text">点击选择</text>
@@ -177,7 +178,7 @@
     <view v-if="showWorkerPicker" class="picker-mask" @click="onCloseWorkerSelector">
       <view class="picker-container" @click.stop="">
         <view class="picker-header">
-          <text class="picker-title">选择人员 (站位{{ currentWorkerIndex + 1 }})</text>
+          <text class="picker-title">选择人员 ({{ getPositionLabel(currentWorkerIndex) }})</text>
           <view class="picker-close" @click="onCloseWorkerSelector">
             <text class="picker-close-text">X</text>
           </view>
@@ -198,7 +199,7 @@
 	  import { pointsToUnits, PointsUnits, formatPointsUnits } from '../../domain/models/types.uts'
 	  import type { StageCode } from '../../domain/models/types.uts'
 	  import { calcBinTotalPointsUnits } from '../../domain/services/ScoreCalculator.uts'
-	  import { calcFinalPoints } from '../../domain/models/assignment.uts'
+	  import { calcFinalPoints, getPositionLabel as getPositionLabelUtil } from '../../domain/models/assignment.uts'
 
   /**
    * 仓内工人分配项类型（含扣分信息）
@@ -989,6 +990,16 @@
           totalPointsUnits: this.totalPointsUnits
         } as UTSJSONObject
         this.$emit('kojiChange', payload)
+      },
+
+      /**
+       * 获取站位标签
+       * @param index 工人索引 (0-based)
+       * @returns 站位标签
+       */
+      getPositionLabel(index: number): string {
+        // 直接使用 this.stageCode，避免类型转换
+        return getPositionLabelUtil(this.stageCode as StageCode, index + 1)
       }
     }
   }

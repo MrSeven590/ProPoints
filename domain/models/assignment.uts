@@ -7,7 +7,8 @@ import {
   RoleCode,
   SyncStatus,
   Timestamp,
-  PointsUnits
+  PointsUnits,
+  StageCode
 } from './types.uts'
 
 // ============================================
@@ -222,4 +223,45 @@ export function calcFinalPoints(originalUnits: PointsUnits, deductedUnits: Point
     return 0
   }
   return result
+}
+
+/**
+ * 获取站位标签
+ * @param stageCode 环节代码
+ * @param positionIndex 站位序号 (1-N)
+ * @returns 站位标签
+ */
+export function getPositionLabel(stageCode: StageCode, positionIndex: number): string {
+  // 边界检查：positionIndex 必须 >= 1
+  if (positionIndex < 1) {
+    return `未知岗位(${positionIndex})`
+  }
+
+  // 安曲环节使用特定岗位名称
+  if (stageCode == 'AN_QU') {
+    if (positionIndex == 1) {
+      return '安曲'
+    } else if (positionIndex == 2) {
+      return '卡草'
+    } else if (positionIndex == 3) {
+      return '铺草'
+    } else if (positionIndex >= 4) {
+      // positionIndex >= 4: 辅助、辅助1、辅助2...
+      if (positionIndex == 4) {
+        return '辅助'
+      }
+      return `辅助${positionIndex - 4}`
+    }
+  }
+
+  // 其他环节使用通用站位标签
+  if (positionIndex == 1) {
+    return '门口'
+  } else if (positionIndex == 4) {
+    return '里面'
+  } else if (positionIndex > 4) {
+    // positionIndex > 4: 辅助1、辅助2...
+    return `辅助${positionIndex - 4}`
+  }
+  return `中${positionIndex - 1}`
 }

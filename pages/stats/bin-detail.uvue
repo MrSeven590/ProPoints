@@ -56,7 +56,7 @@
               :key="worker.positionIndex"
               class="worker-row"
             >
-              <text class="worker-cell worker-pos">{{ getPositionLabel(worker.positionIndex) }}</text>
+              <text class="worker-cell worker-pos">{{ getPositionLabelForWorker(record.stageCode, worker.positionIndex) }}</text>
               <text class="worker-cell worker-name">{{ worker.personName }}</text>
               <view class="worker-points-cell">
                 <text class="worker-points">{{ formatPoints(worker.originalUnits) }}</text>
@@ -99,6 +99,7 @@
   import { getStageName } from '../../domain/models/stage-session.uts'
   import { getSessionsByDate } from '../../domain/stores/AppStore.uts'
   import { getCurrentClassNo } from '../../domain/stores/AppStore.uts'
+  import { getPositionLabel } from '../../domain/models/assignment.uts'
 
   type WorkerInfo = {
     personId: number
@@ -111,7 +112,7 @@
 
   type HistoryRecord = {
     date: string
-    stageCode: string
+    stageCode: StageCode
     stageName: string
     roundId: number | null
     workers: WorkerInfo[]
@@ -235,7 +236,7 @@
                   if (workerInfos.length > 0) {
                     records.push({
                       date: date,
-                      stageCode: stageCode != null ? stageCode : '',
+                      stageCode: stageCode != null ? (stageCode as StageCode) : 'AN_QU',
                       stageName: stageCode != null ? getStageName(stageCode as StageCode) : '',
                       roundId: roundId,
                       workers: workerInfos,
@@ -252,16 +253,13 @@
         this.historyRecords = records
       },
       /**
-       * 获取站位标签
-       * position_index: 1=门口, 2=中间, 3=中间, 4=最里面
+       * 获取站位标签（包含环节信息）
+       * @param stageCode 环节代码
+       * @param positionIndex 站位序号
+       * @returns 站位标签
        */
-      getPositionLabel(positionIndex: number): string {
-        if (positionIndex == 1) {
-          return '门口'
-        } else if (positionIndex == 4) {
-          return '里面'
-        }
-        return `中${positionIndex - 1}`
+      getPositionLabelForWorker(stageCode: StageCode, positionIndex: number): string {
+        return getPositionLabel(stageCode, positionIndex)
       },
       formatPoints(units: PointsUnits): string {
         return formatPointsUnits(units)
