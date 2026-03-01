@@ -35,9 +35,7 @@ import {
   getAllCoefSetIds as getAllCoefSetIdsFromRepo,
   saveActiveCoefSetId as saveActiveCoefSetIdToRepo,
   loadActiveCoefSetId as loadActiveCoefSetIdFromRepo,
-  loadStageRoleDefaults as loadStageRoleDefaultsFromRepo,
-  findAnQuSessionByBinId as findAnQuSessionByBinIdFromRepo,
-  findAnQuSessionsByBinIds as findAnQuSessionsByBinIdsFromRepo
+  loadStageRoleDefaults as loadStageRoleDefaultsFromRepo
 } from '../../storage/storage-repository.uts'
 
 import { resetAllStorage as resetAllStorageFromInit } from '../../storage/init.uts'
@@ -549,37 +547,6 @@ export function loadCoefSetById(setId: number): UTSJSONObject | null {
  */
 export function loadStageRoleDefaults(): UTSJSONObject[] {
   return loadStageRoleDefaultsFromRepo()
-}
-
-// ============================================
-// 存储扫描 (Storage Scanning)
-// ============================================
-
-/**
- * 查找指定发酵仓的安曲会话
- *
- * 选择规则（确定性）：
- * 1. 优先选择 status == 'submitted'
- * 2. 然后选择最新的 session_date
- * 3. 最后选择最新的 updated_at（如果存在）
- *
- * @param binId 发酵仓ID
- * @returns 安曲会话数据，不存在时返回 null
- */
-export function findAnQuSessionByBinId(binId: number): UTSJSONObject | null {
-  return findAnQuSessionByBinIdFromRepo(binId)
-}
-
-/**
- * 批量查找多个发酵仓的安曲会话
- *
- * 性能优化：一次扫描返回所有匹配的 session
- *
- * @param binIds 发酵仓ID列表
- * @returns Map<binId, session>，每个 binId 只返回最佳匹配的 session
- */
-export function findAnQuSessionsByBinIds(binIds: number[]): Map<number, UTSJSONObject> {
-  return findAnQuSessionsByBinIdsFromRepo(binIds)
 }
 
 // ============================================

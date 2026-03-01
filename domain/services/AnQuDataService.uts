@@ -218,7 +218,9 @@ function compareBinCodes(a: string, b: string): number {
   const parsedB = parseBinCode(b)
 
   if (parsedA == null || parsedB == null) {
-    return a.localeCompare(b)
+    if (a < b) return -1
+    if (a > b) return 1
+    return 0
   }
 
   // 先比较班级

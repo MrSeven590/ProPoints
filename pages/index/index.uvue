@@ -56,7 +56,7 @@
               </view>
               <view class="session-info">
                 <text class="session-stage-name">{{ item.stage_name }}</text>
-                <text class="session-date">{{ item.session_date }}{{ item.round_id != null ? ' | 轮次' + item.round_id : '' }}</text>
+                <text class="session-date">{{ item.session_date }}{{ getRoundLabel(item.round_id) }}</text>
               </view>
             </view>
             <view class="delete-btn" @click="deleteDraft(item)">
@@ -82,7 +82,7 @@
               </view>
               <view class="session-info">
                 <text class="session-stage-name">{{ item.stage_name }}</text>
-                <text class="session-date">{{ item.session_date }}{{ item.round_id != null ? ' | 轮次' + item.round_id : '' }}</text>
+                <text class="session-date">{{ item.session_date }}{{ getRoundLabel(item.round_id) }}</text>
               </view>
             </view>
             <view class="status-badge">
@@ -97,7 +97,8 @@
 
 <script lang="uts">
   import { getTodayDateString, addDaysToDate } from '../../domain/models/types.uts'
-  import { getSessionsByDate, getAllDraftSessions, deleteDraftSession, deleteAllDraftSessions } from '../../domain/stores/AppStore.uts'
+  import { getSessionsByDate, getAllDraftSessions, deleteDraftSession, deleteAllDraftSessions, getCurrentClassNo, loadRounds } from '../../domain/stores/AppStore.uts'
+  import { getCurrentRoundId } from '../../domain/services/RoundService.uts'
 
   /**
    * 会话列表项类型
@@ -115,7 +116,8 @@
       return {
         todayDate: '',
         drafts: [] as SessionListItem[],
-        submitted: [] as SessionListItem[]
+        submitted: [] as SessionListItem[],
+        rounds: [] as UTSJSONObject[]
       }
     },
     onLoad() {
@@ -131,6 +133,7 @@
        * 加载所有会话数据
        */
       loadSessions() {
+        this.rounds = loadRounds()
         const draftList: SessionListItem[] = []
         const submittedList: SessionListItem[] = []
 
@@ -206,6 +209,21 @@
       },
 
       /**
+       * 获取轮次显示文字（通过 round_id 查 round_no）
+       */
+      getRoundLabel(roundId: number | null): string {
+        if (roundId == null) return ''
+        for (let i = 0; i < this.rounds.length; i++) {
+          const round = this.rounds[i]
+          if ((round['id'] as number) == roundId) {
+            const roundNo = round['round_no'] as number
+            return ` | 第${roundNo}轮`
+          }
+        }
+        return ` | 轮次${roundId}`
+      },
+
+      /**
        * 获取环节名称
        */
       getStageName(stageCode: string): string {
@@ -245,8 +263,18 @@
        * 跳转到录入页
        */
       goToEntry(stageCode: string) {
+        const classNo = getCurrentClassNo()
+        const roundId = getCurrentRoundId(classNo)
+        if (roundId == 0) {
+          uni.showToast({
+            title: '请先在设置中配置当前轮次',
+            icon: 'none',
+            duration: 2000
+          })
+          return
+        }
         uni.navigateTo({
-          url: `/pages/work/entry?stage=${stageCode}`
+          url: `/pages/work/entry?stage=${stageCode}&roundId=${roundId}`
         })
       },
 

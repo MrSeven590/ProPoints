@@ -4,89 +4,237 @@
       <text class="header-title">我的</text>
     </view>
 
-    <view class="section">
-      <view class="menu-item" @click="goToSettings">
-        <text class="menu-icon">设</text>
-        <text class="menu-text">通用设置</text>
-        <text class="menu-arrow">></text>
-      </view>
-      <view class="menu-item" @click="goToClassConfig">
-        <text class="menu-icon">班</text>
-        <text class="menu-text">班级配置</text>
-        <text class="menu-arrow">></text>
-      </view>
-      <view class="menu-item" @click="goToRosterImport">
-        <text class="menu-icon">名</text>
-        <text class="menu-text">花名册导入</text>
-        <text class="menu-arrow">></text>
-      </view>
-    </view>
+    <!-- #ifdef APP -->
+    <scroll-view class="content" scroll-y="true">
+    <!-- #endif -->
 
-    <view class="section">
-      <view class="menu-item" @click="goToAnQuExport">
-        <text class="menu-icon">出</text>
-        <text class="menu-text">安曲数据导出</text>
-        <text class="menu-arrow">></text>
-      </view>
-      <view class="menu-item" @click="goToAnQuImport">
-        <text class="menu-icon">入</text>
-        <text class="menu-text">安曲数据导入</text>
-        <text class="menu-arrow">></text>
-      </view>
-    </view>
+      <!-- 基础配置任务卡 -->
+      <view class="setup-card">
 
-    <view class="section">
-      <view class="menu-item danger-item" @click="clearAllData">
-        <text class="menu-icon danger-icon">清</text>
-        <text class="menu-text danger-text">清除所有数据</text>
-        <text class="menu-arrow">></text>
-      </view>
-    </view>
+        <!-- 任务模式：未全部完成 -->
+        <view v-if="!allBasicsDone">
+          <view class="setup-card-header">
+            <view class="setup-card-title-row">
+              <text class="setup-card-title">基础配置</text>
+              <text class="setup-card-progress">{{ doneCount }}/4</text>
+            </view>
+            <text class="setup-card-hint">完成以下配置后即可开始记工</text>
+          </view>
 
-    <view class="section">
-      <view class="menu-item" @click="showAbout">
-        <text class="menu-icon">关</text>
-        <text class="menu-text">关于</text>
-        <text class="menu-arrow">></text>
-      </view>
-    </view>
+          <view class="task-item" @click="goToSettings">
+            <view class="task-dot" :class="managerDone ? 'dot-done' : 'dot-todo'">
+              <text class="task-dot-text">{{ managerDone ? '✓' : '!' }}</text>
+            </view>
+            <view class="task-info">
+              <text class="task-title">管理员姓名</text>
+              <text class="task-subtitle" :class="managerDone ? 'subtitle-done' : 'subtitle-todo'">{{ managerDone ? managerName : '未填写' }}</text>
+            </view>
+            <text class="task-arrow">›</text>
+          </view>
 
-    <view class="version-info">
-      <text class="version-text">版本 1.0.0</text>
-    </view>
+          <view class="task-item" @click="goToClassConfig">
+            <view class="task-dot dot-confirm">
+              <text class="task-dot-text">›</text>
+            </view>
+            <view class="task-info">
+              <text class="task-title">当前班级</text>
+              <text class="task-subtitle subtitle-confirm">{{ classNo }}班（点击确认）</text>
+            </view>
+            <text class="task-arrow">›</text>
+          </view>
+
+          <view class="task-item" @click="goToClassConfig">
+            <view class="task-dot" :class="roundDone ? 'dot-done' : 'dot-todo'">
+              <text class="task-dot-text">{{ roundDone ? '✓' : '!' }}</text>
+            </view>
+            <view class="task-info">
+              <text class="task-title">当前轮次（含微机计分）</text>
+              <text class="task-subtitle" :class="roundDone ? 'subtitle-done' : 'subtitle-todo'">{{ roundDone ? roundLabel : '未设置' }}</text>
+            </view>
+            <text class="task-arrow">›</text>
+          </view>
+
+          <view class="task-item task-item-last" @click="goToRosterImport">
+            <view class="task-dot" :class="rosterDone ? 'dot-done' : 'dot-todo'">
+              <text class="task-dot-text">{{ rosterDone ? '✓' : '!' }}</text>
+            </view>
+            <view class="task-info">
+              <text class="task-title">花名册人员名单</text>
+              <text class="task-subtitle" :class="rosterDone ? 'subtitle-done' : 'subtitle-todo'">{{ rosterDone ? `已导入 ${personsCount} 人` : '未导入' }}</text>
+            </view>
+            <text class="task-arrow">›</text>
+          </view>
+        </view>
+
+        <!-- 摘要模式：全部完成 -->
+        <view v-else>
+          <view class="summary-done-row">
+            <text class="summary-done-badge">✓ 基础配置已完成</text>
+          </view>
+          <view class="summary-item" @click="goToSettings">
+            <text class="summary-label">管理员</text>
+            <text class="summary-value">{{ managerName }}</text>
+            <text class="task-arrow">›</text>
+          </view>
+          <view class="summary-item" @click="goToClassConfig">
+            <text class="summary-label">班级 / 轮次</text>
+            <text class="summary-value">{{ classNo }}班 · {{ roundLabel }}</text>
+            <text class="task-arrow">›</text>
+          </view>
+          <view class="summary-item summary-item-last" @click="goToRosterImport">
+            <text class="summary-label">花名册</text>
+            <text class="summary-value">{{ personsCount }} 人</text>
+            <text class="task-arrow">›</text>
+          </view>
+        </view>
+
+      </view>
+
+      <!-- 系统推荐检查 -->
+      <text class="group-label">系统推荐检查</text>
+      <view class="section">
+        <view class="menu-item" @click="goToClassConfig">
+          <text class="menu-icon icon-check">仓</text>
+          <text class="menu-text">发酵仓楼层配置</text>
+          <text class="menu-hint">去核对</text>
+          <text class="menu-arrow">›</text>
+        </view>
+        <view class="menu-item menu-item-last" @click="goToSettings">
+          <text class="menu-icon icon-check">系</text>
+          <text class="menu-text">工序系数配置</text>
+          <text class="menu-hint">去核对</text>
+          <text class="menu-arrow">›</text>
+        </view>
+      </view>
+
+      <!-- 数据管理 -->
+      <text class="group-label">数据管理</text>
+      <view class="section">
+        <view class="menu-item" @click="goToAnQuImport">
+          <text class="menu-icon">入</text>
+          <text class="menu-text">安曲数据导入</text>
+          <text class="menu-arrow">›</text>
+        </view>
+        <view class="menu-item menu-item-last" @click="goToAnQuExport">
+          <text class="menu-icon">出</text>
+          <text class="menu-text">安曲数据导出</text>
+          <text class="menu-arrow">›</text>
+        </view>
+      </view>
+
+      <!-- 系统设置 -->
+      <text class="group-label">系统设置</text>
+      <view class="section">
+        <view class="menu-item" @click="goToSettings">
+          <text class="menu-icon">设</text>
+          <text class="menu-text">通用设置</text>
+          <text class="menu-arrow">›</text>
+        </view>
+        <view class="menu-item" @click="showAbout">
+          <text class="menu-icon">关</text>
+          <text class="menu-text">关于</text>
+          <text class="menu-arrow">›</text>
+        </view>
+        <view class="menu-item menu-item-last" @click="clearAllData">
+          <text class="menu-icon icon-danger">清</text>
+          <text class="menu-text text-danger">清除所有数据</text>
+          <text class="menu-arrow">›</text>
+        </view>
+      </view>
+
+      <view class="version-info">
+        <text class="version-text">版本 1.0.0</text>
+      </view>
+
+    <!-- #ifdef APP -->
+    </scroll-view>
+    <!-- #endif -->
   </view>
 </template>
 
 <script lang="uts">
-  import { resetAllStorage } from '../../domain/stores/AppStore.uts'
+  import {
+    getManagerName,
+    getCurrentClassNo,
+    loadPersons,
+    loadRounds,
+    resetAllStorage
+  } from '../../domain/stores/AppStore.uts'
+  import { getCurrentRoundId } from '../../domain/services/RoundService.uts'
 
   export default {
+    data() {
+      return {
+        managerName: '' as string,
+        classNo: 3 as number,
+        roundId: 0 as number,
+        roundLabel: '未设置' as string,
+        personsCount: 0 as number,
+        managerDone: false as boolean,
+        roundDone: false as boolean,
+        rosterDone: false as boolean,
+        doneCount: 0 as number,
+        allBasicsDone: false as boolean
+      }
+    },
+
+    onShow() {
+      this.loadStatus()
+    },
+
     methods: {
+      loadStatus() {
+        this.managerName = getManagerName()
+        this.classNo = getCurrentClassNo()
+        this.roundId = getCurrentRoundId(this.classNo)
+        this.personsCount = loadPersons().length
+
+        // 构建轮次标签
+        this.roundLabel = '未设置'
+        let roundFound = false
+        if (this.roundId != 0) {
+          const rounds = loadRounds()
+          for (let i = 0; i < rounds.length; i++) {
+            const r = rounds[i]
+            if ((r['id'] as number) == this.roundId) {
+              const year = r['year'] as number
+              const roundNo = r['round_no'] as number
+              const microEnabled = (r['micro_enabled'] as number) == 1
+              this.roundLabel = `${year}年 第${roundNo}轮${microEnabled ? ' (有微机)' : ''}`
+              roundFound = true
+              break
+            }
+          }
+        }
+
+        // 计算完成状态
+        this.managerDone = this.managerName.trim() != ''
+        this.roundDone = roundFound
+        this.rosterDone = this.personsCount > 0
+        this.doneCount = (this.managerDone ? 1 : 0) + 1 + (this.roundDone ? 1 : 0) + (this.rosterDone ? 1 : 0)
+        this.allBasicsDone = this.managerDone && this.roundDone && this.rosterDone
+      },
+
       goToSettings() {
-        uni.navigateTo({
-          url: '/pages/mine/settings'
-        })
+        uni.navigateTo({ url: '/pages/mine/settings' })
       },
+
       goToClassConfig() {
-        uni.navigateTo({
-          url: '/pages/mine/class-config'
-        })
+        uni.navigateTo({ url: '/pages/mine/class-config' })
       },
+
       goToRosterImport() {
-        uni.navigateTo({
-          url: '/pages/mine/roster-import'
-        })
+        uni.navigateTo({ url: '/pages/mine/roster-import' })
       },
-      goToAnQuExport() {
-        uni.navigateTo({
-          url: '/pages/work/anqu-export'
-        })
-      },
+
       goToAnQuImport() {
-        uni.navigateTo({
-          url: '/pages/work/anqu-import'
-        })
+        uni.navigateTo({ url: '/pages/work/anqu-import' })
       },
+
+      goToAnQuExport() {
+        uni.navigateTo({ url: '/pages/work/anqu-export' })
+      },
+
       clearAllData() {
         uni.showModal({
           title: '警告',
@@ -97,27 +245,18 @@
             if (res.confirm == true) {
               try {
                 resetAllStorage()
-                uni.showToast({
-                  title: '数据已清除',
-                  icon: 'success'
-                })
-                // 延迟重启应用
+                uni.showToast({ title: '数据已清除', icon: 'success' })
                 setTimeout(() => {
-                  uni.reLaunch({
-                    url: '/pages/index/index'
-                  })
+                  uni.reLaunch({ url: '/pages/index/index' })
                 }, 1500)
               } catch (e) {
-                uni.showToast({
-                  title: '清除失败',
-                  icon: 'none'
-                })
-                console.error('清除数据失败:', e)
+                uni.showToast({ title: '清除失败', icon: 'none' })
               }
             }
           }
         })
       },
+
       showAbout() {
         uni.showModal({
           title: '关于',
@@ -132,7 +271,7 @@
 <style>
   .page-container {
     flex: 1;
-    background-color: #f5f5f5;
+    background-color: #f0f2f5;
   }
 
   .header {
@@ -146,20 +285,182 @@
     color: #ffffff;
   }
 
-  .section {
+  .content {
+    flex: 1;
+  }
+
+  /* ── 任务卡 ── */
+  .setup-card {
     margin: 12px;
     background-color: #ffffff;
-    border-radius: 8px;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .setup-card-header {
+    padding: 16px 16px 8px 16px;
+  }
+
+  .setup-card-title-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+
+  .setup-card-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333333;
+  }
+
+  .setup-card-progress {
+    font-size: 14px;
+    color: #ff6b00;
+    font-weight: bold;
+  }
+
+  .setup-card-hint {
+    font-size: 12px;
+    color: #999999;
+    margin-bottom: 4px;
+  }
+
+  /* 任务行 */
+  .task-item {
+    flex-direction: row;
+    align-items: center;
+    padding: 14px 16px;
+    border-top-width: 1px;
+    border-top-color: #f0f0f0;
+    border-top-style: solid;
+  }
+
+  .task-item-last {
+    /* 最后一项无需特殊处理，card overflow:hidden 会处理圆角 */
+  }
+
+  .task-dot {
+    width: 24px;
+    height: 24px;
+    border-radius: 12px;
+    align-items: center;
+    justify-content: center;
+    margin-right: 12px;
+  }
+
+  .dot-done {
+    background-color: #34c759;
+  }
+
+  .dot-todo {
+    background-color: #ff3b30;
+  }
+
+  .dot-confirm {
+    background-color: #007aff;
+  }
+
+  .task-dot-text {
+    font-size: 12px;
+    color: #ffffff;
+    font-weight: bold;
+  }
+
+  .task-info {
+    flex: 1;
+  }
+
+  .task-title {
+    font-size: 15px;
+    color: #333333;
+  }
+
+  .task-subtitle {
+    font-size: 12px;
+    margin-top: 2px;
+  }
+
+  .subtitle-done {
+    color: #34c759;
+  }
+
+  .subtitle-todo {
+    color: #ff3b30;
+  }
+
+  .subtitle-confirm {
+    color: #007aff;
+  }
+
+  .task-arrow {
+    font-size: 20px;
+    color: #cccccc;
+    margin-left: 8px;
+  }
+
+  /* 摘要模式 */
+  .summary-done-row {
+    padding: 14px 16px 10px 16px;
+  }
+
+  .summary-done-badge {
+    font-size: 14px;
+    font-weight: bold;
+    color: #34c759;
+  }
+
+  .summary-item {
+    flex-direction: row;
+    align-items: center;
+    padding: 12px 16px;
+    border-top-width: 1px;
+    border-top-color: #f0f0f0;
+    border-top-style: solid;
+  }
+
+  .summary-item-last {
+    /* no extra style needed */
+  }
+
+  .summary-label {
+    font-size: 13px;
+    color: #999999;
+    width: 72px;
+  }
+
+  .summary-value {
+    flex: 1;
+    font-size: 14px;
+    color: #333333;
+  }
+
+  /* ── 分组标签 ── */
+  .group-label {
+    font-size: 12px;
+    color: #999999;
+    padding: 12px 16px 4px 16px;
+  }
+
+  /* ── 菜单分组 ── */
+  .section {
+    margin: 0 12px 12px 12px;
+    background-color: #ffffff;
+    border-radius: 10px;
     overflow: hidden;
   }
 
   .menu-item {
     flex-direction: row;
     align-items: center;
-    padding: 16px;
+    padding: 15px 16px;
     border-bottom-width: 1px;
     border-bottom-color: #f0f0f0;
     border-bottom-style: solid;
+  }
+
+  .menu-item-last {
+    border-bottom-width: 0;
   }
 
   .menu-icon {
@@ -168,10 +469,18 @@
     background-color: #007aff;
     border-radius: 6px;
     color: #ffffff;
-    font-size: 14px;
+    font-size: 13px;
     text-align: center;
     line-height: 32px;
     margin-right: 12px;
+  }
+
+  .icon-check {
+    background-color: #ff9500;
+  }
+
+  .icon-danger {
+    background-color: #ff3b30;
   }
 
   .menu-text {
@@ -180,30 +489,29 @@
     color: #333333;
   }
 
-  .menu-arrow {
-    font-size: 16px;
-    color: #cccccc;
-  }
-
-  .danger-item {
-    border-bottom-width: 0;
-  }
-
-  .danger-icon {
-    background-color: #ff3b30;
-  }
-
-  .danger-text {
+  .text-danger {
     color: #ff3b30;
   }
 
+  .menu-hint {
+    font-size: 12px;
+    color: #ff9500;
+    margin-right: 4px;
+  }
+
+  .menu-arrow {
+    font-size: 20px;
+    color: #cccccc;
+  }
+
+  /* ── 底部版本 ── */
   .version-info {
-    padding: 20px;
+    padding: 16px;
     align-items: center;
   }
 
   .version-text {
     font-size: 12px;
-    color: #999999;
+    color: #cccccc;
   }
 </style>

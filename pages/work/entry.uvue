@@ -367,7 +367,6 @@ import type { AssignmentSourceCreateParams } from "../../domain/models/assignmen
 import { getRoleName as _getRoleName } from "../../domain/models/assignment.uts";
 import type { BinInfo } from "../../domain/services/ScoreAllocator.uts";
 import { allocateCrossBinPoints } from "../../domain/services/ScoreAllocator.uts";
-import { getBinKojiCountFromAnQu } from "../../domain/services/DuiQuBaseService.uts";
 import {
   saveDraftSession,
   saveSubmittedSession,
@@ -389,6 +388,11 @@ import {
   isMicroEnabledForCurrentRound,
   isMicroEnabledByRoundId,
 } from "../../domain/services/RoundService.uts";
+import {
+  loadAnQuImportSnapshot,
+  lookupKojiCount,
+  lookupKojiCountBatch,
+} from "../../domain/services/AnQuDataService.uts";
 
 // 系数版本常量
 const DEFAULT_COEF_SET_ID = 260000;
@@ -474,6 +478,7 @@ export default {
       draftRevision: 0 as number,
       savedRevision: 0 as number,
       isSubmitting: false as boolean,
+      anQuDataAlertShown: false as boolean,
       sessionStatus: "draft" as string,
       // 审计字段（管理员姓名快照）
       createdByManager: "" as string,
@@ -550,6 +555,9 @@ export default {
     // 使用新的原子状态交换方式
     const initialState = this.buildStateForDate(this.sessionDate);
     this.applyState(initialState);
+
+    // 检查当前轮次是否有安曲数据（仅翻曲/拆曲工序）
+    this.checkAnQuData();
   },
   onHide() {
     // 页面隐藏时立即保存草稿
@@ -1261,6 +1269,23 @@ export default {
         this.stageCode == "ER_FAN" ||
         this.stageCode == "CHAI_QU";
 
+      // 批量查询安曲数据，一次扫描替代逐仓查询
+      const kojiMap = new Map<string, number>()
+      if (needFetchFromAnQu && this.roundId != null && this.roundId != 0) {
+        const binCodes: string[] = []
+        for (let k = 0; k < bins.length; k++) {
+          const b = bins[k]
+          binCodes.push(`${b.class_no}-${b.floor_no}-${b.seq_no}`)
+        }
+        const batchResults = lookupKojiCountBatch(this.roundId!, binCodes)
+        for (let k = 0; k < batchResults.length; k++) {
+          const r = batchResults[k]
+          if (r.kojiCount != null) {
+            kojiMap.set(r.binCode, r.kojiCount)
+          }
+        }
+      }
+
       for (let i = 0; i < bins.length; i++) {
         const bin = bins[i];
         const binCode = `${bin.class_no}-${bin.floor_no}-${bin.seq_no}`;
@@ -1270,12 +1295,16 @@ export default {
         let kojiCount = 0;
 
         if (needFetchFromAnQu) {
-          // 非安曲环节：从安曲记录获取曲坯数
-          const result = getBinKojiCountFromAnQu(binId);
-          if (result.found == true) {
-            kojiCount = result.kojiCount;
+          // 非安曲环节：从安曲记录获取曲坯数（优先真实会话，其次导入快照）
+          if (this.roundId != null && this.roundId != 0) {
+            const cached = kojiMap.get(binCode)
+            if (cached != null) {
+              kojiCount = cached;
+            } else {
+              missingBins.push(binCode);
+              kojiCount = 0;
+            }
           } else {
-            // 记录缺失安曲记录的仓
             missingBins.push(binCode);
             kojiCount = 0;
           }
@@ -1548,11 +1577,49 @@ export default {
     },
 
     /**
+     * 检查当前轮次是否有安曲数据（仅翻曲/拆曲工序触发）
+     * 无数据时弹窗提示，本次页面生命周期内只弹一次
+     */
+    checkAnQuData() {
+      const ANQU_REQUIRED_STAGES = ['YI_FAN', 'ER_FAN', 'CHAI_QU']
+      if (ANQU_REQUIRED_STAGES.indexOf(this.stageCode as string) == -1) return
+      if (this.roundId == null || this.roundId == 0) return
+      if (this.anQuDataAlertShown) return
+
+      const classNo = getCurrentClassNo()
+      const snapshot = loadAnQuImportSnapshot(classNo, this.roundId!)
+      if (snapshot != null && snapshot.bins.length > 0) return
+
+      // 也检查真实 AN_QU 会话（防止已正常录入时误报）
+      if (this.stageBinInfos.length == 0) return
+      const firstBinCode = this.stageBinInfos[0].bin_code
+      const lookupResult = lookupKojiCount(this.roundId!, firstBinCode, null)
+      if (lookupResult.kojiCount != null) return
+
+      this.anQuDataAlertShown = true
+      uni.showModal({
+        title: '⚠️ 缺少安曲数据',
+        content: '未检测到当前轮次的曲坯数量数据，可能影响工分计算。\n\n建议先导入安曲数据。',
+        confirmText: '去导入',
+        cancelText: '坚持录入',
+        success: (res) => {
+          if (res.confirm == true) {
+            uni.navigateTo({ url: `/pages/work/anqu-import?roundId=${this.roundId}` })
+          }
+        }
+      })
+    },
+
+    /**
      * 跳转到安曲录入页面
      */
     goToAnQuEntry() {
+      let url = '/pages/work/entry?stage=AN_QU'
+      if (this.roundId != null) {
+        url = url + `&roundId=${this.roundId}`
+      }
       uni.navigateTo({
-        url: "/pages/work/entry?stage=AN_QU",
+        url: url,
       });
     },
 

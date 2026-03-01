@@ -696,12 +696,12 @@ function sortRulesByCategory(rules: ValidationRule[]): ValidationRule[] {
 
 /**
  * 规则 1: struct.manager.required
- * 管理员姓名必填（仅 submit 模式）
+ * 管理员姓名必填（draft 和 submit 模式均阻塞）
  */
 registerRule({
   id: 'struct.manager.required',
   category: 'structure',
-  modes: ['submit'],
+  modes: ['draft', 'submit'],
   fn: (data: NormalizedSessionData, ctx: ValidationContext, runtime: RuntimeContext): ValidationError[] => {
     const errors: ValidationError[] = []
 
