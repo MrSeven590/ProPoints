@@ -51,7 +51,7 @@
     {
       "path": "pages/mine/settings",
       "style": {
-        "navigationBarTitleText": "设置"
+        "navigationBarTitleText": "通用设置"
       }
     },
     {
@@ -64,6 +64,12 @@
       "path": "pages/mine/roster-import",
       "style": {
         "navigationBarTitleText": "花名册导入"
+      }
+    },
+    {
+      "path": "pages/mine/coeff-config",
+      "style": {
+        "navigationBarTitleText": "工序系数设置"
       }
     },
     {

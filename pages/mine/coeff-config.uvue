@@ -1,0 +1,420 @@
+<template>
+  <!-- #ifdef APP -->
+  <scroll-view class="page-container" scroll-y="true">
+  <!-- #endif -->
+  <!-- #ifndef APP -->
+  <view class="page-container">
+  <!-- #endif -->
+
+    <!-- 当前版本提示 -->
+    <text class="version-hint">当前系数版本：{{ versionLabel }}</text>
+
+    <!-- 安曲工序 -->
+    <text class="group-label">安曲工序</text>
+    <view class="section">
+      <view class="form-item">
+        <text class="form-label">安曲</text>
+        <input
+          class="form-input"
+          type="digit"
+          placeholder="请输入系数"
+          :value="stageCoefs.AN_QU"
+          @input="onCoefInput('AN_QU', $event)"
+        />
+      </view>
+      <view class="form-item">
+        <text class="form-label">一次翻曲</text>
+        <input
+          class="form-input"
+          type="digit"
+          placeholder="请输入系数"
+          :value="stageCoefs.YI_FAN"
+          @input="onCoefInput('YI_FAN', $event)"
+        />
+      </view>
+      <view class="form-item">
+        <text class="form-label">二次翻曲</text>
+        <input
+          class="form-input"
+          type="digit"
+          placeholder="请输入系数"
+          :value="stageCoefs.ER_FAN"
+          @input="onCoefInput('ER_FAN', $event)"
+        />
+      </view>
+      <view class="form-item">
+        <text class="form-label">拆曲</text>
+        <input
+          class="form-input"
+          type="digit"
+          placeholder="请输入系数"
+          :value="stageCoefs.CHAI_QU"
+          @input="onCoefInput('CHAI_QU', $event)"
+        />
+      </view>
+      <view class="form-item form-item-last">
+        <text class="form-label">堆曲</text>
+        <input
+          class="form-input"
+          type="digit"
+          placeholder="请输入系数"
+          :value="stageCoefs.DUI_QU"
+          @input="onCoefInput('DUI_QU', $event)"
+        />
+      </view>
+    </view>
+
+    <!-- 量塘工序 -->
+    <text class="group-label">量塘工序</text>
+    <view class="section">
+      <view class="form-item">
+        <text class="form-label">麦料</text>
+        <input
+          class="form-input"
+          type="digit"
+          placeholder="请输入系数"
+          :value="liangTangCoefs.WHEAT_MATERIAL"
+          @input="onCoefInput('WHEAT_MATERIAL', $event)"
+        />
+      </view>
+      <view class="form-item">
+        <text class="form-label">守机</text>
+        <input
+          class="form-input"
+          type="digit"
+          placeholder="请输入系数"
+          :value="liangTangCoefs.MACHINE_GUARD"
+          @input="onCoefInput('MACHINE_GUARD', $event)"
+        />
+      </view>
+      <view class="form-item">
+        <text class="form-label">下曲</text>
+        <input
+          class="form-input"
+          type="digit"
+          placeholder="请输入系数"
+          :value="liangTangCoefs.KOJI_UNLOADER"
+          @input="onCoefInput('KOJI_UNLOADER', $event)"
+        />
+      </view>
+      <view class="form-item form-item-last">
+        <text class="form-label">微机</text>
+        <input
+          class="form-input"
+          type="digit"
+          placeholder="请输入系数"
+          :value="liangTangCoefs.MICRO_OPERATOR"
+          @input="onCoefInput('MICRO_OPERATOR', $event)"
+        />
+      </view>
+    </view>
+
+    <!-- 保存按钮 -->
+    <view class="footer">
+      <view class="btn btn-primary" @click="saveSettings">
+        <text class="btn-text">保存</text>
+      </view>
+    </view>
+
+  <!-- #ifdef APP -->
+  </scroll-view>
+  <!-- #endif -->
+  <!-- #ifndef APP -->
+  </view>
+  <!-- #endif -->
+</template>
+
+<script lang="uts">
+  import {
+    loadCoefConfig,
+    saveCoefSetIfChanged,
+    getActiveCoefSetId,
+    loadCoefSetById
+  } from '../../domain/stores/AppStore.uts'
+
+  type StageCoefs = {
+    AN_QU: string
+    YI_FAN: string
+    ER_FAN: string
+    CHAI_QU: string
+    DUI_QU: string
+  }
+
+  type LiangTangCoefs = {
+    WHEAT_MATERIAL: string
+    MACHINE_GUARD: string
+    KOJI_UNLOADER: string
+    MICRO_OPERATOR: string
+  }
+
+  export default {
+    data() {
+      return {
+        isSaving: false as boolean,
+        versionLabel: '加载中...' as string,
+        stageCoefs: {
+          AN_QU: '1.1',
+          YI_FAN: '1.25',
+          ER_FAN: '0.9',
+          CHAI_QU: '1.12',
+          DUI_QU: '0.29'
+        } as StageCoefs,
+        liangTangCoefs: {
+          WHEAT_MATERIAL: '0.85',
+          MACHINE_GUARD: '0.8',
+          KOJI_UNLOADER: '0.8',
+          MICRO_OPERATOR: '0.7'
+        } as LiangTangCoefs
+      }
+    },
+    onLoad() {
+      this.loadSettings()
+    },
+    methods: {
+      loadSettings() {
+        // 优先从版本化存储读取
+        const activeSetId = getActiveCoefSetId()
+        this.versionLabel = activeSetId == 260000 ? '默认' : activeSetId.toString()
+        const coefSet = loadCoefSetById(activeSetId)
+
+        let config: UTSJSONObject | null = null
+        if (coefSet != null) {
+          config = coefSet
+        } else {
+          // 回退到旧版配置
+          config = loadCoefConfig()
+        }
+
+        if (config != null) {
+          const stages = config['stages']
+          if (stages != null) {
+            const stagesObj = stages as UTSJSONObject
+            const anQu = stagesObj['AN_QU']
+            if (anQu != null) {
+              this.stageCoefs.AN_QU = (anQu as number).toString()
+            }
+            const yiFan = stagesObj['YI_FAN']
+            if (yiFan != null) {
+              this.stageCoefs.YI_FAN = (yiFan as number).toString()
+            }
+            const erFan = stagesObj['ER_FAN']
+            if (erFan != null) {
+              this.stageCoefs.ER_FAN = (erFan as number).toString()
+            }
+            const chaiQu = stagesObj['CHAI_QU']
+            if (chaiQu != null) {
+              this.stageCoefs.CHAI_QU = (chaiQu as number).toString()
+            }
+            const duiQu = stagesObj['DUI_QU']
+            if (duiQu != null) {
+              this.stageCoefs.DUI_QU = (duiQu as number).toString()
+            }
+          }
+
+          const liangTang = config['liangTang']
+          if (liangTang != null) {
+            const liangTangObj = liangTang as UTSJSONObject
+            const wheatMaterial = liangTangObj['WHEAT_MATERIAL']
+            if (wheatMaterial != null) {
+              this.liangTangCoefs.WHEAT_MATERIAL = (wheatMaterial as number).toString()
+            }
+            const machineGuard = liangTangObj['MACHINE_GUARD']
+            if (machineGuard != null) {
+              this.liangTangCoefs.MACHINE_GUARD = (machineGuard as number).toString()
+            }
+            const kojiUnloader = liangTangObj['KOJI_UNLOADER']
+            if (kojiUnloader != null) {
+              this.liangTangCoefs.KOJI_UNLOADER = (kojiUnloader as number).toString()
+            }
+            const microOperator = liangTangObj['MICRO_OPERATOR']
+            if (microOperator != null) {
+              this.liangTangCoefs.MICRO_OPERATOR = (microOperator as number).toString()
+            }
+          }
+        }
+      },
+
+      validateAndParseCoef(value: string, fieldName: string): number | null {
+        // 标准化：去除空白，将逗号替换为小数点
+        const normalized = value.trim().replace(',', '.')
+        const numValue = parseFloat(normalized)
+        if (isNaN(numValue) || numValue < 0.1 || numValue > 5.0) {
+          uni.showToast({
+            title: fieldName + ' 系数必须在 0.1 ~ 5.0 范围内',
+            icon: 'none'
+          })
+          return null
+        }
+        return numValue
+      },
+
+      onCoefInput(field: string, e: UniInputEvent) {
+        const value = e.detail.value
+        if (field == 'AN_QU') {
+          this.stageCoefs.AN_QU = value
+        } else if (field == 'YI_FAN') {
+          this.stageCoefs.YI_FAN = value
+        } else if (field == 'ER_FAN') {
+          this.stageCoefs.ER_FAN = value
+        } else if (field == 'CHAI_QU') {
+          this.stageCoefs.CHAI_QU = value
+        } else if (field == 'DUI_QU') {
+          this.stageCoefs.DUI_QU = value
+        } else if (field == 'WHEAT_MATERIAL') {
+          this.liangTangCoefs.WHEAT_MATERIAL = value
+        } else if (field == 'MACHINE_GUARD') {
+          this.liangTangCoefs.MACHINE_GUARD = value
+        } else if (field == 'KOJI_UNLOADER') {
+          this.liangTangCoefs.KOJI_UNLOADER = value
+        } else if (field == 'MICRO_OPERATOR') {
+          this.liangTangCoefs.MICRO_OPERATOR = value
+        }
+      },
+
+      saveSettings() {
+        // 防止 toast 期间重复触发
+        if (this.isSaving == true) return
+
+        // 验证并构建系数数据
+        const anQu = this.validateAndParseCoef(this.stageCoefs.AN_QU, '安曲')
+        if (anQu == null) return
+        const yiFan = this.validateAndParseCoef(this.stageCoefs.YI_FAN, '一次翻曲')
+        if (yiFan == null) return
+        const erFan = this.validateAndParseCoef(this.stageCoefs.ER_FAN, '二次翻曲')
+        if (erFan == null) return
+        const chaiQu = this.validateAndParseCoef(this.stageCoefs.CHAI_QU, '拆曲')
+        if (chaiQu == null) return
+        const duiQu = this.validateAndParseCoef(this.stageCoefs.DUI_QU, '堆曲')
+        if (duiQu == null) return
+        const wheatMaterial = this.validateAndParseCoef(this.liangTangCoefs.WHEAT_MATERIAL, '麦料')
+        if (wheatMaterial == null) return
+        const machineGuard = this.validateAndParseCoef(this.liangTangCoefs.MACHINE_GUARD, '守机')
+        if (machineGuard == null) return
+        const kojiUnloader = this.validateAndParseCoef(this.liangTangCoefs.KOJI_UNLOADER, '下曲')
+        if (kojiUnloader == null) return
+        const microOperator = this.validateAndParseCoef(this.liangTangCoefs.MICRO_OPERATOR, '微机')
+        if (microOperator == null) return
+
+        // 验证全部通过，锁定保存防止重复
+        this.isSaving = true
+
+        const stages = {
+          AN_QU: anQu,
+          YI_FAN: yiFan,
+          ER_FAN: erFan,
+          CHAI_QU: chaiQu,
+          DUI_QU: duiQu
+        } as UTSJSONObject
+
+        const liangTang = {
+          WHEAT_MATERIAL: wheatMaterial,
+          MACHINE_GUARD: machineGuard,
+          KOJI_UNLOADER: kojiUnloader,
+          MICRO_OPERATOR: microOperator
+        } as UTSJSONObject
+
+        const coefData = {
+          stages: stages,
+          liangTang: liangTang
+        } as UTSJSONObject
+
+        // 只在系数变化时创建新版本
+        const result = saveCoefSetIfChanged('', coefData)
+
+        // 根据变更显示提示
+        if (result.changed == true) {
+          this.versionLabel = result.setId.toString()
+          uni.showToast({
+            title: '系数已保存（版本 ' + result.setId.toString() + '）',
+            icon: 'success'
+          })
+        } else {
+          uni.showToast({
+            title: '设置已保存（系数未变更）',
+            icon: 'success'
+          })
+        }
+
+        // 延迟返回上一级，确保 toast 可见
+        setTimeout(() => {
+          this.isSaving = false
+          uni.navigateBack()
+        }, 1500)
+      }
+    }
+  }
+</script>
+
+<style>
+  .page-container {
+    flex: 1;
+    background-color: #f5f5f5;
+  }
+
+  .version-hint {
+    font-size: 12px;
+    color: #999999;
+    padding: 12px 16px 0 16px;
+    text-align: right;
+  }
+
+  .group-label {
+    font-size: 13px;
+    color: #999999;
+    padding: 16px 16px 8px 16px;
+  }
+
+  .section {
+    margin: 0 12px 12px 12px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 0 16px;
+  }
+
+  .form-item {
+    flex-direction: row;
+    align-items: center;
+    padding: 14px 0;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .form-item-last {
+    border-bottom-width: 0;
+  }
+
+  .form-label {
+    width: 100px;
+    font-size: 15px;
+    color: #333333;
+  }
+
+  .form-input {
+    flex: 1;
+    font-size: 15px;
+    text-align: right;
+    color: #333333;
+  }
+
+  .footer {
+    padding: 24px 16px;
+  }
+
+  .btn {
+    height: 48px;
+    border-radius: 8px;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .btn-primary {
+    background-color: #007aff;
+  }
+
+  .btn-text {
+    font-size: 17px;
+    font-weight: bold;
+    color: #ffffff;
+  }
+</style>

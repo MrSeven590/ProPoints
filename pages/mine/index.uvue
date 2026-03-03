@@ -90,19 +90,22 @@
 
       </view>
 
-      <!-- 系统推荐检查 -->
-      <text class="group-label">系统推荐检查</text>
+      <!-- 生产与计分配置 -->
+      <text class="group-label">生产与计分配置</text>
       <view class="section">
         <view class="menu-item" @click="goToClassConfig">
-          <text class="menu-icon icon-check">仓</text>
-          <text class="menu-text">发酵仓楼层配置</text>
-          <text class="menu-hint">去核对</text>
+          <text class="menu-icon">班</text>
+          <text class="menu-text">班组与仓房配置</text>
           <text class="menu-arrow">›</text>
         </view>
-        <view class="menu-item menu-item-last" @click="goToSettings">
-          <text class="menu-icon icon-check">系</text>
-          <text class="menu-text">工序系数配置</text>
-          <text class="menu-hint">去核对</text>
+        <view class="menu-item" @click="goToCoeffConfig">
+          <text class="menu-icon">系</text>
+          <text class="menu-text">工序系数设置</text>
+          <text class="menu-arrow">›</text>
+        </view>
+        <view class="menu-item menu-item-last" @click="goToRosterImport">
+          <text class="menu-icon">名</text>
+          <text class="menu-text">花名册管理</text>
           <text class="menu-arrow">›</text>
         </view>
       </view>
@@ -115,15 +118,20 @@
           <text class="menu-text">安曲数据导入</text>
           <text class="menu-arrow">›</text>
         </view>
-        <view class="menu-item menu-item-last" @click="goToAnQuExport">
+        <view class="menu-item" @click="goToAnQuExport">
           <text class="menu-icon">出</text>
           <text class="menu-text">安曲数据导出</text>
           <text class="menu-arrow">›</text>
         </view>
+        <view class="menu-item menu-item-last" @click="exportExcelTemplate">
+          <text class="menu-icon">模</text>
+          <text class="menu-text">导出Excel模板</text>
+          <text class="menu-arrow">›</text>
+        </view>
       </view>
 
-      <!-- 系统设置 -->
-      <text class="group-label">系统设置</text>
+      <!-- 系统管理 -->
+      <text class="group-label">系统管理</text>
       <view class="section">
         <view class="menu-item" @click="goToSettings">
           <text class="menu-icon">设</text>
@@ -233,6 +241,17 @@
 
       goToAnQuExport() {
         uni.navigateTo({ url: '/pages/work/anqu-export' })
+      },
+
+      goToCoeffConfig() {
+        uni.navigateTo({ url: '/pages/mine/coeff-config' })
+      },
+
+      exportExcelTemplate() {
+        uni.showToast({
+          title: '待实现',
+          icon: 'none'
+        })
       },
 
       clearAllData() {

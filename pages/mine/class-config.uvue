@@ -178,7 +178,7 @@
         </view>
 
         <!-- 轮次选择 -->
-        <view class="init-form-item">
+        <view class="init-form-item-col">
           <text class="init-label">当前轮次</text>
           <view class="init-round-selector">
             <view
@@ -244,7 +244,7 @@
         </view>
 
         <!-- 轮次选择 -->
-        <view class="init-form-item">
+        <view class="init-form-item-col">
           <text class="init-label">轮次号</text>
           <view class="init-round-selector">
             <view
@@ -1051,10 +1051,18 @@
     margin-bottom: 16px;
   }
 
+  .init-form-item-col {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    margin-bottom: 16px;
+  }
+
   .init-label {
     font-size: 14px;
     color: #333333;
     font-weight: bold;
+    margin-bottom: 8px;
   }
 
   .init-input-wrapper {

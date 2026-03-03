@@ -97,7 +97,7 @@
 
 <script lang="uts">
   import { getTodayDateString, addDaysToDate } from '../../domain/models/types.uts'
-  import { getSessionsByDate, getAllDraftSessions, deleteDraftSession, deleteAllDraftSessions, getCurrentClassNo, loadRounds } from '../../domain/stores/AppStore.uts'
+  import { getSessionsByDate, getAllDraftSessions, deleteDraftSession, deleteAllDraftSessions, getCurrentClassNo, loadRounds, getManagerName, loadPersons } from '../../domain/stores/AppStore.uts'
   import { getCurrentRoundId } from '../../domain/services/RoundService.uts'
 
   /**
@@ -126,9 +126,28 @@
     onShow() {
       // 刷新今日日期（防止跨午夜后日期过期）
       this.todayDate = getTodayDateString()
+      // 基础配置未完成时跳转到"我的"，不执行后续加载
+      if (this.checkBasicConfig() == false) return
       this.loadSessions()
     },
     methods: {
+      checkBasicConfig(): boolean {
+        const managerName = getManagerName()
+        const classNo = getCurrentClassNo()
+        const roundId = getCurrentRoundId(classNo)
+        const personsCount = loadPersons().length
+
+        const managerDone = managerName.trim() != ''
+        const roundDone = roundId != 0
+        const rosterDone = personsCount > 0
+
+        if (managerDone == false || roundDone == false || rosterDone == false) {
+          uni.switchTab({ url: '/pages/mine/index' })
+          return false
+        }
+        return true
+      },
+
       /**
        * 加载所有会话数据
        */
