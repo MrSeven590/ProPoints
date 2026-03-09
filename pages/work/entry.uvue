@@ -1241,9 +1241,20 @@ export default {
       if (this.isRestoring == true || this.viewMode != "edit") {
         return;
       }
-      this.selectedBins = bins;
+      // 立即排序并存储，确保全局顺序一致
+      this.selectedBins = bins.slice(0).sort((a: BinCode, b: BinCode): number => {
+        if (a.class_no != b.class_no) {
+          return a.class_no - b.class_no
+        }
+        if (a.floor_no != b.floor_no) {
+          return a.floor_no - b.floor_no
+        }
+        return a.seq_no - b.seq_no
+      });
       // 更新 stageBinInfos（用于跨仓组件）
-      this.updateStageBinInfos(bins);
+      this.updateStageBinInfos(this.selectedBins);
+      // 更新人员互斥列表（移除仓后需要更新）
+      this.updateOccupiedIds();
       // 更新晾堂池子总分缓存（仅安曲环节）
       if (this.showLiangTangSection == true) {
         this.updateLiangTangPoolCache();
@@ -1286,6 +1297,15 @@ export default {
         }
       }
 
+      // 先构建 binCode -> 旧的 BinCardData 的映射
+      const oldCardsByBinCode = new Map<string, BinCardData>()
+      this.binCardsData.forEach((cardData: BinCardData, key: number) => {
+        oldCardsByBinCode.set(cardData.binCode, cardData)
+      })
+
+      // 清空并重建 binCardsData
+      this.binCardsData.clear()
+
       for (let i = 0; i < bins.length; i++) {
         const bin = bins[i];
         const binCode = `${bin.class_no}-${bin.floor_no}-${bin.seq_no}`;
@@ -1320,9 +1340,26 @@ export default {
           bin_code: binCode,
         } as StageBinInfo);
 
-        // 修复：初始化 binCardsData，确保每个仓都有默认数据
-        // 只有当 binCardsData 中不存在该仓时才初始化（避免覆盖已有数据）
-        if (this.binCardsData.get(binId) == null) {
+        // 检查是否有该仓的旧数据
+        const oldCard = oldCardsByBinCode.get(binCode)
+        if (oldCard != null) {
+          // 保留旧数据
+          // 安曲环节：保留用户可能编辑过的 kojiCount
+          // 非安曲环节：使用新获取的 kojiCount（可能上游安曲数据已更新）
+          const preservedKojiCount = (this.stageCode == 'AN_QU') ? oldCard.kojiCount : kojiCount
+          this.binCardsData.set(binId, {
+            stageBinId: binId,
+            binId: binId,
+            binCode: binCode,
+            kojiCount: preservedKojiCount,
+            totalPointsUnits: oldCard.totalPointsUnits,
+            assignedUnits: oldCard.assignedUnits,
+            workers: oldCard.workers
+          } as BinCardData);
+          // 同步更新 stageBinInfos 中的 koji_count
+          infos[i].koji_count = preservedKojiCount
+        } else {
+          // 初始化新仓的默认数据
           const stageCoef = this.getStageCoefForBin();
           const totalPointsUnits = kojiCount * stageCoef;
 

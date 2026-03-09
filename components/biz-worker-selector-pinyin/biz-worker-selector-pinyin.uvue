@@ -9,6 +9,7 @@
           type="text"
           :placeholder="placeholder"
           :value="keyword"
+          :focus="inputFocus"
           @input="onSearchInput"
         />
         <view v-if="keyword.length > 0" class="clear-icon" @click="onClearKeyword">
@@ -108,7 +109,8 @@
         debounceTimer: 0 as number,
         occupiedIdSet: new Map<number, boolean>(),
         // O(1) 查找人员姓名的索引
-        personNameMap: new Map<number, string>()
+        personNameMap: new Map<number, string>(),
+        inputFocus: false as boolean
       }
     },
     computed: {
@@ -132,6 +134,10 @@
     },
     mounted() {
       this.initData()
+      // 自动聚焦搜索框
+      this.$nextTick(() => {
+        this.inputFocus = true
+      })
     },
     beforeUnmount() {
       // 清理定时器，避免组件卸载后回调执行

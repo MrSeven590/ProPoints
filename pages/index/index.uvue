@@ -236,7 +236,7 @@
           const round = this.rounds[i]
           if ((round['id'] as number) == roundId) {
             const roundNo = round['round_no'] as number
-            return ` | 第${roundNo}轮`
+            return ` | 轮次${roundNo}`
           }
         }
         return ` | 轮次${roundId}`

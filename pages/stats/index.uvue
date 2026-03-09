@@ -58,7 +58,7 @@
           >
             <view class="recent-info">
               <text class="recent-date">{{ session.date }}</text>
-              <text class="recent-stage">{{ session.stageName }}{{ session.roundId != null ? ` | 轮次${session.roundId}` : '' }}</text>
+              <text class="recent-stage">{{ session.stageName }}{{ getRoundLabel(session.roundId) }}</text>
             </view>
             <view class="recent-status" :class="session.status == 'draft' ? 'status-draft' : 'status-submitted'">
               <text class="recent-status-text">{{ session.status == 'draft' ? '草稿' : '已提交' }}</text>
@@ -78,7 +78,7 @@
   import type { PointsUnits, StageCode, RoleCode } from '../../domain/models/types.uts'
   import { getStageName } from '../../domain/models/stage-session.uts'
   import { calcFinalPoints } from '../../domain/models/assignment.uts'
-  import { getSessionsByDate, getAllDraftSessions } from '../../domain/stores/AppStore.uts'
+  import { getSessionsByDate, getAllDraftSessions, loadRounds } from '../../domain/stores/AppStore.uts'
 
   type MonthStats = {
     entryCount: number
@@ -102,7 +102,8 @@
           totalPointsUnits: 0,
           personCount: 0
         } as MonthStats,
-        recentSessions: [] as RecentSession[]
+        recentSessions: [] as RecentSession[],
+        rounds: [] as UTSJSONObject[]
       }
     },
     computed: {
@@ -111,10 +112,33 @@
       }
     },
     onShow() {
+      this.loadRounds()
       this.loadStats()
       this.loadRecentSessions()
     },
     methods: {
+      /**
+       * 加载轮次数据
+       */
+      loadRounds() {
+        this.rounds = loadRounds()
+      },
+
+      /**
+       * 获取轮次显示文字（通过 round_id 查 round_no）
+       */
+      getRoundLabel(roundId: number | null): string {
+        if (roundId == null) return ''
+        for (let i = 0; i < this.rounds.length; i++) {
+          const round = this.rounds[i]
+          if ((round['id'] as number) == roundId) {
+            const roundNo = round['round_no'] as number
+            return ` | 轮次${roundNo}`
+          }
+        }
+        return ` | 轮次${roundId}`
+      },
+
       /**
        * 加载本月统计数据
        * 从日期索引聚合，避免全量扫描

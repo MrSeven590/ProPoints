@@ -3,37 +3,12 @@
     <!-- 发酵仓选择区域 -->
     <view class="section">
       <text class="section-title">选择发酵仓</text>
-      <view class="bin-selector-simple">
-        <view class="selector-row">
-          <text class="selector-label">楼层</text>
-          <view class="floor-tabs">
-            <view
-              v-for="floor in floors"
-              :key="floor"
-              class="floor-tab"
-              :class="floor == selectedFloor ? 'floor-tab-active' : ''"
-              @click="onFloorChange(floor)"
-            >
-              <text class="floor-tab-text" :class="floor == selectedFloor ? 'floor-tab-text-active' : ''">{{ floor }}楼</text>
-            </view>
-          </view>
-        </view>
-        <view class="selector-row">
-          <text class="selector-label">序号</text>
-          <view class="seq-input-row">
-            <view class="seq-btn" @click="onSeqDecrease">
-              <text class="seq-btn-text">-</text>
-            </view>
-            <text class="seq-display">{{ selectedSeq }}</text>
-            <view class="seq-btn" @click="onSeqIncrease">
-              <text class="seq-btn-text">+</text>
-            </view>
-          </view>
-        </view>
-        <view class="selected-bin-display">
-          <text class="selected-bin-text">当前选择: {{ binCodeDisplay }}</text>
-        </view>
-      </view>
+      <biz-bin-selector
+        :selectedBins="selectedBins"
+        :defaultFloor="selectedFloor"
+        :autoInfer="false"
+        @change="onBinSelect"
+      />
     </view>
 
     <!-- 历史记录 -->
@@ -96,9 +71,9 @@
 <script lang="uts">
   import { getTodayDateString, addDaysToDate, formatPointsUnits } from '../../domain/models/types.uts'
   import type { PointsUnits, StageCode } from '../../domain/models/types.uts'
+  import type { BinCode } from '../../domain/models/ferment.uts'
   import { getStageName } from '../../domain/models/stage-session.uts'
   import { getSessionsByDate } from '../../domain/stores/AppStore.uts'
-  import { getCurrentClassNo } from '../../domain/stores/AppStore.uts'
   import { getPositionLabel } from '../../domain/models/assignment.uts'
 
   type WorkerInfo = {
@@ -123,42 +98,38 @@
   export default {
     data() {
       return {
-        classNo: 3 as number,
+        selectedBins: [] as BinCode[],
         selectedFloor: 3 as number,
-        selectedSeq: 1 as number,
-        floors: [3, 4, 5] as number[],
-        seqMax: 24 as number,
         historyRecords: [] as HistoryRecord[]
       }
     },
     computed: {
       binCodeDisplay(): string {
-        return `${this.classNo}-${this.selectedFloor}-${this.selectedSeq}`
+        if (this.selectedBins.length > 0) {
+          const bin = this.selectedBins[0]
+          return `${bin.class_no}-${bin.floor_no}-${bin.seq_no}`
+        }
+        return ''
       },
       emptyHintText(): string {
+        if (this.binCodeDisplay == '') {
+          return '请选择发酵仓'
+        }
         return `仓 ${this.binCodeDisplay} 暂无历史记录`
       }
     },
     onLoad() {
-      this.classNo = getCurrentClassNo()
-      this.loadHistory()
+      // 不设置默认选择，等待用户手动选择
     },
     methods: {
-      onFloorChange(floor: number) {
-        this.selectedFloor = floor
+      onBinSelect(bins: BinCode[]) {
+        // 单选模式：只保留最后一个选择
+        if (bins.length > 0) {
+          this.selectedBins = [bins[bins.length - 1]]
+        } else {
+          this.selectedBins = []
+        }
         this.loadHistory()
-      },
-      onSeqDecrease() {
-        if (this.selectedSeq > 1) {
-          this.selectedSeq = this.selectedSeq - 1
-          this.loadHistory()
-        }
-      },
-      onSeqIncrease() {
-        if (this.selectedSeq < this.seqMax) {
-          this.selectedSeq = this.selectedSeq + 1
-          this.loadHistory()
-        }
       },
       /**
        * 加载发酵仓历史记录
@@ -166,6 +137,12 @@
        */
       loadHistory() {
         const targetBinCode = this.binCodeDisplay
+        // 如果没有选择仓，清空历史记录并返回
+        if (targetBinCode == '') {
+          this.historyRecords = []
+          return
+        }
+
         const today = getTodayDateString()
         const records: HistoryRecord[] = []
 
@@ -293,89 +270,6 @@
     font-weight: bold;
     color: #333333;
     margin-bottom: 12px;
-  }
-
-  .bin-selector-simple {
-    flex-direction: column;
-  }
-
-  .selector-row {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 0;
-    border-bottom-width: 1px;
-    border-bottom-color: #f0f0f0;
-    border-bottom-style: solid;
-  }
-
-  .selector-label {
-    font-size: 14px;
-    color: #666666;
-  }
-
-  .floor-tabs {
-    flex-direction: row;
-    background-color: #f0f2f5;
-    border-radius: 6px;
-    padding: 2px;
-  }
-
-  .floor-tab {
-    padding: 6px 12px;
-    border-radius: 4px;
-  }
-
-  .floor-tab-active {
-    background-color: #007aff;
-  }
-
-  .floor-tab-text {
-    font-size: 13px;
-    color: #666666;
-  }
-
-  .floor-tab-text-active {
-    color: #ffffff;
-  }
-
-  .seq-input-row {
-    flex-direction: row;
-    align-items: center;
-  }
-
-  .seq-btn {
-    width: 36px;
-    height: 36px;
-    background-color: #f0f2f5;
-    border-radius: 6px;
-    justify-content: center;
-    align-items: center;
-  }
-
-  .seq-btn-text {
-    font-size: 20px;
-    color: #333333;
-  }
-
-  .seq-display {
-    font-size: 18px;
-    font-weight: bold;
-    color: #333333;
-    margin: 0 16px;
-    min-width: 30px;
-    text-align: center;
-  }
-
-  .selected-bin-display {
-    padding: 12px 0;
-    align-items: center;
-  }
-
-  .selected-bin-text {
-    font-size: 14px;
-    color: #007aff;
-    font-weight: bold;
   }
 
   .content {

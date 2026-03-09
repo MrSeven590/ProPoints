@@ -273,11 +273,13 @@ function getSessionsByRound(roundInfo: UTSJSONObject): UTSJSONObject[] {
     const daySessions = getSessionsByDateAndStage(dateStr, 'AN_QU')
     for (let j = 0; j < daySessions.length; j++) {
       const session = daySessions[j]
-      const sessionId = session['id'] as number
-      const idKey = sessionId.toString()
-      if (!sessionIdSet.has(idKey)) {
-        sessionIdSet.add(idKey)
-        sessions.push(session)
+      const sessionId = session['id'] as number | null
+      if (sessionId != null) {
+        const idKey = sessionId.toString()
+        if (!sessionIdSet.has(idKey)) {
+          sessionIdSet.add(idKey)
+          sessions.push(session)
+        }
       }
     }
     currentDate.setDate(currentDate.getDate() + 1)

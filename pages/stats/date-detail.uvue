@@ -26,39 +26,16 @@
       </view>
     </view>
 
-    <!-- 显示列切换 -->
-    <view class="column-switch">
-      <view
-        class="column-btn"
-        :class="displayColumn == 'final' ? 'column-btn-active' : ''"
-        @click="onColumnChange('final')"
-      >
-        <text class="column-btn-text" :class="displayColumn == 'final' ? 'column-btn-text-active' : ''">最终分</text>
-      </view>
-      <view
-        class="column-btn"
-        :class="displayColumn == 'original' ? 'column-btn-active' : ''"
-        @click="onColumnChange('original')"
-      >
-        <text class="column-btn-text" :class="displayColumn == 'original' ? 'column-btn-text-active' : ''">原始分</text>
-      </view>
-      <view
-        class="column-btn"
-        :class="displayColumn == 'deducted' ? 'column-btn-active' : ''"
-        @click="onColumnChange('deducted')"
-      >
-        <text class="column-btn-text" :class="displayColumn == 'deducted' ? 'column-btn-text-active' : ''">扣分</text>
-      </view>
-    </view>
-
     <!-- 公示列表 -->
     <scroll-view class="content" scroll-y="true">
       <view v-if="displayList.length > 0" class="list-container">
         <!-- 表头 -->
         <view class="list-header">
-          <text class="header-cell header-name">姓名</text>
-          <text class="header-cell header-bin">仓号</text>
-          <text class="header-cell header-points">{{ columnTitle }}</text>
+          <text class="header-cell col-name">姓名</text>
+          <text class="header-cell col-bin">仓号</text>
+          <text class="header-cell col-pts">原始分</text>
+          <text class="header-cell col-pts">扣分</text>
+          <text class="header-cell col-pts">最终分</text>
         </view>
         <!-- 数据行 -->
         <view
@@ -67,15 +44,19 @@
           class="list-row"
           :class="index % 2 == 0 ? 'row-even' : 'row-odd'"
         >
-          <text class="row-cell row-name">{{ item.personName }}</text>
-          <text class="row-cell row-bin">{{ item.binCode }}</text>
-          <text class="row-cell row-points" :class="getPointsClass(item)">{{ getDisplayPoints(item) }}</text>
+          <text class="row-cell col-name">{{ item.personName }}</text>
+          <text class="row-cell col-bin">{{ item.binCode }}</text>
+          <text class="row-cell col-pts">{{ fmt(item.originalUnits) }}</text>
+          <text class="row-cell col-pts" :class="item.deductedUnits > 0 ? 'points-negative' : ''">{{ item.deductedUnits > 0 ? fmt(item.deductedUnits) : '' }}</text>
+          <text class="row-cell col-pts">{{ fmt(item.finalUnits) }}</text>
         </view>
         <!-- 汇总行 -->
         <view class="list-footer">
-          <text class="footer-cell footer-label">合计</text>
-          <text class="footer-cell footer-count">{{ displayList.length }}人</text>
-          <text class="footer-cell footer-total">{{ formatTotalPoints }}</text>
+          <text class="footer-cell col-name footer-label">合计{{ displayList.length }}人</text>
+          <text class="footer-cell col-bin"></text>
+          <text class="footer-cell col-pts footer-total">{{ fmt(totalOriginal) }}</text>
+          <text class="footer-cell col-pts footer-total points-negative">{{ fmt(totalDeducted) }}</text>
+          <text class="footer-cell col-pts footer-total">{{ fmt(totalFinal) }}</text>
         </view>
       </view>
       <view v-else class="empty-hint">
@@ -115,14 +96,11 @@
     penaltyReason: string
   }
 
-  type DisplayColumn = 'original' | 'deducted' | 'final'
-
   export default {
     data() {
       return {
         selectedDate: '',
         currentStage: 'AN_QU' as string,
-        displayColumn: 'final' as DisplayColumn,
         stageList: [
           { code: 'AN_QU', name: '安曲' },
           { code: 'YI_FAN', name: '一翻' },
@@ -131,21 +109,12 @@
           { code: 'DUI_QU', name: '堆曲' }
         ] as StageItem[],
         displayList: [] as DisplayItem[],
-        totalPointsUnits: 0 as PointsUnits
+        totalOriginal: 0 as PointsUnits,
+        totalDeducted: 0 as PointsUnits,
+        totalFinal: 0 as PointsUnits
       }
     },
     computed: {
-      columnTitle(): string {
-        if (this.displayColumn == 'original') {
-          return '原始分'
-        } else if (this.displayColumn == 'deducted') {
-          return '扣分'
-        }
-        return '最终分'
-      },
-      formatTotalPoints(): string {
-        return formatPointsUnits(this.totalPointsUnits)
-      },
       emptyHintText(): string {
         return `${this.selectedDate} 暂无${getStageName(this.currentStage as StageCode)}记录`
       }
@@ -166,10 +135,6 @@
       onStageChange(stageCode: string) {
         this.currentStage = stageCode
         this.loadData()
-      },
-      onColumnChange(column: DisplayColumn) {
-        this.displayColumn = column
-        this.calcTotal()
       },
       /**
        * 加载数据
@@ -311,41 +276,24 @@
        * 计算合计
        */
       calcTotal() {
-        let total = 0
+        let original = 0
+        let deducted = 0
+        let final = 0
         for (let i = 0; i < this.displayList.length; i++) {
           const item = this.displayList[i]
-          if (this.displayColumn == 'original') {
-            total = total + item.originalUnits
-          } else if (this.displayColumn == 'deducted') {
-            total = total + item.deductedUnits
-          } else {
-            total = total + item.finalUnits
-          }
+          original = original + item.originalUnits
+          deducted = deducted + item.deductedUnits
+          final = final + item.finalUnits
         }
-        this.totalPointsUnits = total
+        this.totalOriginal = original
+        this.totalDeducted = deducted
+        this.totalFinal = final
       },
       /**
-       * 获取显示的工分值
+       * 格式化工分
        */
-      getDisplayPoints(item: DisplayItem): string {
-        let units = 0
-        if (this.displayColumn == 'original') {
-          units = item.originalUnits
-        } else if (this.displayColumn == 'deducted') {
-          units = item.deductedUnits
-        } else {
-          units = item.finalUnits
-        }
+      fmt(units: PointsUnits): string {
         return formatPointsUnits(units)
-      },
-      /**
-       * 获取工分样式类
-       */
-      getPointsClass(item: DisplayItem): string {
-        if (this.displayColumn == 'deducted' && item.deductedUnits > 0) {
-          return 'points-negative'
-        }
-        return ''
       },
       /**
        * 分享到群
@@ -357,12 +305,14 @@
 
         for (let i = 0; i < this.displayList.length; i++) {
           const item = this.displayList[i]
-          const points = this.getDisplayPoints(item)
-          text = text + `${item.personName} ${item.binCode} ${points}\n`
+          const original = this.fmt(item.originalUnits)
+          const deducted = item.deductedUnits > 0 ? this.fmt(item.deductedUnits) : ''
+          const final = this.fmt(item.finalUnits)
+          text = text + `${item.personName} ${item.binCode} ${original} ${deducted} ${final}\n`
         }
 
         text = text + '------------------------\n'
-        text = text + `合计: ${this.displayList.length}人 ${this.formatTotalPoints}分`
+        text = text + `合计: ${this.displayList.length}人 原始${this.fmt(this.totalOriginal)} 扣${this.fmt(this.totalDeducted)} 最终${this.fmt(this.totalFinal)}`
 
         // 复制到剪贴板
         uni.setClipboardData({
@@ -442,34 +392,6 @@
     color: #ffffff;
   }
 
-  .column-switch {
-    flex-direction: row;
-    background-color: #ffffff;
-    padding: 8px 16px;
-    margin-top: 1px;
-    justify-content: center;
-  }
-
-  .column-btn {
-    padding: 6px 16px;
-    border-radius: 16px;
-    margin: 0 4px;
-    background-color: #f0f2f5;
-  }
-
-  .column-btn-active {
-    background-color: #e6f0ff;
-  }
-
-  .column-btn-text {
-    font-size: 12px;
-    color: #666666;
-  }
-
-  .column-btn-text-active {
-    color: #007aff;
-  }
-
   .content {
     flex: 1;
     margin: 12px;
@@ -490,21 +412,23 @@
   }
 
   .header-cell {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: bold;
     color: #333333;
+    text-align: center;
   }
 
-  .header-name {
+  .col-name {
     flex: 2;
+    text-align: left;
   }
 
-  .header-bin {
+  .col-bin {
     flex: 2;
     text-align: center;
   }
 
-  .header-points {
+  .col-pts {
     flex: 1;
     text-align: right;
   }
@@ -526,23 +450,8 @@
   }
 
   .row-cell {
-    font-size: 14px;
+    font-size: 13px;
     color: #333333;
-  }
-
-  .row-name {
-    flex: 2;
-  }
-
-  .row-bin {
-    flex: 2;
-    text-align: center;
-    color: #666666;
-  }
-
-  .row-points {
-    flex: 1;
-    text-align: right;
   }
 
   .points-negative {
@@ -559,25 +468,18 @@
   }
 
   .footer-cell {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: bold;
+    color: #333333;
   }
 
   .footer-label {
     flex: 2;
-    color: #333333;
-  }
-
-  .footer-count {
-    flex: 2;
-    text-align: center;
-    color: #666666;
   }
 
   .footer-total {
     flex: 1;
     text-align: right;
-    color: #007aff;
   }
 
   .empty-hint {
