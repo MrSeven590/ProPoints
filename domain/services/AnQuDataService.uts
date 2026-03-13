@@ -245,7 +245,7 @@ function compareBinCodes(a: string, b: string): number {
  */
 function getSessionsByRound(roundInfo: UTSJSONObject): UTSJSONObject[] {
   const sessions: UTSJSONObject[] = []
-  const sessionIdSet: Set<string> = new Set()
+  const sessionKeySet: Set<string> = new Set()
 
   const startedAt = roundInfo['started_at'] as number
   const endedAt = roundInfo['ended_at'] as number | null
@@ -273,13 +273,13 @@ function getSessionsByRound(roundInfo: UTSJSONObject): UTSJSONObject[] {
     const daySessions = getSessionsByDateAndStage(dateStr, 'AN_QU')
     for (let j = 0; j < daySessions.length; j++) {
       const session = daySessions[j]
-      const sessionId = session['id'] as number | null
-      if (sessionId != null) {
-        const idKey = sessionId.toString()
-        if (!sessionIdSet.has(idKey)) {
-          sessionIdSet.add(idKey)
-          sessions.push(session)
-        }
+      // 使用 dateStr + 'AN_QU' + round_id 作为去重键
+      // 不依赖 session 中可能缺失的字段
+      const roundId = session['round_id'] as number | null
+      const dedupKey = `${dateStr}:AN_QU:${roundId != null ? roundId.toString() : '0'}`
+      if (!sessionKeySet.has(dedupKey)) {
+        sessionKeySet.add(dedupKey)
+        sessions.push(session)
       }
     }
     currentDate.setDate(currentDate.getDate() + 1)
@@ -506,7 +506,7 @@ export function saveAnQuImportSnapshot(classNo: number, roundId: number, items: 
       continue
     }
 
-    // 尝试映射 bin_id
+    // 尝试映射 bin_id（item.binCode 已经是标准化格式 "3-3-1"）
     const binId = binCodeMap.get(item.binCode)
 
     bins.push({
@@ -623,9 +623,11 @@ export function lookupKojiCount(roundId: number, binCode: string, binId: number 
   // 2. 尝试从导入快照读取
   const snapshot = loadAnQuImportSnapshot(classNo, roundId)
   if (snapshot != null) {
+    const normalizedBinCode = normalizeBinCode(binCode)
     for (let i = 0; i < snapshot.bins.length; i++) {
       const bin = snapshot.bins[i]
-      if (bin.binCode == binCode) {
+      // 快照中的 binCode 已经在导入时标准化，直接比较标准化后的值
+      if (normalizedBinCode != null && bin.binCode == normalizedBinCode) {
         return {
           kojiCount: bin.kojiCount,
           source: 'imported',
@@ -663,6 +665,7 @@ export function lookupKojiCountBatch(roundId: number, binCodes: string[]): KojiL
   if (snapshot != null) {
     for (let i = 0; i < snapshot.bins.length; i++) {
       const bin = snapshot.bins[i]
+      // 快照中的 binCode 已经在导入时标准化为 "3-3-1" 格式
       importedKojiMap.set(bin.binCode, bin.kojiCount)
     }
   }
@@ -671,29 +674,32 @@ export function lookupKojiCountBatch(roundId: number, binCodes: string[]): KojiL
   const results: KojiLookupResult[] = []
   for (let i = 0; i < binCodes.length; i++) {
     const binCode = binCodes[i]
+    const normalizedCode = normalizeBinCode(binCode)
 
     // 优先从真实数据查询
-    const realKoji = realKojiMap.get(binCode)
-    if (realKoji != null) {
-      results.push({
-        kojiCount: realKoji,
-        source: 'real',
-        binCode: binCode,
-        binId: null
-      })
-      continue
-    }
+    if (normalizedCode != null) {
+      const realKoji = realKojiMap.get(normalizedCode)
+      if (realKoji != null) {
+        results.push({
+          kojiCount: realKoji,
+          source: 'real',
+          binCode: binCode,
+          binId: null
+        })
+        continue
+      }
 
-    // 从导入数据查询
-    const importedKoji = importedKojiMap.get(binCode)
-    if (importedKoji != null) {
-      results.push({
-        kojiCount: importedKoji,
-        source: 'imported',
-        binCode: binCode,
-        binId: null
-      })
-      continue
+      // 从导入数据查询（快照中的 binCode 已经是标准化格式）
+      const importedKoji = importedKojiMap.get(normalizedCode)
+      if (importedKoji != null) {
+        results.push({
+          kojiCount: importedKoji,
+          source: 'imported',
+          binCode: binCode,
+          binId: null
+        })
+        continue
+      }
     }
 
     // 未找到
@@ -758,7 +764,11 @@ function buildRealKojiMap(roundId: number): Map<string, number> {
         const bin = binArray[j]
         const binCode = bin['bin_code'] as string
         const kojiCount = bin['koji_count'] as number
-        kojiMap.set(binCode, kojiCount)
+        // 会话中的 binCode 已经是标准化格式 "3-3-1"
+        const normalizedCode = normalizeBinCode(binCode)
+        if (normalizedCode != null) {
+          kojiMap.set(normalizedCode, kojiCount)
+        }
       }
     }
   }
@@ -816,8 +826,10 @@ function getKojiCountFromRealSessions(roundId: number, binCode: string, binId: n
         const bin = binArray[j]
         const sessionBinCode = bin['bin_code'] as string
 
-        // 匹配 binCode
-        if (sessionBinCode == binCode) {
+        // 匹配 binCode（使用 normalizeBinCode 确保格式一致）
+        const normalizedSessionCode = normalizeBinCode(sessionBinCode)
+        const normalizedBinCode = normalizeBinCode(binCode)
+        if (normalizedSessionCode != null && normalizedBinCode != null && normalizedSessionCode == normalizedBinCode) {
           return bin['koji_count'] as number
         }
 

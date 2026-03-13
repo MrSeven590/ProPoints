@@ -478,7 +478,6 @@ export default {
       draftRevision: 0 as number,
       savedRevision: 0 as number,
       isSubmitting: false as boolean,
-      anQuDataAlertShown: false as boolean,
       sessionStatus: "draft" as string,
       // 审计字段（管理员姓名快照）
       createdByManager: "" as string,
@@ -555,9 +554,6 @@ export default {
     // 使用新的原子状态交换方式
     const initialState = this.buildStateForDate(this.sessionDate);
     this.applyState(initialState);
-
-    // 检查当前轮次是否有安曲数据（仅翻曲/拆曲工序）
-    this.checkAnQuData();
   },
   onHide() {
     // 页面隐藏时立即保存草稿
@@ -1292,6 +1288,7 @@ export default {
         for (let k = 0; k < batchResults.length; k++) {
           const r = batchResults[k]
           if (r.kojiCount != null) {
+            // lookupKojiCountBatch 内部已标准化，直接使用返回的 binCode
             kojiMap.set(r.binCode, r.kojiCount)
           }
         }
@@ -1300,6 +1297,7 @@ export default {
       // 先构建 binCode -> 旧的 BinCardData 的映射
       const oldCardsByBinCode = new Map<string, BinCardData>()
       this.binCardsData.forEach((cardData: BinCardData, key: number) => {
+        // cardData.binCode 已经是标准化格式
         oldCardsByBinCode.set(cardData.binCode, cardData)
       })
 
@@ -1617,36 +1615,6 @@ export default {
      * 检查当前轮次是否有安曲数据（仅翻曲/拆曲工序触发）
      * 无数据时弹窗提示，本次页面生命周期内只弹一次
      */
-    checkAnQuData() {
-      const ANQU_REQUIRED_STAGES = ['YI_FAN', 'ER_FAN', 'CHAI_QU']
-      if (ANQU_REQUIRED_STAGES.indexOf(this.stageCode as string) == -1) return
-      if (this.roundId == null || this.roundId == 0) return
-      if (this.anQuDataAlertShown) return
-
-      const classNo = getCurrentClassNo()
-      const snapshot = loadAnQuImportSnapshot(classNo, this.roundId!)
-      if (snapshot != null && snapshot.bins.length > 0) return
-
-      // 也检查真实 AN_QU 会话（防止已正常录入时误报）
-      if (this.stageBinInfos.length == 0) return
-      const firstBinCode = this.stageBinInfos[0].bin_code
-      const lookupResult = lookupKojiCount(this.roundId!, firstBinCode, null)
-      if (lookupResult.kojiCount != null) return
-
-      this.anQuDataAlertShown = true
-      uni.showModal({
-        title: '⚠️ 缺少安曲数据',
-        content: '未检测到当前轮次的曲坯数量数据，可能影响工分计算。\n\n建议先导入安曲数据。',
-        confirmText: '去导入',
-        cancelText: '坚持录入',
-        success: (res) => {
-          if (res.confirm == true) {
-            uni.navigateTo({ url: `/pages/work/anqu-import?roundId=${this.roundId}` })
-          }
-        }
-      })
-    },
-
     /**
      * 跳转到安曲录入页面
      */
@@ -1908,6 +1876,34 @@ export default {
       state['selectedBins'] = bins;
       state['stageBinInfos'] = infos;
       state['binCardsData'] = cardsData;
+
+      // 检查缺失的安曲数据（仅翻曲/拆曲工序）
+      const ANQU_REQUIRED_STAGES = ['YI_FAN', 'ER_FAN', 'CHAI_QU'];
+      if (ANQU_REQUIRED_STAGES.indexOf(this.stageCode as string) != -1 && this.roundId != null && this.roundId != 0 && infos.length > 0) {
+        const binCodes: string[] = [];
+        for (let i = 0; i < infos.length; i++) {
+          binCodes.push(infos[i].bin_code);
+        }
+        // 批量查询安曲数据
+        const batchResults = lookupKojiCountBatch(this.roundId, binCodes);
+        const kojiMap = new Map<string, number>();
+        for (let k = 0; k < batchResults.length; k++) {
+          const r = batchResults[k];
+          if (r.kojiCount != null) {
+            // lookupKojiCountBatch 内部已标准化，直接使用返回的 binCode
+            kojiMap.set(r.binCode, r.kojiCount);
+          }
+        }
+        // 检查缺失的仓位
+        for (let i = 0; i < binCodes.length; i++) {
+          const binCode = binCodes[i];
+          const cached = kojiMap.get(binCode);
+          if (cached == null) {
+            missingBins.push(binCode);
+          }
+        }
+      }
+
       state['missingAnQuBins'] = missingBins;
 
       // 跨仓岗位数据
