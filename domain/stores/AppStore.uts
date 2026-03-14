@@ -64,7 +64,7 @@ export const EVENT_ROUND_CHANGED = 'round:changed'
  */
 export function getCurrentClassNo(): number {
   const config = loadClassConfig()
-  return config != null ? config.classNo : 1
+  return config != null ? (config.classNo as number) : 1
 }
 
 /**
@@ -84,7 +84,8 @@ export function setCurrentClassNo(classNo: number): void {
  * @returns 管理员姓名
  */
 export function getManagerName(): string {
-  return loadManagerNameFromStorage()
+  const name = loadManagerNameFromStorage()
+  return name != null ? name : ''
 }
 
 /**
@@ -243,7 +244,7 @@ export function loadLiangTangDefault(classNo: number): UTSJSONObject | null {
  * @param classNo 班次号
  * @param defaults 默认人员数据
  */
-export function saveDuiQuDefault(classNo: number, defaults: UTSJSONObject): void {
+export function saveDuiQuDefault(classNo: number, defaults: UTSJSONObject[]): void {
   saveDuiQuDefaultToRepo(classNo, defaults)
 }
 
@@ -252,7 +253,7 @@ export function saveDuiQuDefault(classNo: number, defaults: UTSJSONObject): void
  * @param classNo 班次号
  * @returns 默认人员数据，不存在返回null
  */
-export function loadDuiQuDefault(classNo: number): UTSJSONObject | null {
+export function loadDuiQuDefault(classNo: number): UTSJSONObject[] | null {
   return loadDuiQuDefaultFromRepo(classNo)
 }
 

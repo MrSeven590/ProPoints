@@ -1201,8 +1201,9 @@ export default {
       }
       // 回填默认人员（仅人员，不回填工分）
       const workers: UTSJSONObject[] = [];
-      for (let i = 0; i < defaults.length; i++) {
-        const w = defaults[i];
+      const defaultsArray = defaults as UTSJSONObject[];
+      for (let i = 0; i < defaultsArray.length; i++) {
+        const w = defaultsArray[i];
         workers.push({
           personId: w['personId'],
           personName: w['personName'],
