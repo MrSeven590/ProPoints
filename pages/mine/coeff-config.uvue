@@ -126,9 +126,12 @@
 <script lang="uts">
   import {
     saveCoefSetIfChanged,
-    getActiveCoefSetId,
-    loadCoefSetById
+    loadActiveCoefSetId,
+    loadCoefSet
   } from '../../domain/stores/AppStore.uts'
+
+  // 默认系数版本ID
+  const DEFAULT_COEF_SET_ID = 260000
 
   type StageCoefs = {
     AN_QU: string
@@ -170,9 +173,9 @@
     methods: {
       loadSettings() {
         // 优先从版本化存储读取
-        const activeSetId = getActiveCoefSetId()
+        const activeSetId = loadActiveCoefSetId() ?? DEFAULT_COEF_SET_ID
         this.versionLabel = activeSetId == 260000 ? '默认' : activeSetId.toString()
-        const coefSet = loadCoefSetById(activeSetId)
+        const coefSet = loadCoefSet(activeSetId)
 
         if (coefSet != null) {
           const stages = coefSet['stages']

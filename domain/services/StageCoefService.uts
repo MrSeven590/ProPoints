@@ -5,7 +5,10 @@
  */
 
 import { StageCode, Scope, RoleCode } from '../models/types.uts'
-import { loadCoefConfig, loadCoefSetById, getActiveCoefSetId, loadStageRoleDefaults } from '../stores/AppStore.uts'
+import { loadCoefSet, loadActiveCoefSetId, loadStageRoleDefaults } from '../stores/AppStore.uts'
+
+// 默认系数版本ID
+const DEFAULT_COEF_SET_ID = 260000
 
 // ============================================
 // 工序系数配置
@@ -80,10 +83,10 @@ export function getStageCoefFromSnapshot(stageCode: StageCode, snapshot: UTSJSON
  */
 export function getStageCoef(stageCode: StageCode, coefSetId: number | null = null): number {
   // 确定要使用的版本ID
-  const setId = coefSetId != null ? coefSetId : getActiveCoefSetId()
+  const setId = coefSetId != null ? coefSetId : (loadActiveCoefSetId() ?? DEFAULT_COEF_SET_ID)
 
   // 尝试从版本化存储读取
-  const coefSet = loadCoefSetById(setId)
+  const coefSet = loadCoefSet(setId)
   if (coefSet != null) {
     const stages = coefSet['stages']
     if (stages != null) {
@@ -151,10 +154,10 @@ export function getDefaultDuiQuCoef(): number {
  */
 export function getDuiQuCoef(coefSetId: number | null = null): number {
   // 确定要使用的版本ID
-  const setId = coefSetId != null ? coefSetId : getActiveCoefSetId()
+  const setId = coefSetId != null ? coefSetId : (loadActiveCoefSetId() ?? DEFAULT_COEF_SET_ID)
 
   // 尝试从版本化存储读取
-  const coefSet = loadCoefSetById(setId)
+  const coefSet = loadCoefSet(setId)
   if (coefSet != null) {
     const duiQu = coefSet['duiQu']
     if (duiQu != null) {
@@ -232,10 +235,10 @@ export function getLiangTangRoleCoefFromSnapshot(roleCode: RoleCode, snapshot: U
  */
 export function getLiangTangRoleCoef(roleCode: RoleCode, coefSetId: number | null = null): number {
   // 确定要使用的版本ID
-  const setId = coefSetId != null ? coefSetId : getActiveCoefSetId()
+  const setId = coefSetId != null ? coefSetId : (loadActiveCoefSetId() ?? DEFAULT_COEF_SET_ID)
 
   // 尝试从版本化存储读取
-  const coefSet = loadCoefSetById(setId)
+  const coefSet = loadCoefSet(setId)
   if (coefSet != null) {
     const liangTang = coefSet['liangTang']
     if (liangTang != null) {
