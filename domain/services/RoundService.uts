@@ -20,10 +20,6 @@ import {
   saveRoundConfig
 } from '../stores/AppStore.uts'
 
-import {
-  emitRoundChanged
-} from '../stores/AppStore.uts'
-
 // ============================================
 // 轮次数据转换
 // ============================================
@@ -247,7 +243,6 @@ export function createNewRound(classNo: number, microEnabled: number): FermentRo
   updateCurrentRoundConfig(newRound)
 
   // 发布轮次变更事件
-  emitRoundChanged(roundNo)
 
   return newRound
 }
@@ -303,7 +298,6 @@ export function createInitialRound(classNo: number, year: number, roundNo: numbe
   updateCurrentRoundConfig(newRound)
 
   // 发布轮次变更事件
-  emitRoundChanged(validRoundNo)
 
   return newRound
 }
@@ -359,7 +353,6 @@ export function correctCurrentRound(classNo: number, year: number, roundNo: numb
   updateCurrentRoundConfig(updatedRound)
 
   // 发布轮次变更事件
-  emitRoundChanged(roundNo)
 
   return true
 }
@@ -442,7 +435,6 @@ export function resumeHistoryRound(roundId: number): boolean {
   updateCurrentRoundConfig(targetRound)
 
   // 发布轮次变更事件
-  emitRoundChanged(targetRound.round_no)
 
   return true
 }
@@ -704,7 +696,6 @@ export function switchToRound(classNo: number, roundNo: number): FermentRound | 
   updateCurrentRoundConfig(newRound)
 
   // 发布轮次变更事件
-  emitRoundChanged(roundNo)
 
   return newRound
 }
@@ -756,7 +747,6 @@ export function setCurrentRoundMicroEnabled(classNo: number, microEnabled: numbe
   updateCurrentRoundConfig(updatedRound)
 
   // 发布轮次变更事件
-  emitRoundChanged(currentRound.round_no)
 
   return true
 }
