@@ -5,24 +5,17 @@
 import {
   getSessionsByDateAndStage,
   getCurrentClassNo,
-  loadRounds
+  loadRounds,
+  loadBins,
+  saveAnQuImportSnapshot as saveAnQuSnapshotToStorage,
+  loadAnQuImportSnapshot as loadAnQuSnapshotFromStorage,
+  removeAnQuImportSnapshot as removeAnQuSnapshotFromStorage
 } from '../stores/AppStore.uts'
 
 import {
   parseBinCode,
   normalizeBinCode
 } from '../models/ferment.uts'
-
-import {
-  getAnQuImportSnapshotKey
-} from '../../storage/storage-keys.uts'
-
-import {
-  saveData,
-  loadData,
-  removeData,
-  loadBins
-} from '../../storage/storage-repository.uts'
 
 // ============================================
 // 常量定义
@@ -531,8 +524,7 @@ export function saveAnQuImportSnapshot(classNo: number, roundId: number, items: 
   }
 
   // 保存到 Storage
-  const key = getAnQuImportSnapshotKey(classNo, roundId)
-  saveData(key, snapshot as UTSJSONObject)
+  saveAnQuSnapshotToStorage(classNo, roundId, snapshot as UTSJSONObject)
 
   return snapshot
 }
@@ -544,8 +536,7 @@ export function saveAnQuImportSnapshot(classNo: number, roundId: number, items: 
  * @returns 快照数据，不存在返回 null
  */
 export function loadAnQuImportSnapshot(classNo: number, roundId: number): ImportedAnQuSnapshot | null {
-  const key = getAnQuImportSnapshotKey(classNo, roundId)
-  const data = loadData(key)
+  const data = loadAnQuSnapshotFromStorage(classNo, roundId)
 
   if (data == null) {
     return null
@@ -580,8 +571,7 @@ export function loadAnQuImportSnapshot(classNo: number, roundId: number): Import
  * @param roundId 轮次ID
  */
 export function deleteAnQuImportSnapshot(classNo: number, roundId: number): void {
-  const key = getAnQuImportSnapshotKey(classNo, roundId)
-  removeData(key)
+  removeAnQuSnapshotFromStorage(classNo, roundId)
 }
 
 // ============================================

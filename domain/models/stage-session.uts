@@ -26,8 +26,6 @@ export type StageSession = {
   stage_code: StageCode
   round_id: number | null
   coef_set_id: number | null
-  session_room_code: string | null        // 堆曲仓号等会话标识
-  session_total_koji_count: number | null // 会话总曲坯数（堆曲用）
   session_total_points_units: PointsUnits | null  // 会话总工分
   status: SessionStatus
   published_at: Timestamp | null
@@ -48,8 +46,6 @@ export type StageSessionCreateParams = {
   stage_code: StageCode
   round_id: number | null
   coef_set_id: number | null
-  session_room_code: string | null
-  session_total_koji_count: number | null
   created_by_manager: string              // 创建者（管理员姓名）
 }
 
@@ -57,8 +53,6 @@ export type StageSessionCreateParams = {
  * 工序会话更新参数
  */
 export type StageSessionUpdateParams = {
-  session_room_code: string | null
-  session_total_koji_count: number | null
   session_total_points_units: PointsUnits | null
   status: SessionStatus
   published_at: Timestamp | null
@@ -195,8 +189,6 @@ export function getStageName(stageCode: StageCode): string {
     return '二次翻曲'
   } else if (stageCode == 'CHAI_QU') {
     return '拆曲'
-  } else if (stageCode == 'DUI_QU') {
-    return '堆曲'
   }
   return '未知环节'
 }
@@ -207,14 +199,5 @@ export function getStageName(stageCode: StageCode): string {
  * @returns 是否需要发酵仓
  */
 export function stageRequiresBin(stageCode: StageCode): boolean {
-  return stageCode != 'DUI_QU'
-}
-
-/**
- * 判断是否为会话级计分环节
- * @param stageCode 环节代码
- * @returns 是否为会话级计分
- */
-export function isSessionScoringStage(stageCode: StageCode): boolean {
-  return stageCode == 'DUI_QU'
+  return true
 }

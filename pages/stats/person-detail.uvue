@@ -284,6 +284,37 @@
                 }
               }
             }
+
+            // 查找堆曲岗位
+            const duiQu = session['dui_qu'] as UTSJSONObject | null
+            if (duiQu != null) {
+              const workers = duiQu['workers'] as UTSJSONObject[] | null
+              if (workers != null) {
+                for (let k = 0; k < workers.length; k++) {
+                  const worker = workers[k]
+                  const workerId = worker['personId'] as number | null
+                  if (workerId == personId) {
+                    const pointsUnits = worker['pointsUnits'] as number | null
+                    const original = pointsUnits != null ? pointsUnits : 0
+
+                    dayRecords.push({
+                      date: date,
+                      stageCode: stageCode != null ? stageCode : '',
+                      stageName: stageCode != null ? getStageName(stageCode as StageCode) : '',
+                      roundId: roundId,
+                      binCode: '堆曲',
+                      positionIndex: k + 1,
+                      originalUnits: original,
+                      deductedUnits: 0,
+                      penaltyReason: '',
+                      expanded: false
+                    } as PointsRecord)
+
+                    totalOriginal = totalOriginal + original
+                  }
+                }
+              }
+            }
           }
 
           // 如果当天有记录，添加到分组

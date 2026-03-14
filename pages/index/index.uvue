@@ -25,10 +25,6 @@
             <text class="entry-icon">拆</text>
             <text class="entry-name">拆曲</text>
           </view>
-          <view class="entry-item" @click="goToEntry('DUI_QU')">
-            <text class="entry-icon">堆</text>
-            <text class="entry-name">堆曲</text>
-          </view>
         </view>
       </view>
 
@@ -254,8 +250,6 @@
           return '二次翻曲'
         } else if (stageCode == 'CHAI_QU') {
           return '拆曲'
-        } else if (stageCode == 'DUI_QU') {
-          return '堆曲'
         }
         return '未知环节'
       },
@@ -272,8 +266,6 @@
           return '二'
         } else if (stageCode == 'CHAI_QU') {
           return '拆'
-        } else if (stageCode == 'DUI_QU') {
-          return '堆'
         }
         return '?'
       },

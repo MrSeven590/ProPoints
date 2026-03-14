@@ -8,8 +8,6 @@ import {
   saveClassConfig,
   loadManagerName as loadManagerNameFromStorage,
   saveManagerName as saveManagerNameToStorage,
-  loadDuiQuRoom,
-  saveDuiQuRoom,
   getBinSeqMaxForFloor,
   setBinSeqMaxForFloor as setBinSeqMaxForFloorInStorage,
   saveDraftSession as saveDraftSessionToRepo,
@@ -22,21 +20,27 @@ import {
   getSessionsByDateAndStage as getSessionsByDateAndStageFromRepo,
   saveLiangTangDefault as saveLiangTangDefaultToRepo,
   loadLiangTangDefault as loadLiangTangDefaultFromRepo,
+  saveDuiQuDefault as saveDuiQuDefaultToRepo,
+  loadDuiQuDefault as loadDuiQuDefaultFromRepo,
   loadPersons as loadPersonsFromRepo,
   savePersons as savePersonsToRepo,
   loadRounds as loadRoundsFromRepo,
   saveRounds as saveRoundsToRepo,
   loadRoundConfig as loadRoundConfigFromRepo,
   saveRoundConfig as saveRoundConfigToRepo,
-  loadCoefConfig as loadCoefConfigFromRepo,
-  saveCoefConfig as saveCoefConfigToRepo,
   saveCoefSet as saveCoefSetToRepo,
   loadCoefSet as loadCoefSetFromRepo,
   getAllCoefSetIds as getAllCoefSetIdsFromRepo,
   saveActiveCoefSetId as saveActiveCoefSetIdToRepo,
   loadActiveCoefSetId as loadActiveCoefSetIdFromRepo,
-  loadStageRoleDefaults as loadStageRoleDefaultsFromRepo
+  loadStageRoleDefaults as loadStageRoleDefaultsFromRepo,
+  loadBins as loadBinsFromRepo,
+  saveData as saveDataToRepo,
+  loadData as loadDataFromRepo,
+  removeData as removeDataFromRepo
 } from '../../storage/storage-repository.uts'
+
+import { getAnQuImportSnapshotKey } from '../../storage/storage-keys.uts'
 
 import { resetAllStorage as resetAllStorageFromInit } from '../../storage/init.uts'
 
@@ -51,63 +55,36 @@ export const EVENT_SESSION_SUBMITTED = 'session:submitted'
 export const EVENT_ROUND_CHANGED = 'round:changed'
 
 // ============================================
-// 系数版本常量
-// ============================================
-
-const DEFAULT_COEF_SET_ID = 260000
-
-/**
- * 生成今天的系数版本ID（YYMMDD格式）
- * @returns 今天的版本ID，例如 260216 代表 2026年2月16日
- */
-function getTodayCoefSetId(): number {
-  const now = new Date()
-  const yy = (now.getFullYear() % 100).toString().padStart(2, '0')
-  const mm = (now.getMonth() + 1).toString().padStart(2, '0')
-  const dd = now.getDate().toString().padStart(2, '0')
-  return parseInt(`${yy}${mm}${dd}`)
-}
-
-// ============================================
-// 应用配置
+// 班次配置
 // ============================================
 
 /**
- * 获取当前班级编号
- * @returns 班级编号，默认为 3
+ * 获取当前班次号
+ * @returns 班次号（1或2）
  */
 export function getCurrentClassNo(): number {
   const config = loadClassConfig()
-  if (config != null) {
-    const classNo = config['classNo']
-    if (classNo != null) {
-      return classNo as number
-    }
-  }
-  return 3 // 默认班级
+  return config != null ? config.classNo : 1
 }
 
 /**
- * 设置当前班级编号
- * @param classNo 班级编号
+ * 设置当前班次号
+ * @param classNo 班次号（1或2）
  */
 export function setCurrentClassNo(classNo: number): void {
-  const existingConfig = loadClassConfig()
-  const config: UTSJSONObject = existingConfig != null ? existingConfig : {} as UTSJSONObject
-  config['classNo'] = classNo
-  saveClassConfig(config)
+  saveClassConfig({ classNo: classNo } as UTSJSONObject)
 }
+
+// ============================================
+// 管理员姓名
+// ============================================
 
 /**
  * 获取管理员姓名
  * @returns 管理员姓名
  */
 export function getManagerName(): string {
-  const name = loadManagerNameFromStorage()
-  if (name != null) {
-    return name
-  }
-  return ''
+  return loadManagerNameFromStorage()
 }
 
 /**
@@ -118,160 +95,100 @@ export function setManagerName(name: string): void {
   saveManagerNameToStorage(name)
 }
 
-/**
- * 获取上次堆曲仓号
- * @returns 堆曲仓号
- */
-export function getLastDuiQuRoom(): string {
-  const roomCode = loadDuiQuRoom()
-  if (roomCode != null) {
-    return roomCode
-  }
-  return ''
-}
-
-/**
- * 设置上次堆曲仓号
- * @param roomCode 堆曲仓号
- */
-export function setLastDuiQuRoom(roomCode: string): void {
-  saveDuiQuRoom(roomCode)
-}
-
 // ============================================
-// 发酵仓楼层配置
+// 发酵仓配置
 // ============================================
 
 /**
- * 获取指定楼层的默认仓数
- * @param floorNo 楼层号（3/4/5）
- * @returns 默认仓数，未配置时返回 24
+ * 获取指定楼层的最大仓号
+ * @param floor 楼层号
+ * @returns 最大仓号
  */
-export function getBinSeqMaxByFloor(floorNo: number): number {
-  return getBinSeqMaxForFloor(floorNo)
+export function getBinSeqMax(floor: number): number {
+  return getBinSeqMaxForFloor(floor)
 }
 
 /**
- * 设置指定楼层的默认仓数
- * @param floorNo 楼层号（3/4/5）
- * @param seqMax 默认仓数
+ * 设置指定楼层的最大仓号
+ * @param floor 楼层号
+ * @param maxSeq 最大仓号
  */
-export function setBinSeqMaxByFloor(floorNo: number, seqMax: number): void {
-  setBinSeqMaxForFloorInStorage(floorNo, seqMax)
+export function setBinSeqMax(floor: number, maxSeq: number): void {
+  setBinSeqMaxForFloorInStorage(floor, maxSeq)
 }
 
 // ============================================
-// 事件发布
+// 发酵仓数据
 // ============================================
 
 /**
- * 发布人员添加事件
- * @param personId 人员 ID
+ * 加载所有发酵仓数据
+ * @returns 发酵仓数组
  */
-export function emitPersonAdded(personId: number): void {
-  uni.$emit(EVENT_PERSON_ADDED, { personId: personId } as UTSJSONObject)
-}
-
-/**
- * 发布会话保存事件
- * @param sessionId 会话 ID
- */
-export function emitSessionSaved(sessionId: string): void {
-  uni.$emit(EVENT_SESSION_SAVED, { sessionId: sessionId } as UTSJSONObject)
-}
-
-/**
- * 发布会话提交事件
- * @param sessionId 会话 ID
- */
-export function emitSessionSubmitted(sessionId: string): void {
-  uni.$emit(EVENT_SESSION_SUBMITTED, { sessionId: sessionId } as UTSJSONObject)
-}
-
-/**
- * 发布轮次变更事件
- * @param roundNo 轮次编号
- */
-export function emitRoundChanged(roundNo: number): void {
-  uni.$emit(EVENT_ROUND_CHANGED, { roundNo: roundNo } as UTSJSONObject)
+export function loadBins(): UTSJSONObject[] {
+  return loadBinsFromRepo()
 }
 
 // ============================================
-// 会话操作 (Batch 1)
+// 会话数据
 // ============================================
 
 /**
  * 保存草稿会话
- * @param date 日期 YYYY-MM-DD
+ * @param sessionDate 会话日期
  * @param stageCode 环节代码
- * @param roundId 轮次ID
+ * @param classNo 班次号
  * @param sessionData 会话数据
  */
-export function saveDraftSession(
-  date: string,
-  stageCode: string,
-  roundId: number | null,
-  sessionData: UTSJSONObject
-): void {
-  saveDraftSessionToRepo(date, stageCode, roundId, sessionData)
+export function saveDraftSession(sessionDate: string, stageCode: string, classNo: number, sessionData: UTSJSONObject): void {
+  saveDraftSessionToRepo(sessionDate, stageCode, classNo, sessionData)
+  uni.$emit(EVENT_SESSION_SAVED, { sessionDate, stageCode, classNo } as UTSJSONObject)
 }
 
 /**
  * 保存已提交会话
- * @param date 日期 YYYY-MM-DD
+ * @param sessionDate 会话日期
  * @param stageCode 环节代码
- * @param roundId 轮次ID
+ * @param classNo 班次号
  * @param sessionData 会话数据
  */
-export function saveSubmittedSession(
-  date: string,
-  stageCode: string,
-  roundId: number | null,
-  sessionData: UTSJSONObject
-): void {
-  saveSubmittedSessionToRepo(date, stageCode, roundId, sessionData)
+export function saveSubmittedSession(sessionDate: string, stageCode: string, classNo: number, sessionData: UTSJSONObject): void {
+  saveSubmittedSessionToRepo(sessionDate, stageCode, classNo, sessionData)
+  uni.$emit(EVENT_SESSION_SUBMITTED, { sessionDate, stageCode, classNo } as UTSJSONObject)
 }
 
 /**
- * 加载会话数据用于编辑（draft 优先）
- * @param date 日期 YYYY-MM-DD
+ * 加载会话用于编辑
+ * @param sessionDate 会话日期
  * @param stageCode 环节代码
- * @param roundId 轮次ID
- * @returns 会话数据，不存在时返回 null
+ * @param classNo 班次号
+ * @returns 会话数据，不存在返回null
  */
-export function loadSessionForEdit(
-  date: string,
-  stageCode: string,
-  roundId: number | null
-): UTSJSONObject | null {
-  return loadSessionForEditFromRepo(date, stageCode, roundId)
+export function loadSessionForEdit(sessionDate: string, stageCode: string, classNo: number): UTSJSONObject | null {
+  return loadSessionForEditFromRepo(sessionDate, stageCode, classNo)
 }
 
 /**
  * 删除草稿会话
- * @param date 日期 YYYY-MM-DD
+ * @param sessionDate 会话日期
  * @param stageCode 环节代码
- * @param roundId 轮次ID
+ * @param classNo 班次号
  */
-export function deleteDraftSession(
-  date: string,
-  stageCode: string,
-  roundId: number | null
-): void {
-  deleteDraftSessionFromRepo(date, stageCode, roundId)
+export function deleteDraftSession(sessionDate: string, stageCode: string, classNo: number): void {
+  deleteDraftSessionFromRepo(sessionDate, stageCode, classNo)
 }
 
 /**
- * 删除所有草稿
+ * 删除所有草稿会话
  */
 export function deleteAllDraftSessions(): void {
   deleteAllDraftSessionsFromRepo()
 }
 
 /**
- * 获取某日期的所有已提交会话
- * @param date 日期 YYYY-MM-DD
- * @returns 会话数据列表
+ * 获取指定日期的所有会话
+ * @param date 日期
+ * @returns 会话数组
  */
 export function getSessionsByDate(date: string): UTSJSONObject[] {
   return getSessionsByDateFromRepo(date)
@@ -279,30 +196,30 @@ export function getSessionsByDate(date: string): UTSJSONObject[] {
 
 /**
  * 获取所有草稿会话
- * @returns 草稿会话数据列表
+ * @returns 草稿会话数组
  */
 export function getAllDraftSessions(): UTSJSONObject[] {
   return getAllDraftSessionsFromRepo()
 }
 
 /**
- * 获取某日期某环节的已提交会话
- * @param date 日期 YYYY-MM-DD
+ * 获取指定日期和环节的会话
+ * @param date 日期
  * @param stageCode 环节代码
- * @returns 会话数据列表
+ * @returns 会话数组
  */
 export function getSessionsByDateAndStage(date: string, stageCode: string): UTSJSONObject[] {
   return getSessionsByDateAndStageFromRepo(date, stageCode)
 }
 
 // ============================================
-// 晾堂默认值 (Batch 1)
+// 晾堂默认人员
 // ============================================
 
 /**
  * 保存晾堂默认人员
- * @param classNo 班级号
- * @param defaults 默认人员配置
+ * @param classNo 班次号
+ * @param defaults 默认人员数据
  */
 export function saveLiangTangDefault(classNo: number, defaults: UTSJSONObject): void {
   saveLiangTangDefaultToRepo(classNo, defaults)
@@ -310,48 +227,120 @@ export function saveLiangTangDefault(classNo: number, defaults: UTSJSONObject): 
 
 /**
  * 加载晾堂默认人员
- * @param classNo 班级号
- * @returns 默认人员配置，不存在时返回 null
+ * @param classNo 班次号
+ * @returns 默认人员数据，不存在返回null
  */
 export function loadLiangTangDefault(classNo: number): UTSJSONObject | null {
   return loadLiangTangDefaultFromRepo(classNo)
 }
 
 // ============================================
-// 人员数据 (Batch 1)
+// 堆曲默认人员
 // ============================================
 
 /**
- * 加载人员列表
- * @returns 人员列表
+ * 保存堆曲默认人员
+ * @param classNo 班次号
+ * @param defaults 默认人员数据
+ */
+export function saveDuiQuDefault(classNo: number, defaults: UTSJSONObject): void {
+  saveDuiQuDefaultToRepo(classNo, defaults)
+}
+
+/**
+ * 加载堆曲默认人员
+ * @param classNo 班次号
+ * @returns 默认人员数据，不存在返回null
+ */
+export function loadDuiQuDefault(classNo: number): UTSJSONObject | null {
+  return loadDuiQuDefaultFromRepo(classNo)
+}
+
+// ============================================
+// 人员管理
+// ============================================
+
+/**
+ * 加载所有人员
+ * @returns 人员数组
  */
 export function loadPersons(): UTSJSONObject[] {
   return loadPersonsFromRepo()
 }
 
 /**
- * 保存人员列表
- * @param persons 人员列表
+ * 保存所有人员
+ * @param persons 人员数组
  */
 export function savePersons(persons: UTSJSONObject[]): void {
   savePersonsToRepo(persons)
 }
 
+/**
+ * 添加人员
+ * @param person 人员数据
+ */
+export function addPerson(person: UTSJSONObject): void {
+  const persons = loadPersons()
+  persons.push(person)
+  savePersons(persons)
+  uni.$emit(EVENT_PERSON_ADDED, person)
+}
+
+/**
+ * 更新人员
+ * @param personId 人员ID
+ * @param updates 更新数据
+ */
+export function updatePerson(personId: number, updates: UTSJSONObject): void {
+  const persons = loadPersons()
+  for (let i = 0; i < persons.length; i++) {
+    const p = persons[i]
+    if (p['id'] == personId) {
+      // 合并更新
+      const keys = Object.keys(updates)
+      for (let j = 0; j < keys.length; j++) {
+        const key = keys[j]
+        p[key] = updates[key]
+      }
+      break
+    }
+  }
+  savePersons(persons)
+  uni.$emit(EVENT_PERSON_UPDATED, { personId, updates } as UTSJSONObject)
+}
+
+/**
+ * 根据ID查找人员
+ * @param personId 人员ID
+ * @returns 人员数据，不存在返回null
+ */
+export function findPersonById(personId: number): UTSJSONObject | null {
+  const persons = loadPersons()
+  for (let i = 0; i < persons.length; i++) {
+    const p = persons[i]
+    if (p['id'] == personId) {
+      return p
+    }
+  }
+  return null
+}
+
 // ============================================
-// 轮次数据 (Batch 2)
+// 轮次管理
 // ============================================
 
 /**
- * 加载轮次历史
- * @returns 轮次列表
+ * 加载所有轮次
+ * @returns 轮次数组
  */
 export function loadRounds(): UTSJSONObject[] {
   return loadRoundsFromRepo()
 }
 
 /**
- * 保存轮次历史
- * @param rounds 轮次列表
+ * 保存所有轮次
+ * @param rounds 轮次数组
  */
 export function saveRounds(rounds: UTSJSONObject[]): void {
   saveRoundsToRepo(rounds)
@@ -359,7 +348,7 @@ export function saveRounds(rounds: UTSJSONObject[]): void {
 
 /**
  * 加载轮次配置
- * @returns 轮次配置，不存在时返回 null
+ * @returns 轮次配置
  */
 export function loadRoundConfig(): UTSJSONObject | null {
   return loadRoundConfigFromRepo()
@@ -371,186 +360,117 @@ export function loadRoundConfig(): UTSJSONObject | null {
  */
 export function saveRoundConfig(config: UTSJSONObject): void {
   saveRoundConfigToRepo(config)
+  uni.$emit(EVENT_ROUND_CHANGED, config)
 }
 
 // ============================================
-// 系数与默认值 (Batch 2)
+// 系数配置
 // ============================================
 
 /**
- * 加载系数配置（已废弃，保留用于兼容）
- * @returns 系数配置，不存在时返回 null
- */
-export function loadCoefConfig(): UTSJSONObject | null {
-  return loadCoefConfigFromRepo()
-}
-
-/**
- * 保存系数配置（已废弃，保留用于兼容）
- * @param config 系数配置对象
- */
-export function saveCoefConfig(config: UTSJSONObject): void {
-  saveCoefConfigToRepo(config)
-}
-
-/**
- * 创建新的系数版本（使用日期格式版本号）
- * @param name 版本名称（传空字符串则自动生成）
- * @param coefData 系数数据（包含 stages 和 liangTang）
- * @returns 新版本ID（YYMMDD格式）
- */
-export function createCoefSetVersion(name: string, coefData: UTSJSONObject): number {
-  // 使用今天的日期作为版本ID
-  const newId = getTodayCoefSetId()
-
-  // 自动生成名称（如果传入空字符串）
-  const finalName = name != '' ? name : '系数版本 ' + newId.toString()
-
-  // 构造版本数据
-  const coefSet = {
-    id: newId,
-    name: finalName,
-    effectiveFrom: Date.now(),
-    effectiveTo: null,
-    stages: coefData['stages'],
-    liangTang: coefData['liangTang']
-  } as UTSJSONObject
-
-  // 保存版本（如果当天版本已存在，会覆盖）
-  saveCoefSetToRepo(newId, coefSet)
-
-  // 设置为当前生效版本
-  saveActiveCoefSetIdToRepo(newId)
-
-  return newId
-}
-
-/**
- * 获取当前生效的系数版本ID
- * @returns 版本ID，不存在时返回 260000（默认版本）
- */
-export function getActiveCoefSetId(): number {
-  const setId = loadActiveCoefSetIdFromRepo()
-  if (setId != null) {
-    return setId
-  }
-  return DEFAULT_COEF_SET_ID // 默认版本
-}
-
-/**
- * 设置当前生效的系数版本
+ * 保存系数版本
  * @param setId 版本ID
+ * @param coefSet 系数数据
  */
-export function setActiveCoefSet(setId: number): void {
-  saveActiveCoefSetIdToRepo(setId)
+export function saveCoefSet(setId: number, coefSet: UTSJSONObject): void {
+  saveCoefSetToRepo(setId, coefSet)
 }
 
 /**
- * 系数保存结果
- */
-export type SaveCoefResult = {
-  changed: boolean
-  setId: number
-}
-
-/**
- * 比较两个系数配置是否相等
- * @param activeSet 当前活跃的系数版本
- * @param coefData 新的系数数据
- * @returns 如果系数相等返回 true，否则返回 false
- */
-function coefEquals(activeSet: UTSJSONObject, coefData: UTSJSONObject): boolean {
-  const activeStages = activeSet['stages'] as UTSJSONObject
-  const activeLiangTang = activeSet['liangTang'] as UTSJSONObject
-  const newStages = coefData['stages'] as UTSJSONObject
-  const newLiangTang = coefData['liangTang'] as UTSJSONObject
-
-  // 比较 stages 的所有字段
-  const stageKeys = ['AN_QU', 'YI_FAN', 'ER_FAN', 'CHAI_QU', 'DUI_QU']
-  for (let i = 0; i < stageKeys.length; i++) {
-    const key = stageKeys[i]
-    if (activeStages[key] != newStages[key]) {
-      return false
-    }
-  }
-
-  // 比较 liangTang 的所有字段
-  const liangTangKeys = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER', 'MICRO_OPERATOR']
-  for (let i = 0; i < liangTangKeys.length; i++) {
-    const key = liangTangKeys[i]
-    if (activeLiangTang[key] != newLiangTang[key]) {
-      return false
-    }
-  }
-
-  return true
-}
-
-/**
- * 只在系数变化时保存新版本
- * @param name 版本名称（传空字符串则自动生成）
- * @param coefData 系数数据（包含 stages 和 liangTang）
- * @returns 保存结果，包含是否变更和版本ID
- */
-export function saveCoefSetIfChanged(name: string, coefData: UTSJSONObject): SaveCoefResult {
-  // 获取当前活跃版本
-  const activeSetId = getActiveCoefSetId()
-  const activeSet = loadCoefSetFromRepo(activeSetId)
-
-  // 如果活跃版本不存在，直接创建新版本
-  if (activeSet == null) {
-    const newId = createCoefSetVersion(name, coefData)
-    return { changed: true, setId: newId }
-  }
-
-  // 比较系数是否变化
-  if (coefEquals(activeSet, coefData)) {
-    // 系数未变化，不创建新版本
-    return { changed: false, setId: activeSetId }
-  }
-
-  // 系数已变化，创建新版本
-  const newId = createCoefSetVersion(name, coefData)
-  return { changed: true, setId: newId }
-}
-
-/**
- * 获取所有系数版本
- * @returns 系数版本列表
- */
-export function getAllCoefSets(): UTSJSONObject[] {
-  const ids = getAllCoefSetIdsFromRepo()
-  const sets: UTSJSONObject[] = []
-
-  for (let i = 0; i < ids.length; i++) {
-    const coefSet = loadCoefSetFromRepo(ids[i])
-    if (coefSet != null) {
-      sets.push(coefSet)
-    }
-  }
-
-  return sets
-}
-
-/**
- * 加载指定版本的系数配置
+ * 加载系数版本
  * @param setId 版本ID
- * @returns 系数配置，不存在时返回 null
+ * @returns 系数数据，不存在返回null
  */
-export function loadCoefSetById(setId: number): UTSJSONObject | null {
+export function loadCoefSet(setId: number): UTSJSONObject | null {
   return loadCoefSetFromRepo(setId)
 }
 
 /**
- * 加载环节-岗位默认配置
- * @returns 环节-岗位默认配置列表
+ * 获取所有系数版本ID
+ * @returns 版本ID数组
+ */
+export function getAllCoefSetIds(): number[] {
+  return getAllCoefSetIdsFromRepo()
+}
+
+/**
+ * 保存当前激活的系数版本ID
+ * @param setId 版本ID
+ */
+export function saveActiveCoefSetId(setId: number): void {
+  saveActiveCoefSetIdToRepo(setId)
+}
+
+/**
+ * 加载当前激活的系数版本ID
+ * @returns 版本ID，不存在返回null
+ */
+export function loadActiveCoefSetId(): number | null {
+  return loadActiveCoefSetIdFromRepo()
+}
+
+/**
+ * 加载当前激活的系数版本数据
+ * @returns 系数数据，不存在返回null
+ */
+export function loadActiveCoefSet(): UTSJSONObject | null {
+  const setId = loadActiveCoefSetId()
+  if (setId == null) {
+    return null
+  }
+  return loadCoefSet(setId)
+}
+
+// ============================================
+// 环节岗位默认配置
+// ============================================
+
+/**
+ * 加载环节岗位默认配置
+ * @returns 配置数组
  */
 export function loadStageRoleDefaults(): UTSJSONObject[] {
   return loadStageRoleDefaultsFromRepo()
 }
 
 // ============================================
-// 存储管理 (Storage Management)
+// 安曲导入快照
+// ============================================
+
+/**
+ * 保存安曲导入快照
+ * @param classNo 班次号
+ * @param roundId 轮次ID
+ * @param snapshot 快照数据
+ */
+export function saveAnQuImportSnapshot(classNo: number, roundId: number, snapshot: UTSJSONObject): void {
+  const key = getAnQuImportSnapshotKey(classNo, roundId)
+  saveDataToRepo(key, snapshot)
+}
+
+/**
+ * 加载安曲导入快照
+ * @param classNo 班次号
+ * @param roundId 轮次ID
+ * @returns 快照数据，不存在返回null
+ */
+export function loadAnQuImportSnapshot(classNo: number, roundId: number): UTSJSONObject | null {
+  const key = getAnQuImportSnapshotKey(classNo, roundId)
+  return loadDataFromRepo(key)
+}
+
+/**
+ * 删除安曲导入快照
+ * @param classNo 班次号
+ * @param roundId 轮次ID
+ */
+export function removeAnQuImportSnapshot(classNo: number, roundId: number): void {
+  const key = getAnQuImportSnapshotKey(classNo, roundId)
+  removeDataFromRepo(key)
+}
+
+// ============================================
+// 系统管理
 // ============================================
 
 /**

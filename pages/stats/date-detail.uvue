@@ -105,8 +105,7 @@
           { code: 'AN_QU', name: '安曲' },
           { code: 'YI_FAN', name: '一翻' },
           { code: 'ER_FAN', name: '二翻' },
-          { code: 'CHAI_QU', name: '拆曲' },
-          { code: 'DUI_QU', name: '堆曲' }
+          { code: 'CHAI_QU', name: '拆曲' }
         ] as StageItem[],
         displayList: [] as DisplayItem[],
         totalOriginal: 0 as PointsUnits,
@@ -239,6 +238,33 @@
                       penaltyReason: ''
                     } as DisplayItem)
                   }
+                }
+              }
+            }
+          }
+
+          // 解析堆曲岗位
+          const duiQu = session['dui_qu'] as UTSJSONObject | null
+          if (duiQu != null) {
+            const workers = duiQu['workers'] as UTSJSONObject[] | null
+            if (workers != null) {
+              for (let k = 0; k < workers.length; k++) {
+                const worker = workers[k]
+                const personId = worker['personId'] as number | null
+                const personName = worker['personName'] as string | null
+                const pointsUnits = worker['pointsUnits'] as number | null
+                if (personId != null && personName != null) {
+                  const original = pointsUnits != null ? pointsUnits : 0
+                  items.push({
+                    personId: personId,
+                    personName: personName,
+                    binCode: '堆曲',
+                    positionIndex: k + 1,
+                    originalUnits: original,
+                    deductedUnits: 0,
+                    finalUnits: original,
+                    penaltyReason: ''
+                  } as DisplayItem)
                 }
               }
             }

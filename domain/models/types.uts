@@ -10,7 +10,7 @@
 /**
  * 工序环节代码
  */
-export type StageCode = 'AN_QU' | 'YI_FAN' | 'ER_FAN' | 'CHAI_QU' | 'DUI_QU'
+export type StageCode = 'AN_QU' | 'YI_FAN' | 'ER_FAN' | 'CHAI_QU'
 
 /**
  * 岗位作用域

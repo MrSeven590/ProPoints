@@ -28,9 +28,14 @@ const DEFAULT_STAGE_COEFS: StageCoefConfig[] = [
   { stage_code: 'AN_QU', stage_name: '安曲', coef: 1.1 } as StageCoefConfig,
   { stage_code: 'YI_FAN', stage_name: '一次翻曲', coef: 1.25 } as StageCoefConfig,
   { stage_code: 'ER_FAN', stage_name: '二次翻曲', coef: 0.9 } as StageCoefConfig,
-  { stage_code: 'CHAI_QU', stage_name: '拆曲', coef: 1.12 } as StageCoefConfig,
-  { stage_code: 'DUI_QU', stage_name: '堆曲', coef: 0.29 } as StageCoefConfig
+  { stage_code: 'CHAI_QU', stage_name: '拆曲', coef: 1.12 } as StageCoefConfig
 ]
+
+/**
+ * 默认堆曲系数（硬编码备用）
+ * 堆曲不是独立工序，但需要独立的系数配置
+ */
+const DEFAULT_DUI_QU_COEF = 0.29
 
 /**
  * 获取工序系数的硬编码默认值
@@ -90,19 +95,6 @@ export function getStageCoef(stageCode: StageCode, coefSetId: number | null = nu
     }
   }
 
-  // 回退到旧版配置（兼容）
-  const config = loadCoefConfig()
-  if (config != null) {
-    const stages = config['stages']
-    if (stages != null) {
-      const stagesObj = stages as UTSJSONObject
-      const coef = stagesObj[stageCode]
-      if (coef != null) {
-        return coef as number
-      }
-    }
-  }
-
   // 回退到硬编码默认值
   return getDefaultStageCoef(stageCode)
 }
@@ -137,6 +129,41 @@ export function getStageNameByCode(stageCode: StageCode): string {
     }
   }
   return '未知工序'
+}
+
+// ============================================
+// 堆曲系数配置
+// ============================================
+
+/**
+ * 获取堆曲系数的硬编码默认值
+ * @returns 堆曲系数
+ */
+export function getDefaultDuiQuCoef(): number {
+  return DEFAULT_DUI_QU_COEF
+}
+
+/**
+ * 获取堆曲系数
+ * 支持按版本ID读取，未指定则使用当前生效版本
+ * @param coefSetId 系数版本ID（可选）
+ * @returns 堆曲系数，未找到返回默认值 0.29
+ */
+export function getDuiQuCoef(coefSetId: number | null = null): number {
+  // 确定要使用的版本ID
+  const setId = coefSetId != null ? coefSetId : getActiveCoefSetId()
+
+  // 尝试从版本化存储读取
+  const coefSet = loadCoefSetById(setId)
+  if (coefSet != null) {
+    const duiQu = coefSet['duiQu']
+    if (duiQu != null) {
+      return duiQu as number
+    }
+  }
+
+  // 回退到硬编码默认值
+  return DEFAULT_DUI_QU_COEF
 }
 
 // ============================================
@@ -220,19 +247,6 @@ export function getLiangTangRoleCoef(roleCode: RoleCode, coefSetId: number | nul
     }
   }
 
-  // 回退到旧版配置（兼容）
-  const config = loadCoefConfig()
-  if (config != null) {
-    const liangTang = config['liangTang']
-    if (liangTang != null) {
-      const liangTangObj = liangTang as UTSJSONObject
-      const coef = liangTangObj[roleCode]
-      if (coef != null) {
-        return coef as number
-      }
-    }
-  }
-
   // 回退到硬编码默认值
   return getDefaultLiangTangRoleCoef(roleCode)
 }
@@ -306,10 +320,7 @@ const DEFAULT_STAGE_ROLE_CONFIGS: StageRoleConfig[] = [
 
   // 拆曲
   { stage_code: 'CHAI_QU', role_code: 'BIN_WORKER', scope: 'BIN', default_count: 5, is_required: true } as StageRoleConfig,
-  { stage_code: 'CHAI_QU', role_code: 'CART_PULLER', scope: 'CROSS_BIN', default_count: 1, is_required: false } as StageRoleConfig,
-
-  // 堆曲
-  { stage_code: 'DUI_QU', role_code: 'STACKING_WORKER', scope: 'SESSION', default_count: 3, is_required: true } as StageRoleConfig
+  { stage_code: 'CHAI_QU', role_code: 'CART_PULLER', scope: 'CROSS_BIN', default_count: 1, is_required: false } as StageRoleConfig
 ]
 
 /**

@@ -19,17 +19,17 @@ import {
   getStageRoleDefaultsKey,
   getSkillCoeffsKey,
   getClassConfigKey,
-  getCoefConfigKey,
   getCoefSetKey,
   getCoefSetsIndexKey,
   getActiveCoefSetKey,
   getRoundConfigKey,
-  getDuiQuRoomKey,
   getLiangTangDefaultKey,
+  getDuiQuDefaultKey,
   getManagerNameKey,
   getBinSeqMaxByFloorKey,
   getOplogKey,
-  parseSessionKey
+  parseSessionKey,
+  isSessionKey
 } from './storage-keys.uts'
 
 // ============ 通用读写方法 ============
@@ -331,20 +331,6 @@ export function loadClassConfig(): UTSJSONObject | null {
   return loadData(getClassConfigKey())
 }
 
-/**
- * 保存系数配置（已废弃，保留用于兼容）
- */
-export function saveCoefConfig(config: UTSJSONObject): void {
-  saveData(getCoefConfigKey(), config)
-}
-
-/**
- * 加载系数配置（已废弃，保留用于兼容）
- */
-export function loadCoefConfig(): UTSJSONObject | null {
-  return loadData(getCoefConfigKey())
-}
-
 // ============ 系数版本化存储 ============
 
 /**
@@ -422,29 +408,6 @@ export function loadRoundConfig(): UTSJSONObject | null {
 }
 
 /**
- * 保存堆曲仓号默认值
- */
-export function saveDuiQuRoom(roomCode: string): void {
-  const data = { roomCode: roomCode } as UTSJSONObject
-  saveData(getDuiQuRoomKey(), data)
-}
-
-/**
- * 加载堆曲仓号默认值
- */
-export function loadDuiQuRoom(): string | null {
-  const data = loadData(getDuiQuRoomKey())
-  if (data == null) {
-    return null
-  }
-  const roomCode = data['roomCode']
-  if (roomCode == null) {
-    return null
-  }
-  return roomCode as string
-}
-
-/**
  * 保存安曲晾堂默认人员
  */
 export function saveLiangTangDefault(classNo: number, defaults: UTSJSONObject): void {
@@ -456,6 +419,29 @@ export function saveLiangTangDefault(classNo: number, defaults: UTSJSONObject): 
  */
 export function loadLiangTangDefault(classNo: number): UTSJSONObject | null {
   return loadData(getLiangTangDefaultKey(classNo))
+}
+
+/**
+ * 保存堆曲默认人员
+ */
+export function saveDuiQuDefault(classNo: number, defaults: UTSJSONObject[]): void {
+  const data = { workers: defaults } as UTSJSONObject
+  saveData(getDuiQuDefaultKey(classNo), data)
+}
+
+/**
+ * 加载堆曲默认人员
+ */
+export function loadDuiQuDefault(classNo: number): UTSJSONObject[] | null {
+  const data = loadData(getDuiQuDefaultKey(classNo))
+  if (data == null) {
+    return null
+  }
+  const workers = data['workers']
+  if (workers == null) {
+    return null
+  }
+  return workers as UTSJSONObject[]
 }
 
 /**
@@ -819,7 +805,7 @@ export function listAllSessionKeys(): string[] {
 
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i]
-    if (key.indexOf('pp:session:') == 0) {
+    if (isSessionKey(key)) {
       sessionKeys.push(key)
     }
   }

@@ -11,8 +11,6 @@ import {
   saveStageTypes,
   loadStageRoleDefaults,
   saveStageRoleDefaults,
-  loadCoefConfig,
-  saveCoefConfig,
   saveCoefSet,
   loadCoefSet,
   saveActiveCoefSetId,
@@ -20,6 +18,12 @@ import {
   loadBinSeqMaxByFloor,
   saveBinSeqMaxByFloor
 } from './storage-repository.uts'
+
+import {
+  isSessionKey,
+  isIndexKey,
+  getDraftIndexKey
+} from './storage-keys.uts'
 
 /**
  * 初始化存储数据
@@ -69,8 +73,7 @@ function initStageTypes(): void {
     { stageCode: 'AN_QU', stageName: '安曲', defaultBinCount: 2, minBinCount: 1, maxBinCount: null, coef: 1.1, isActive: true } as UTSJSONObject,
     { stageCode: 'YI_FAN', stageName: '一次翻曲', defaultBinCount: 2, minBinCount: 1, maxBinCount: null, coef: 1.25, isActive: true } as UTSJSONObject,
     { stageCode: 'ER_FAN', stageName: '二次翻曲', defaultBinCount: 2, minBinCount: 1, maxBinCount: null, coef: 0.9, isActive: true } as UTSJSONObject,
-    { stageCode: 'CHAI_QU', stageName: '拆曲', defaultBinCount: 2, minBinCount: 1, maxBinCount: null, coef: 1.12, isActive: true } as UTSJSONObject,
-    { stageCode: 'DUI_QU', stageName: '堆曲', defaultBinCount: 0, minBinCount: 0, maxBinCount: 0, coef: 0.29, isActive: true } as UTSJSONObject
+    { stageCode: 'CHAI_QU', stageName: '拆曲', defaultBinCount: 2, minBinCount: 1, maxBinCount: null, coef: 1.12, isActive: true } as UTSJSONObject
   ]
 
   saveStageTypes(stageTypes)
@@ -100,9 +103,7 @@ function initStageRoleDefaults(): void {
     { stageCode: 'ER_FAN', roleCode: 'BIN_WORKER', defaultCount: 4, minCount: 1, maxCount: null, isRequired: true, sortNo: 1 } as UTSJSONObject,
     // 拆曲
     { stageCode: 'CHAI_QU', roleCode: 'BIN_WORKER', defaultCount: 5, minCount: 1, maxCount: null, isRequired: true, sortNo: 1 } as UTSJSONObject,
-    { stageCode: 'CHAI_QU', roleCode: 'CART_PULLER', defaultCount: 1, minCount: 0, maxCount: null, isRequired: false, sortNo: 2 } as UTSJSONObject,
-    // 堆曲
-    { stageCode: 'DUI_QU', roleCode: 'STACKING_WORKER', defaultCount: 3, minCount: 2, maxCount: 4, isRequired: true, sortNo: 1 } as UTSJSONObject
+    { stageCode: 'CHAI_QU', roleCode: 'CART_PULLER', defaultCount: 1, minCount: 0, maxCount: null, isRequired: false, sortNo: 2 } as UTSJSONObject
   ]
 
   saveStageRoleDefaults(defaults)
@@ -129,9 +130,9 @@ function initCoefConfig(): void {
       AN_QU: 1.1,
       YI_FAN: 1.25,
       ER_FAN: 0.9,
-      CHAI_QU: 1.12,
-      DUI_QU: 0.29
+      CHAI_QU: 1.12
     } as UTSJSONObject,
+    duiQu: 0.29,
     liangTang: {
       WHEAT_MATERIAL: 0.85,
       MACHINE_GUARD: 0.8,
@@ -142,17 +143,6 @@ function initCoefConfig(): void {
 
   saveCoefSet(DEFAULT_COEF_SET_ID, defaultCoefSet)
   saveActiveCoefSetId(DEFAULT_COEF_SET_ID)
-
-  // 兼容旧版：同时保存到旧的 key（用于数据迁移期间的兼容）
-  const legacyConfig = {
-    version: 1,
-    name: '默认系数版本',
-    effectiveFrom: 0,
-    effectiveTo: null,
-    stages: defaultCoefSet['stages'],
-    liangTang: defaultCoefSet['liangTang']
-  } as UTSJSONObject
-  saveCoefConfig(legacyConfig)
 }
 
 /**
@@ -194,10 +184,11 @@ export function resetAllStorage(): void {
 export function resetSessionStorage(): void {
   const storageInfo = uni.getStorageInfoSync()
   const keys = storageInfo.keys
+  const draftIndexKey = getDraftIndexKey()
 
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i]
-    if (key.startsWith('pp:session:') || key.startsWith('pp:idx:date:') || key == 'pp:idx:draft') {
+    if (isSessionKey(key) || (isIndexKey(key) && key.indexOf(':date:') > 0) || key == draftIndexKey) {
       uni.removeStorageSync(key)
     }
   }

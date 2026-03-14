@@ -9,8 +9,7 @@
     <!-- 当前版本提示 -->
     <text class="version-hint">当前系数版本：{{ versionLabel }}</text>
 
-    <!-- 安曲工序 -->
-    <text class="group-label">安曲工序</text>
+    <!-- 工序系数 -->
     <view class="section">
       <view class="form-item">
         <text class="form-label">安曲</text>
@@ -58,14 +57,14 @@
           class="form-input"
           type="digit"
           placeholder="请输入系数"
-          :value="stageCoefs.DUI_QU"
+          :value="duiQuCoef"
           @input="onCoefInput('DUI_QU', $event)"
         />
       </view>
     </view>
 
-    <!-- 量塘工序 -->
-    <text class="group-label">量塘工序</text>
+    <!-- 晾堂工序 -->
+    <text class="group-label">晾堂工序</text>
     <view class="section">
       <view class="form-item">
         <text class="form-label">麦料</text>
@@ -126,7 +125,6 @@
 
 <script lang="uts">
   import {
-    loadCoefConfig,
     saveCoefSetIfChanged,
     getActiveCoefSetId,
     loadCoefSetById
@@ -137,7 +135,6 @@
     YI_FAN: string
     ER_FAN: string
     CHAI_QU: string
-    DUI_QU: string
   }
 
   type LiangTangCoefs = {
@@ -156,9 +153,9 @@
           AN_QU: '1.1',
           YI_FAN: '1.25',
           ER_FAN: '0.9',
-          CHAI_QU: '1.12',
-          DUI_QU: '0.29'
+          CHAI_QU: '1.12'
         } as StageCoefs,
+        duiQuCoef: '0.29' as string,
         liangTangCoefs: {
           WHEAT_MATERIAL: '0.85',
           MACHINE_GUARD: '0.8',
@@ -177,16 +174,8 @@
         this.versionLabel = activeSetId == 260000 ? '默认' : activeSetId.toString()
         const coefSet = loadCoefSetById(activeSetId)
 
-        let config: UTSJSONObject | null = null
         if (coefSet != null) {
-          config = coefSet
-        } else {
-          // 回退到旧版配置
-          config = loadCoefConfig()
-        }
-
-        if (config != null) {
-          const stages = config['stages']
+          const stages = coefSet['stages']
           if (stages != null) {
             const stagesObj = stages as UTSJSONObject
             const anQu = stagesObj['AN_QU']
@@ -205,13 +194,14 @@
             if (chaiQu != null) {
               this.stageCoefs.CHAI_QU = (chaiQu as number).toString()
             }
-            const duiQu = stagesObj['DUI_QU']
-            if (duiQu != null) {
-              this.stageCoefs.DUI_QU = (duiQu as number).toString()
-            }
           }
 
-          const liangTang = config['liangTang']
+          const duiQu = coefSet['duiQu']
+          if (duiQu != null) {
+            this.duiQuCoef = (duiQu as number).toString()
+          }
+
+          const liangTang = coefSet['liangTang']
           if (liangTang != null) {
             const liangTangObj = liangTang as UTSJSONObject
             const wheatMaterial = liangTangObj['WHEAT_MATERIAL']
@@ -259,7 +249,7 @@
         } else if (field == 'CHAI_QU') {
           this.stageCoefs.CHAI_QU = value
         } else if (field == 'DUI_QU') {
-          this.stageCoefs.DUI_QU = value
+          this.duiQuCoef = value
         } else if (field == 'WHEAT_MATERIAL') {
           this.liangTangCoefs.WHEAT_MATERIAL = value
         } else if (field == 'MACHINE_GUARD') {
@@ -284,7 +274,7 @@
         if (erFan == null) return
         const chaiQu = this.validateAndParseCoef(this.stageCoefs.CHAI_QU, '拆曲')
         if (chaiQu == null) return
-        const duiQu = this.validateAndParseCoef(this.stageCoefs.DUI_QU, '堆曲')
+        const duiQu = this.validateAndParseCoef(this.duiQuCoef, '堆曲')
         if (duiQu == null) return
         const wheatMaterial = this.validateAndParseCoef(this.liangTangCoefs.WHEAT_MATERIAL, '麦料')
         if (wheatMaterial == null) return
@@ -302,8 +292,7 @@
           AN_QU: anQu,
           YI_FAN: yiFan,
           ER_FAN: erFan,
-          CHAI_QU: chaiQu,
-          DUI_QU: duiQu
+          CHAI_QU: chaiQu
         } as UTSJSONObject
 
         const liangTang = {
@@ -315,6 +304,7 @@
 
         const coefData = {
           stages: stages,
+          duiQu: duiQu,
           liangTang: liangTang
         } as UTSJSONObject
 

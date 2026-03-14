@@ -5,7 +5,7 @@
       <view class="title-row">
         <text class="title">{{ roleName }}</text>
         <view class="scope-badge">
-          <text class="scope-text">晾堂</text>
+          <text class="scope-text">{{ scopeLabel }}</text>
         </view>
       </view>
       <!-- 池子总分（仅非简化模式显示） -->
@@ -100,6 +100,10 @@
       roleName: {
         type: String,
         default: '麦料'
+      },
+      scopeLabel: {
+        type: String,
+        default: '晾堂'
       },
       poolUnits: {
         type: Number,

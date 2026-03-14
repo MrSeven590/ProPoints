@@ -100,15 +100,6 @@ export function getClassConfigKey(): string {
 }
 
 /**
- * 系数版本 Key（已废弃，保留用于兼容）
- * 格式: pp:cfg:coef
- * 存储: 旧版系数配置
- */
-export function getCoefConfigKey(): string {
-  return `${KEY_PREFIX}:cfg:coef`
-}
-
-/**
  * 单个系数版本 Key
  * 格式: pp:cfg:coef-set:{setId}
  * 存储: CoefSet 数据（包含 stages 和 liangTang 系数）
@@ -145,21 +136,21 @@ export function getRoundConfigKey(): string {
 }
 
 /**
- * 堆曲仓号默认值 Key
- * 格式: pp:cfg:duiqu-room
- * 存储: 上次使用的堆曲仓号
- */
-export function getDuiQuRoomKey(): string {
-  return `${KEY_PREFIX}:cfg:duiqu-room`
-}
-
-/**
  * 安曲晾堂默认人员 Key
  * 格式: pp:cfg:liangtang-default:{classNo}
  * 存储: 安曲晾堂各岗位默认人员
  */
 export function getLiangTangDefaultKey(classNo: number): string {
   return `${KEY_PREFIX}:cfg:liangtang-default:${classNo}`
+}
+
+/**
+ * 堆曲默认人员 Key
+ * 格式: pp:cfg:duiqu-default:{classNo}
+ * 存储: 堆曲默认人员列表
+ */
+export function getDuiQuDefaultKey(classNo: number): string {
+  return `${KEY_PREFIX}:cfg:duiqu-default:${classNo}`
 }
 
 /**

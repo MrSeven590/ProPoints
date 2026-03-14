@@ -233,6 +233,25 @@
                 }
               }
             }
+
+            // 统计堆曲岗位
+            const duiQu = session['dui_qu'] as UTSJSONObject | null
+            if (duiQu != null) {
+              const workers = duiQu['workers'] as UTSJSONObject[] | null
+              if (workers != null) {
+                for (let k = 0; k < workers.length; k++) {
+                  const worker = workers[k]
+                  const personId = worker['personId'] as number | null
+                  const pointsUnits = worker['pointsUnits'] as number | null
+                  if (personId != null) {
+                    personIdSet.set(personId, true)
+                  }
+                  if (pointsUnits != null) {
+                    totalPointsUnits = totalPointsUnits + calcFinalPoints(pointsUnits, 0)
+                  }
+                }
+              }
+            }
           }
 
           // 下一天
