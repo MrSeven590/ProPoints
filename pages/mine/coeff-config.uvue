@@ -130,9 +130,6 @@
     loadCoefSet
   } from '../../domain/stores/AppStore.uts'
 
-  // 默认系数版本ID
-  const DEFAULT_COEF_SET_ID = 260000
-
   type StageCoefs = {
     AN_QU: string
     YI_FAN: string
@@ -173,7 +170,7 @@
     methods: {
       loadSettings() {
         // 优先从版本化存储读取
-        const activeSetId = loadActiveCoefSetId() ?? DEFAULT_COEF_SET_ID
+        const activeSetId = loadActiveCoefSetId() ?? 260000
         this.versionLabel = activeSetId == 260000 ? '默认' : activeSetId.toString()
         const coefSet = loadCoefSet(activeSetId)
 

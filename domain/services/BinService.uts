@@ -7,7 +7,7 @@ import type { BinCode } from '../models/ferment.uts'
 import type { StageCode } from '../models/types.uts'
 import {
   getCurrentClassNo,
-  getBinSeqMaxByFloor,
+  getBinSeqMax,
   getSessionsByDateAndStage
 } from '../stores/AppStore.uts'
 import {
@@ -85,7 +85,7 @@ export function getSeqMaxForFloor(
   floorNo: number,
   stageCode: StageCode
 ): number {
-  const configMax = getBinSeqMaxByFloor(floorNo)
+  const configMax = getBinSeqMax(floorNo)
   const historyMax = getHistoryMaxSeqNo(classNo, floorNo, stageCode)
   // 返回两者中的较大值
   return configMax > historyMax ? configMax : historyMax

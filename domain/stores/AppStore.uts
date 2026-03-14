@@ -44,6 +44,8 @@ import { getAnQuImportSnapshotKey } from '../../storage/storage-keys.uts'
 
 import { resetAllStorage as resetAllStorageFromInit } from '../../storage/init.uts'
 
+import { getCurrentTimestamp } from '../models/types.uts'
+
 // ============================================
 // 事件名称常量
 // ============================================
@@ -60,13 +62,13 @@ export const EVENT_ROUND_CHANGED = 'round:changed'
 
 /**
  * 获取当前班次号
- * @returns 班次号（1或2）
+ * @returns 班次号（默认1）
  */
 export function getCurrentClassNo(): number {
   const config = loadClassConfig()
   if (config != null) {
     const classNo = config['classNo'] as number | null
-    if (classNo == 1 || classNo == 2) {
+    if (classNo != null && classNo > 0) {
       return classNo
     }
   }
@@ -75,7 +77,7 @@ export function getCurrentClassNo(): number {
 
 /**
  * 设置当前班次号
- * @param classNo 班次号（1或2）
+ * @param classNo 班次号（正整数）
  */
 export function setCurrentClassNo(classNo: number): void {
   saveClassConfig({ classNo: classNo } as UTSJSONObject)
@@ -144,45 +146,45 @@ export function loadBins(): UTSJSONObject[] {
  * 保存草稿会话
  * @param sessionDate 会话日期
  * @param stageCode 环节代码
- * @param classNo 班次号
+ * @param roundId 轮次ID
  * @param sessionData 会话数据
  */
-export function saveDraftSession(sessionDate: string, stageCode: string, classNo: number, sessionData: UTSJSONObject): void {
-  saveDraftSessionToRepo(sessionDate, stageCode, classNo, sessionData)
-  uni.$emit(EVENT_SESSION_SAVED, { sessionDate, stageCode, classNo } as UTSJSONObject)
+export function saveDraftSession(sessionDate: string, stageCode: string, roundId: number | null, sessionData: UTSJSONObject): void {
+  saveDraftSessionToRepo(sessionDate, stageCode, roundId, sessionData)
+  uni.$emit(EVENT_SESSION_SAVED, { sessionDate, stageCode, roundId } as UTSJSONObject)
 }
 
 /**
  * 保存已提交会话
  * @param sessionDate 会话日期
  * @param stageCode 环节代码
- * @param classNo 班次号
+ * @param roundId 轮次ID
  * @param sessionData 会话数据
  */
-export function saveSubmittedSession(sessionDate: string, stageCode: string, classNo: number, sessionData: UTSJSONObject): void {
-  saveSubmittedSessionToRepo(sessionDate, stageCode, classNo, sessionData)
-  uni.$emit(EVENT_SESSION_SUBMITTED, { sessionDate, stageCode, classNo } as UTSJSONObject)
+export function saveSubmittedSession(sessionDate: string, stageCode: string, roundId: number | null, sessionData: UTSJSONObject): void {
+  saveSubmittedSessionToRepo(sessionDate, stageCode, roundId, sessionData)
+  uni.$emit(EVENT_SESSION_SUBMITTED, { sessionDate, stageCode, roundId } as UTSJSONObject)
 }
 
 /**
  * 加载会话用于编辑
  * @param sessionDate 会话日期
  * @param stageCode 环节代码
- * @param classNo 班次号
+ * @param roundId 轮次ID
  * @returns 会话数据，不存在返回null
  */
-export function loadSessionForEdit(sessionDate: string, stageCode: string, classNo: number): UTSJSONObject | null {
-  return loadSessionForEditFromRepo(sessionDate, stageCode, classNo)
+export function loadSessionForEdit(sessionDate: string, stageCode: string, roundId: number | null): UTSJSONObject | null {
+  return loadSessionForEditFromRepo(sessionDate, stageCode, roundId)
 }
 
 /**
  * 删除草稿会话
  * @param sessionDate 会话日期
  * @param stageCode 环节代码
- * @param classNo 班次号
+ * @param roundId 轮次ID
  */
-export function deleteDraftSession(sessionDate: string, stageCode: string, classNo: number): void {
-  deleteDraftSessionFromRepo(sessionDate, stageCode, classNo)
+export function deleteDraftSession(sessionDate: string, stageCode: string, roundId: number | null): void {
+  deleteDraftSessionFromRepo(sessionDate, stageCode, roundId)
 }
 
 /**
@@ -381,6 +383,48 @@ export function saveRoundConfig(config: UTSJSONObject): void {
  */
 export function saveCoefSet(setId: number, coefSet: UTSJSONObject): void {
   saveCoefSetToRepo(setId, coefSet)
+}
+
+/**
+ * 保存系数版本（仅在变更时创建新版本）
+ * @param remark 备注（未使用，保留兼容性）
+ * @param coefSet 系数数据
+ * @returns 保存结果 { changed: boolean, setId: number }
+ */
+export function saveCoefSetIfChanged(remark: string, coefSet: UTSJSONObject): UTSJSONObject {
+  const currentSetId = loadActiveCoefSetId() ?? 260000
+  const currentCoefSet = loadCoefSet(currentSetId)
+
+  // 比较系数是否变更
+  let changed = false
+  if (currentCoefSet == null) {
+    changed = true
+  } else {
+    // 只比较系数字段，忽略元数据
+    const normalizeCoefSet = (set: UTSJSONObject): UTSJSONObject => {
+      return {
+        stages: set['stages'],
+        duiQu: set['duiQu'],
+        liangTang: set['liangTang']
+      } as UTSJSONObject
+    }
+    const currentNormalized = JSON.stringify(normalizeCoefSet(currentCoefSet))
+    const newNormalized = JSON.stringify(normalizeCoefSet(coefSet))
+    changed = currentNormalized != newNormalized
+  }
+
+  let resultSetId = currentSetId
+  if (changed) {
+    // 生成新版本ID（使用时间戳）
+    resultSetId = getCurrentTimestamp()
+    saveCoefSet(resultSetId, coefSet)
+    saveActiveCoefSetId(resultSetId)
+  }
+
+  return {
+    changed: changed,
+    setId: resultSetId
+  } as UTSJSONObject
 }
 
 /**

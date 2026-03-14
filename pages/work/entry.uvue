@@ -1924,7 +1924,7 @@ export default {
         // 轮次信息缺失，返回与新建会话相同结构的空状态
         const defaultLiangTangData = this.loadLiangTangDefaultsForNewSession();
         const defaultDuiQuWorkers = this.loadDuiQuDefaultsForNewSession();
-        const activeCoefSetId = loadActiveCoefSetId();
+        const activeCoefSetId = loadActiveCoefSetId() ?? DEFAULT_COEF_SET_ID;
 
         return {
           hasData: false,
@@ -1968,7 +1968,7 @@ export default {
         // 加载堆曲默认人员（仅拆曲环节）
         const defaultDuiQuWorkers = this.loadDuiQuDefaultsForNewSession();
 
-        const activeCoefSetId = loadActiveCoefSetId();
+        const activeCoefSetId = loadActiveCoefSetId() ?? DEFAULT_COEF_SET_ID;
         return {
           hasData: false,
           sessionDate: date,

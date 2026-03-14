@@ -302,8 +302,8 @@
   import {
     getCurrentClassNo,
     setCurrentClassNo,
-    getBinSeqMaxByFloor,
-    setBinSeqMaxByFloor
+    getBinSeqMax,
+    setBinSeqMax
   } from '../../domain/stores/AppStore.uts'
 
   import {
@@ -367,9 +367,9 @@
         this.classNo = getCurrentClassNo()
 
         // 加载楼层默认仓数
-        this.floor3SeqMax = getBinSeqMaxByFloor(3)
-        this.floor4SeqMax = getBinSeqMaxByFloor(4)
-        this.floor5SeqMax = getBinSeqMaxByFloor(5)
+        this.floor3SeqMax = getBinSeqMax(3)
+        this.floor4SeqMax = getBinSeqMax(4)
+        this.floor5SeqMax = getBinSeqMax(5)
 
         // 加载轮次信息
         this.loadRoundInfo()
@@ -440,7 +440,7 @@
         const value = parseInt(e.detail.value)
         if (isNaN(value) == false && value > 0) {
           this.floor3SeqMax = value
-          setBinSeqMaxByFloor(3, value)
+          setBinSeqMax(3, value)
           uni.showToast({
             title: '已保存',
             icon: 'success'
@@ -452,7 +452,7 @@
         const value = parseInt(e.detail.value)
         if (isNaN(value) == false && value > 0) {
           this.floor4SeqMax = value
-          setBinSeqMaxByFloor(4, value)
+          setBinSeqMax(4, value)
           uni.showToast({
             title: '已保存',
             icon: 'success'
@@ -464,7 +464,7 @@
         const value = parseInt(e.detail.value)
         if (isNaN(value) == false && value > 0) {
           this.floor5SeqMax = value
-          setBinSeqMaxByFloor(5, value)
+          setBinSeqMax(5, value)
           uni.showToast({
             title: '已保存',
             icon: 'success'
