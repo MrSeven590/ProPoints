@@ -364,6 +364,17 @@ export function saveRoundConfig(config: UTSJSONObject): void {
   uni.$emit(EVENT_ROUND_CHANGED, config)
 }
 
+/**
+ * 发射轮次变更事件
+ * @param roundNo 轮次号
+ */
+export function emitRoundChanged(roundNo: number): void {
+  const config = loadRoundConfig()
+  if (config != null) {
+    uni.$emit(EVENT_ROUND_CHANGED, config)
+  }
+}
+
 // ============================================
 // 系数配置
 // ============================================
