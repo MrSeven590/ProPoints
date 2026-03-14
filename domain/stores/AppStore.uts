@@ -411,6 +411,14 @@ export function loadActiveCoefSetId(): number | null {
 }
 
 /**
+ * 获取当前激活的系数版本ID（别名）
+ * @returns 版本ID，不存在返回null
+ */
+export function getActiveCoefSetId(): number | null {
+  return loadActiveCoefSetId()
+}
+
+/**
  * 加载当前激活的系数版本数据
  * @returns 系数数据，不存在返回null
  */
@@ -419,6 +427,15 @@ export function loadActiveCoefSet(): UTSJSONObject | null {
   if (setId == null) {
     return null
   }
+  return loadCoefSet(setId)
+}
+
+/**
+ * 根据ID加载系数版本（别名）
+ * @param setId 版本ID
+ * @returns 系数数据，不存在返回null
+ */
+export function loadCoefSetById(setId: number): UTSJSONObject | null {
   return loadCoefSet(setId)
 }
 

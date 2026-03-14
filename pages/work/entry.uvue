@@ -781,10 +781,19 @@ export default {
      */
     onEnterEditMode() {
       // 读取 submitted 数据，写入 draft
+      const roundId = this.roundId;
+      if (roundId == null) {
+        uni.showToast({
+          title: "轮次信息缺失",
+          icon: "none",
+        });
+        return;
+      }
+
       const sessionData = loadSessionForEdit(
         this.sessionDate,
         this.stageCode,
-        this.roundId,
+        roundId,
       );
       if (sessionData == null) {
         uni.showToast({
@@ -813,7 +822,7 @@ export default {
       saveDraftSession(
         this.sessionDate,
         this.stageCode,
-        this.roundId,
+        roundId,
         sessionData,
       );
 
@@ -1910,8 +1919,33 @@ export default {
      * 构建指定日期的状态对象（无副作用）
      */
     buildStateForDate(date: string): UTSJSONObject {
+      const roundId = this.roundId;
+      if (roundId == null) {
+        // 轮次信息缺失，返回空状态
+        return {
+          hasData: false,
+          sessionDate: date,
+          coefSetId: null,
+          coefSnapshot: null,
+          selectedBins: [] as BinCode[],
+          stageBinInfos: [] as StageBinInfo[],
+          binCardsData: new Map<number, BinCardData>(),
+          occupiedIds: [] as number[],
+          showCrossBinSection: false,
+          crossBinPersonId: null,
+          crossBinPersonName: "",
+          crossBinPointsUnits: 0,
+          liangTangRoles: new Map<string, LiangTangRole>(),
+          duiQuWorkers: [] as UTSJSONObject[],
+          duiQuTotalPoolPoints: 0,
+          sessionRemark: "",
+          sessionStatus: "draft",
+          viewMode: "edit",
+        } as UTSJSONObject;
+      }
+
       // 加载会话数据
-      const sessionData = loadSessionForEdit(date, this.stageCode, this.roundId);
+      const sessionData = loadSessionForEdit(date, this.stageCode, roundId);
 
       if (sessionData == null) {
         // 无已有数据，返回默认新建状态
