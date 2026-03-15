@@ -92,9 +92,9 @@
 </template>
 
 <script lang="uts">
-  import { getTodayDateString, addDaysToDate } from '../../domain/models/types.uts'
+  import { getTodayDateString, addDaysToDate, StageCode } from '../../domain/models/types.uts'
   import { getSessionsByDate, getAllDraftSessions, deleteDraftSession, deleteAllDraftSessions, getCurrentClassNo, loadRounds, getManagerName, loadPersons } from '../../domain/stores/AppStore.uts'
-  import { getCurrentRoundId } from '../../domain/services/RoundService.uts'
+  import { getCurrentRoundId, getDefaultRoundIdForStage } from '../../domain/services/RoundService.uts'
 
   /**
    * 会话列表项类型
@@ -275,7 +275,7 @@
        */
       goToEntry(stageCode: string) {
         const classNo = getCurrentClassNo()
-        const roundId = getCurrentRoundId(classNo)
+        const roundId = getDefaultRoundIdForStage(classNo, stageCode as StageCode)
         if (roundId == 0) {
           uni.showToast({
             title: '请先在设置中配置当前轮次',

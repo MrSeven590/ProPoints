@@ -10,7 +10,8 @@ import {
 import {
   generateUUID,
   getCurrentTimestamp,
-  SyncStatus
+  SyncStatus,
+  StageCode
 } from '../models/types.uts'
 
 import {
@@ -145,6 +146,43 @@ export function getLatestRound(classNo: number): FermentRound | null {
     return rounds[0]
   }
   return null
+}
+
+/**
+ * 获取指定班级的上一轮次（最近结束的轮次）
+ * @param classNo 班级编号
+ * @returns 上一轮次ID，不存在时返回 0
+ */
+export function getPreviousRoundId(classNo: number): number {
+  const rounds = listRounds(classNo)
+
+  // 查找最近结束的轮次（ended_at != null）
+  for (let i = 0; i < rounds.length; i++) {
+    if (rounds[i].ended_at != null) {
+      return rounds[i].id
+    }
+  }
+
+  return 0
+}
+
+/**
+ * 获取指定阶段的默认轮次ID
+ * @param classNo 班级编号
+ * @param stageCode 阶段代码
+ * @returns 默认轮次ID，不存在时返回 0
+ */
+export function getDefaultRoundIdForStage(classNo: number, stageCode: StageCode): number {
+  const currentId = getCurrentRoundId(classNo)
+
+  // 拆曲使用上一轮次，其他阶段使用当前轮次
+  if (stageCode == 'CHAI_QU') {
+    const prevId = getPreviousRoundId(classNo)
+    // 如果没有上一轮次，回退到当前轮次
+    return prevId != 0 ? prevId : currentId
+  }
+
+  return currentId
 }
 
 // ============================================

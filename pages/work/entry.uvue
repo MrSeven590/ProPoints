@@ -29,6 +29,12 @@
 
     <scroll-view class="content" scroll-y="true">
       <view class="scroll-body">
+        <!-- 轮次横幅 -->
+        <view class="round-banner" @click="onShowRoundPicker" v-if="!isSwitching">
+          <text class="round-banner-text">当前轮次: 第{{ currentRoundNo }}轮 ({{ stageName }})</text>
+          <text class="round-banner-switch">[切换]</text>
+        </view>
+
         <view class="section">
         <text class="section-title">基本信息</text>
         <view class="info-row date-row">
@@ -61,6 +67,7 @@
           :selectedBins="selectedBins"
           :stageCode="stageCode"
           :disabled="viewMode == 'view' || isRestoring == true"
+          @changeMeta="onBinsChangeMeta"
           @change="onBinsChange"
         />
       </view>
@@ -360,6 +367,32 @@
         </view>
       </view>
     </view>
+
+    <!-- 轮次选择器 -->
+    <view class="modal-mask" v-show="showRoundPickerModal" @click="onRoundPickerCancel">
+      <view class="modal-content" @click.stop="">
+        <view class="modal-header">
+          <text class="modal-title">选择轮次</text>
+        </view>
+        <view class="picker-body">
+          <picker-view class="picker-view" :value="[pickerViewIndex]" @change="onRoundPickerChange">
+            <picker-view-column>
+              <view class="picker-item" v-for="(label, index) in roundOptions" :key="index">
+                <text class="picker-item-text">{{ label }}</text>
+              </view>
+            </picker-view-column>
+          </picker-view>
+        </view>
+        <view class="modal-footer">
+          <view class="modal-btn cancel-btn" @click="onRoundPickerCancel">
+            <text class="round-picker-btn-text">取消</text>
+          </view>
+          <view class="modal-btn confirm-btn" @click="onRoundPickerConfirm">
+            <text class="round-picker-btn-text">确定</text>
+          </view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -406,6 +439,7 @@ import {
   loadCoefSet,
   getCurrentClassNo,
   getManagerName,
+  loadRounds,
 } from "../../domain/stores/AppStore.uts";
 import {
   validateSessionData,
@@ -416,6 +450,7 @@ import { calcLiangTangPoolUnits, calcSessionTotalPointsUnits } from "../../domai
 import {
   isMicroEnabledForCurrentRound,
   isMicroEnabledByRoundId,
+  getDefaultRoundIdForStage,
 } from "../../domain/services/RoundService.uts";
 import {
   loadAnQuImportSnapshot,
@@ -480,6 +515,8 @@ export default {
       showBinSection: true,
       showCrossBinSection: false,
       selectedBins: [] as BinCode[],
+      // 最近一次仓选择变更来源（用于跳过初始化推断导致的自动保存）
+      lastBinsChangeSource: "" as string,
       // 发酵仓详细信息（用于跨仓组件）
       stageBinInfos: [] as StageBinInfo[],
       // 跨仓岗位配置
@@ -549,6 +586,13 @@ export default {
       isSwitching: false as boolean,
       pendingDate: null as string | null,
       switchSeq: 0 as number,
+      // 轮次选择器相关状态
+      showRoundPickerModal: false as boolean,
+      roundOptions: [] as string[],
+      roundIds: [] as number[],
+      currentRoundNo: 0 as number,
+      pickerViewIndex: 0 as number,
+      tempSelectedRoundIndex: 0 as number,
     };
   },
   onLoad(options: UTSJSONObject) {
@@ -565,10 +609,6 @@ export default {
       this.initCrossBinRole();
       // 初始化默认仓内工人数
       this.defaultBinWorkerCount = getStageBinWorkerCount(this.stageCode);
-      // 初始化晾堂岗位（仅安曲环节）
-      this.initLiangTangSection();
-      // 初始化堆曲部分（仅拆曲环节）
-      this.initDuiQuSection();
     }
 
     // 解析日期参数（用于加载已有会话）
@@ -577,7 +617,7 @@ export default {
       this.sessionDate = dateParam;
     }
 
-    // 解析轮次 ID
+    // 解析轮次 ID（必须在初始化晾堂/堆曲之前）
     const roundIdParam = options["roundId"] as string | null;
     if (roundIdParam != null) {
       const parsedRoundId = parseInt(roundIdParam);
@@ -585,6 +625,23 @@ export default {
         this.roundId = parsedRoundId;
       }
     }
+
+    // 如果没有传入 roundId，使用阶段默认轮次
+    if (this.roundId == null) {
+      const classNo = getCurrentClassNo();
+      const defaultRoundId = getDefaultRoundIdForStage(classNo, this.stageCode);
+      if (defaultRoundId != 0) {
+        this.roundId = defaultRoundId;
+      }
+    }
+
+    // 加载轮次列表（用于轮次选择器）
+    this.loadRoundList();
+
+    // 初始化晾堂岗位（仅安曲环节，依赖 roundId）
+    this.initLiangTangSection();
+    // 初始化堆曲部分（仅拆曲环节）
+    this.initDuiQuSection();
 
     // 始终尝试加载已存在的会话（draft 优先）
     // 使用新的原子状态交换方式
@@ -1258,7 +1315,10 @@ export default {
       const workers = data["workers"] as UTSJSONObject[] | null;
       if (workers != null) {
         this.duiQuWorkers = workers;
-        this.scheduleAutoSave();
+        const source = data["source"] as string | null;
+        if (source != "system") {
+          this.scheduleAutoSave();
+        }
       }
     },
 
@@ -1284,6 +1344,7 @@ export default {
       }
       const roleCode = payload["roleCode"] as string;
       const workers = payload["workers"] as UTSJSONObject[];
+      const source = payload["source"] as string | null;
 
       // 解析工人数据
       const workerList: LiangTangWorkerData[] = [];
@@ -1307,7 +1368,9 @@ export default {
       // 更新人员互斥列表
       this.updateOccupiedIds();
       // 触发自动保存
-      this.scheduleAutoSave();
+      if (source != "system") {
+        this.scheduleAutoSave();
+      }
     },
 
     /**
@@ -1381,7 +1444,16 @@ export default {
     /**
      * 发酵仓选择变更
      */
+    onBinsChangeMeta(payload: UTSJSONObject) {
+      const source = payload["source"] as string | null;
+      this.lastBinsChangeSource = source != null ? source : "";
+    },
+
     onBinsChange(bins: BinCode[]) {
+      // 捕获并清理来源标记，避免污染后续用户操作
+      const changeSource = this.lastBinsChangeSource;
+      this.lastBinsChangeSource = "";
+
       if (this.isRestoring == true || this.viewMode != "edit") {
         return;
       }
@@ -1410,7 +1482,9 @@ export default {
       // 仓集合变更后重新计算跨仓工分分配
       this.recalculateCrossBinSources();
       // 触发自动保存
-      this.scheduleAutoSave();
+      if (changeSource != "autoInfer") {
+        this.scheduleAutoSave();
+      }
     },
 
     /**
@@ -2445,6 +2519,205 @@ export default {
     },
 
     // ============================================
+    // 轮次选择器操作
+    // ============================================
+
+    /**
+     * 加载轮次列表
+     */
+    loadRoundList() {
+      const classNo = getCurrentClassNo();
+      const allRounds = loadRounds();
+      const options: string[] = [];
+      const ids: number[] = [];
+
+      // 过滤当前班级的轮次，并构建 roundId -> roundNo 映射
+      const roundNoMap = new Map<number, number>();
+      for (let i = 0; i < allRounds.length; i++) {
+        const round = allRounds[i];
+        const roundClassNo = round['class_no'] as number;
+        if (roundClassNo == classNo) {
+          const roundId = round['id'] as number;
+          const roundNo = round['round_no'] as number;
+          options.push(`第${roundNo}轮`);
+          ids.push(roundId);
+          roundNoMap.set(roundId, roundNo);
+
+          // 设置当前轮次号
+          if (this.roundId == roundId) {
+            this.currentRoundNo = roundNo;
+          }
+        }
+      }
+
+      this.roundOptions = options;
+      this.roundIds = ids;
+
+      // 如果当前轮次号未设置，从映射中获取
+      if (this.currentRoundNo == 0 && this.roundId != null) {
+        const roundNo = roundNoMap.get(this.roundId);
+        if (roundNo != null) {
+          this.currentRoundNo = roundNo;
+        }
+      }
+    },
+
+    /**
+     * 打开轮次选择器
+     */
+    onShowRoundPicker() {
+      // 禁用状态下不允许切换
+      if (this.isSwitching == true) {
+        return;
+      }
+
+      // 找到当前轮次在列表中的索引
+      let currentIndex = 0;
+      for (let i = 0; i < this.roundIds.length; i++) {
+        if (this.roundIds[i] == this.roundId) {
+          currentIndex = i;
+          break;
+        }
+      }
+
+      this.pickerViewIndex = currentIndex;
+      this.tempSelectedRoundIndex = currentIndex;
+      this.showRoundPickerModal = true;
+    },
+
+    /**
+     * 轮次选择器变化
+     */
+    onRoundPickerChange(e: UniPickerViewChangeEvent) {
+      const val = e.detail.value;
+      if (val.length > 0) {
+        const newIndex = val[0] as number;
+        this.pickerViewIndex = newIndex;
+        this.tempSelectedRoundIndex = newIndex;
+      }
+    },
+
+    /**
+     * 取消轮次选择
+     */
+    onRoundPickerCancel() {
+      this.showRoundPickerModal = false;
+    },
+
+    /**
+     * 确认轮次选择
+     */
+    onRoundPickerConfirm() {
+      this.showRoundPickerModal = false;
+
+      const selectedIndex = this.tempSelectedRoundIndex;
+      if (selectedIndex < 0 || selectedIndex >= this.roundIds.length) {
+        return;
+      }
+
+      const targetRoundId = this.roundIds[selectedIndex];
+      if (targetRoundId == this.roundId) {
+        return;
+      }
+
+      this.requestSwitchRound(targetRoundId);
+    },
+
+    /**
+     * 请求切换轮次
+     */
+    requestSwitchRound(targetRoundId: number) {
+      if (targetRoundId == this.roundId) {
+        return;
+      }
+
+      if (this.isSwitching == true) {
+        uni.showToast({
+          title: '正在切换中，请稍候',
+          icon: 'none'
+        });
+        return;
+      }
+
+      this.performSwitchRound(targetRoundId);
+    },
+
+    /**
+     * 执行轮次切换
+     */
+    performSwitchRound(targetRoundId: number) {
+      this.isSwitching = true;
+
+      // 1. 捕获当前轮次（用于保存草稿）
+      const fromRoundId = this.roundId;
+
+      // 2. 保存当前草稿（使用 fromRoundId 确保轮次安全）
+      this.flushDraftIfNeededWithRound(this.sessionDate, fromRoundId);
+
+      // 3. 在 setTimeout 中切换轮次并重新加载数据
+      setTimeout(() => {
+        try {
+          // 4. 切换轮次
+          this.roundId = targetRoundId;
+
+          // 5. 更新轮次显示
+          for (let i = 0; i < this.roundIds.length; i++) {
+            if (this.roundIds[i] == targetRoundId) {
+              const allRounds = loadRounds();
+              for (let j = 0; j < allRounds.length; j++) {
+                const round = allRounds[j];
+                if ((round['id'] as number) == targetRoundId) {
+                  this.currentRoundNo = round['round_no'] as number;
+                  break;
+                }
+              }
+              break;
+            }
+          }
+
+          // 6. 重新初始化晾堂/堆曲（依赖 roundId）
+          this.initLiangTangSection();
+          this.initDuiQuSection();
+
+          // 7. 重新加载数据
+          const nextState = this.buildStateForDate(this.sessionDate);
+          this.applyState(nextState);
+
+          uni.showToast({
+            title: `已切换到第${this.currentRoundNo}轮`,
+            icon: 'success'
+          });
+        } catch (e) {
+          console.error('轮次切换失败:', e);
+          uni.showToast({
+            title: '切换失败',
+            icon: 'none'
+          });
+        } finally {
+          this.isSwitching = false;
+        }
+      }, 0);
+    },
+
+    /**
+     * 轮次安全的草稿保存
+     * 使用传入的 roundId 参数保存草稿，避免轮次混淆
+     */
+    flushDraftIfNeededWithRound(date: string, roundId: number | null) {
+      this.cancelAutoSave();
+      if (this.sessionStatus == 'draft' && this.isSubmitting == false && roundId != null && roundId != 0) {
+        uni.hideKeyboard();
+        try {
+          const sessionData = this.buildSessionData('draft');
+          saveDraftSession(date, this.stageCode, roundId, sessionData);
+          this.savedRevision = this.draftRevision;
+        } catch (e) {
+          console.error('保存草稿失败:', e);
+        }
+      }
+    },
+
+    // ============================================
     // 旧的日期切换方法（已废弃，保留用于兼容）
     // ============================================
 
@@ -2783,6 +3056,10 @@ export default {
      * 仅对草稿状态的会话生效
      */
     scheduleAutoSave() {
+      // 切换日期/轮次过程中不自动保存
+      if (this.isSwitching == true) {
+        return;
+      }
       // 只读模式或数据恢复期间不自动保存
       if (this.viewMode != "edit" || this.isRestoring == true) {
         return;
@@ -2844,7 +3121,7 @@ export default {
         // 更新已保存版本号
         this.savedRevision = this.draftRevision;
       } catch (e) {
-        console.error("自动保存失败:", e);
+        console.error("[AutoSave] 自动保存失败:", e);
         // 失败冷却机制：只在距离上次错误超过 10 秒时才显示 toast
         const now = Date.now();
         const cooldownMs = 10000;
@@ -3034,6 +3311,31 @@ export default {
 
 .content {
   flex: 1;
+}
+
+.round-banner {
+  margin: 12px 12px 0 12px;
+  padding: 12px 16px;
+  background-color: #fff7e6;
+  border-radius: 8px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #ffd591;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.round-banner-text {
+  font-size: 14px;
+  color: #d46b08;
+  font-weight: 500;
+}
+
+.round-banner-switch {
+  font-size: 14px;
+  color: #1890ff;
+  font-weight: 500;
 }
 
 .section {
@@ -3451,6 +3753,75 @@ export default {
   border-width: 1px;
   border-style: solid;
   border-color: #e8e8e8;
+}
+
+/* 轮次选择器样式 */
+.modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  justify-content: center;
+  align-items: center;
+  z-index: 9998;
+}
+
+.modal-content {
+  width: 300px;
+  background-color: #ffffff;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.modal-footer {
+  flex-direction: row;
+  border-top-width: 1px;
+  border-top-style: solid;
+  border-top-color: #e8e8e8;
+}
+
+.cancel-btn {
+  flex: 1;
+  height: 50px;
+  justify-content: center;
+  align-items: center;
+  border-right-width: 1px;
+  border-right-style: solid;
+  border-right-color: #e8e8e8;
+}
+
+.confirm-btn {
+  flex: 1;
+  height: 50px;
+  justify-content: center;
+  align-items: center;
+}
+
+.round-picker-btn-text {
+  font-size: 16px;
+  color: #007aff;
+}
+
+.picker-body {
+  height: 200px;
+}
+
+.picker-view {
+  width: 100%;
+  height: 100%;
+}
+
+.picker-item {
+  height: 40px;
+  justify-content: center;
+  align-items: center;
+}
+
+.picker-item-text {
+  font-size: 16px;
+  color: #333333;
 }
 
 /* 切换遮罩层样式 */

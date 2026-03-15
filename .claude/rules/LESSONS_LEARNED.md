@@ -139,6 +139,81 @@ const newNormalized = JSON.stringify(normalizeCoefSet(coefSet))
 
 ---
 
+### 问题6: 自动保存在初始化时误触发
+
+**现象：**
+- 页面加载时自动保存被触发4次（AN_QU阶段）
+- 没有用户操作，但 `scheduleAutoSave()` 被调用
+- 日志显示来自 LiangTang 角色卡的 `change` 事件
+
+**根本原因：**
+```typescript
+// 错误方案：使用时间延迟
+setTimeout(() => {
+  this.autoSaveEnabled = true;
+}, 0);
+```
+- 组件的 `watch.poolUnits` 在异步更新周期中触发
+- `setTimeout(..., 0)` 在组件 watch 回调之前执行
+- 导致 `autoSaveEnabled` 被设置为 `true` 时，组件仍在初始化
+
+**触发路径：**
+1. `entry.uvue` 的 `applyState()` 设置 LiangTang 角色的 `poolUnits`
+2. `biz-session-role-card` 的 `watch.poolUnits` 检测到变化
+3. 如果只有1个工人，自动填充工分并 emit `change`
+4. `entry.uvue` 的 `onLiangTangRoleChange()` 调用 `scheduleAutoSave()`
+5. 4个 LiangTang 角色卡 = 4次触发
+
+**解决方案：**
+```typescript
+// 正确方案：标记事件来源
+// 1. 组件标记系统变更
+emitChange(source: string = "user") {
+  const payload = {
+    roleCode: this.roleCode,
+    workers: workersData,
+    source: source  // "user" | "system"
+  }
+  this.$emit('change', payload)
+}
+
+// watch.poolUnits 使用 source: "system"
+watch: {
+  poolUnits: {
+    handler(newVal: number) {
+      if (this.workers.length == 1) {
+        this.workers[0].pointsUnits = newVal
+        this.emitChange('system')  // 标记为系统变更
+      }
+    }
+  }
+}
+
+// 2. 页面只对用户变更自动保存
+onLiangTangRoleChange(payload: UTSJSONObject) {
+  // 更新状态（无论来源）
+  this.updateLiangTangRole(payload)
+
+  // 只对用户操作自动保存
+  if (payload['source'] != 'system') {
+    this.scheduleAutoSave()
+  }
+}
+```
+
+**同样适用于：**
+- `biz-bin-selector` 的 `autoInfer` 预选
+- `biz-session-role-card` 的 `watch.poolUnits` 自动填充
+- 任何组件的初始化/派生逻辑
+
+**教训：**
+- 时间延迟（setTimeout）不可靠，组件生命周期是异步的
+- 区分"系统派生变更"和"用户操作"，使用显式标记
+- 自动保存应该只响应用户操作，不响应初始化/计算
+- 组件 emit 事件时应该包含来源信息（source/reason）
+
+---
+
 ## 最佳实践总结
 
 1. **类型安全修复**

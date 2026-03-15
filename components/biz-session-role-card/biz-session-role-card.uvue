@@ -229,7 +229,8 @@
           // 池子总分变化时，如果只有1人，自动更新工分
           if (this.workers.length == 1) {
             this.workers[0].pointsUnits = newVal
-            this.emitChange()
+            // 系统派生变更：用于保持父子状态一致，但不应触发父组件的“用户修改”自动保存
+            this.emitChange('system')
           }
         }
       }
@@ -291,7 +292,7 @@
           this.workers[this.currentEditingIndex].personName = name as string
           this.showPersonPicker = false
           this.currentEditingIndex = -1
-          this.emitChange()
+          this.emitChange('user')
         }
       },
 
@@ -303,7 +304,7 @@
           this.workers[this.currentEditingIndex].pointsUnits = 0
           this.showPersonPicker = false
           this.currentEditingIndex = -1
-          this.emitChange()
+          this.emitChange('user')
         }
       },
 
@@ -313,7 +314,7 @@
           return
         }
         this.workers[index].pointsUnits = newUnits
-        this.emitChange()
+        this.emitChange('user')
       },
 
       onAddWorker() {
@@ -335,7 +336,7 @@
           this.workers[0].pointsUnits = 0
         }
 
-        this.emitChange()
+        this.emitChange('user')
       },
 
       onRemoveWorker(index: number) {
@@ -349,11 +350,11 @@
           if (this.workers.length == 1) {
             this.workers[0].pointsUnits = this.poolUnits as number
           }
-          this.emitChange()
+          this.emitChange('user')
         }
       },
 
-      emitChange() {
+      emitChange(source: string = 'user') {
         const workersData: UTSJSONObject[] = []
         for (let i = 0; i < this.workers.length; i++) {
           const w = this.workers[i]
@@ -366,7 +367,8 @@
         const payload = {
           roleCode: this.roleCode,
           workers: workersData,
-          totalAssignedUnits: this.totalAssignedUnits
+          totalAssignedUnits: this.totalAssignedUnits,
+          source: source
         } as UTSJSONObject
         this.$emit('change', payload)
       },
