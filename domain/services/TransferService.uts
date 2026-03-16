@@ -57,6 +57,7 @@ const PPX1_ENCODING = 'base64url'
 const PAYLOAD_KIND_ANQ = 'ANQ'
 const PAYLOAD_KIND_BUNDLE = 'BUNDLE'
 const SESSION_STATUS_SUBMITTED = 'submitted'
+const MAX_ROUND_QUERY_DAYS = 180
 
 // ============================================
 // Phase 3: 数据收集层（导出侧）
@@ -90,28 +91,19 @@ export function collectAnQuPayload(roundId: number): AnQuPayload | null {
   const micro = roundInfo['micro'] as number
 
   // 收集楼层配置
-  const floorsMap = new Map<number, number>()
+  const floors = collectFloorConfig()
+
+  // 建立 bin 索引 Map: "classNo-seqNo-floorNo" -> binId
   const allBins = loadBins()
+  const binIndexMap = new Map<string, number>()
   for (let i = 0; i < allBins.length; i++) {
     const bin = allBins[i]
-    const floorNo = bin['floor_no'] as number
-    const seqNo = bin['seq_no'] as number
-
-    const currentMax = floorsMap.get(floorNo)
-    if (currentMax == null || seqNo > currentMax) {
-      floorsMap.set(floorNo, seqNo)
-    }
-  }
-
-  // 转换为 Array<[number, number]>
-  const floors: Array<[number, number]> = []
-  const floorKeys = floorsMap.keys()
-  for (let i = 0; i < floorKeys.length; i++) {
-    const floorNo = floorKeys[i]
-    const maxSeq = floorsMap.get(floorNo)
-    if (maxSeq != null) {
-      floors.push([floorNo, maxSeq])
-    }
+    const binClassNo = bin['class_no'] as number
+    const binSeqNo = bin['seq_no'] as number
+    const binFloorNo = bin['floor_no'] as number
+    const binId = bin['id'] as number
+    const key = `${binClassNo}-${binSeqNo}-${binFloorNo}`
+    binIndexMap.set(key, binId)
   }
 
   // 收集曲块数据
@@ -161,19 +153,9 @@ export function collectAnQuPayload(roundId: number): AnQuPayload | null {
           continue
         }
 
-        // 查找 binId
-        let binId: number | null = null
-        for (let k = 0; k < allBins.length; k++) {
-          const b = allBins[k]
-          const bClassNo = b['class_no'] as number
-          const bSeqNo = b['seq_no'] as number
-          const bFloorNo = b['floor_no'] as number
-
-          if (bClassNo == binClassNo && bSeqNo == binSeqNo && bFloorNo == binFloorNo) {
-            binId = b['id'] as number
-            break
-          }
-        }
+        // 使用索引 Map 查找 binId
+        const key = `${binClassNo}-${binSeqNo}-${binFloorNo}`
+        const binId = binIndexMap.get(key)
 
         if (binId != null) {
           bins.push({
@@ -274,12 +256,12 @@ export function assembleBundlePayload(
 
 /**
  * 封装载荷为 PPX1 信封格式
- * @param payload 载荷对象
+ * @param payload 载荷对象（AnQuPayload 或 BundlePayload）
  * @returns PPX1 格式字符串
  */
-export function seal(payload: any): string {
+export function seal(payload: AnQuPayload | BundlePayload): string {
   const payloadStr = serializeToBase64Url(payload)
-  const kind = payload['kind'] as string
+  const kind = payload.kind
   return `PPX1|${PPX1_VERSION}|${PPX1_ENCODING}|${kind}|${payloadStr}`
 }
 
@@ -362,6 +344,54 @@ export function unseal(envelope: string): UnsealResult {
       }
     }
 
+    // 验证必需字段
+    const requiredFields = ['v', 'kind', 'ts']
+    for (let i = 0; i < requiredFields.length; i++) {
+      const field = requiredFields[i]
+      if (payload[field] == null) {
+        return {
+          success: false,
+          payload: null,
+          error: {
+            code: 'INVALID_PAYLOAD',
+            message: `缺少必需字段: ${field}`,
+            details: `期望类型: ${field == 'v' ? 'number' : field == 'kind' ? 'string' : 'number'}`
+          }
+        }
+      }
+    }
+
+    // 根据 kind 验证特定字段
+    if (kind == PAYLOAD_KIND_ANQ) {
+      const anqFields = ['c', 'y', 'n', 'm', 'f', 'bins', 'skip']
+      for (let i = 0; i < anqFields.length; i++) {
+        const field = anqFields[i]
+        if (payload[field] == null) {
+          return {
+            success: false,
+            payload: null,
+            error: {
+              code: 'INVALID_PAYLOAD',
+              message: `ANQ 载荷缺少必需字段: ${field}`,
+              details: `期望类型: ${field == 'f' || field == 'bins' || field == 'skip' ? 'array' : 'number'}`
+            }
+          }
+        }
+      }
+    } else if (kind == PAYLOAD_KIND_BUNDLE) {
+      if (payload['anqu'] == null) {
+        return {
+          success: false,
+          payload: null,
+          error: {
+            code: 'INVALID_PAYLOAD',
+            message: 'BUNDLE 载荷缺少必需字段: anqu',
+            details: '期望类型: AnQuPayload'
+          }
+        }
+      }
+    }
+
     return {
       success: true,
       payload: payload,
@@ -385,6 +415,39 @@ export function unseal(envelope: string): UnsealResult {
 // ============================================
 
 /**
+ * 收集楼层配置
+ * @returns 楼层配置数组 [[floor_no, max_seq_no], ...]
+ */
+function collectFloorConfig(): Array<[number, number]> {
+  const floorsMap = new Map<number, number>()
+  const allBins = loadBins()
+
+  for (let i = 0; i < allBins.length; i++) {
+    const bin = allBins[i]
+    const floorNo = bin['floor_no'] as number
+    const seqNo = bin['seq_no'] as number
+
+    const currentMax = floorsMap.get(floorNo)
+    if (currentMax == null || seqNo > currentMax) {
+      floorsMap.set(floorNo, seqNo)
+    }
+  }
+
+  // 转换为 Array<[number, number]>
+  const floors: Array<[number, number]> = []
+  const floorKeys = floorsMap.keys()
+  for (let i = 0; i < floorKeys.length; i++) {
+    const floorNo = floorKeys[i]
+    const maxSeq = floorsMap.get(floorNo)
+    if (maxSeq != null) {
+      floors.push([floorNo, maxSeq])
+    }
+  }
+
+  return floors
+}
+
+/**
  * 获取指定轮次的所有会话
  * @param roundInfo 轮次信息
  * @returns 会话数组
@@ -393,25 +456,46 @@ function getSessionsByRound(roundInfo: UTSJSONObject): UTSJSONObject[] {
   const roundId = roundInfo['id'] as number
   const allSessions: UTSJSONObject[] = []
 
-  // 注意：由于没有直接按 roundId 查询的 API，这里采用简化策略
-  // 只查询轮次创建日期及之后的会话，避免遍历所有历史数据
-  // 实际生产环境中，应该维护一个 roundId -> sessions 的索引
-
   const startDate = roundInfo['start_date'] as string | null
   if (startDate == null) {
     return allSessions
   }
 
-  // 简化实现：只查询轮次开始日期的会话
-  // 完整实现需要遍历 start_date 到当前日期的所有会话
-  const sessions = getSessionsByDateAndStage(startDate, 'AN_QU')
+  // 计算日期范围
+  const startTime = new Date(startDate).getTime()
+  const currentTime = Date.now()
+  const daysDiff = Math.floor((currentTime - startTime) / (1000 * 60 * 60 * 24))
 
-  for (let i = 0; i < sessions.length; i++) {
-    const session = sessions[i]
-    const sessionRoundId = session['round_id'] as number | null
-    if (sessionRoundId == roundId) {
-      allSessions.push(session)
+  // 检查是否超过 180 天上限
+  let queryStartDate = startDate
+  if (daysDiff > MAX_ROUND_QUERY_DAYS) {
+    // 超限警告
+    console.log(`[警告] 轮次跨度超过 ${MAX_ROUND_QUERY_DAYS} 天（实际: ${daysDiff} 天），可能存在未导出的数据`)
+
+    // 限制查询范围为最近 180 天
+    const limitTime = currentTime - (MAX_ROUND_QUERY_DAYS * 24 * 60 * 60 * 1000)
+    const limitDate = new Date(limitTime)
+    queryStartDate = limitDate.toISOString().split('T')[0]
+  }
+
+  // 遍历日期范围查询会话
+  let currentDate = new Date(queryStartDate)
+  const endDate = new Date()
+
+  while (currentDate <= endDate) {
+    const dateStr = currentDate.toISOString().split('T')[0]
+    const sessions = getSessionsByDateAndStage(dateStr, 'AN_QU')
+
+    for (let i = 0; i < sessions.length; i++) {
+      const session = sessions[i]
+      const sessionRoundId = session['round_id'] as number | null
+      if (sessionRoundId == roundId) {
+        allSessions.push(session)
+      }
     }
+
+    // 增加一天
+    currentDate.setDate(currentDate.getDate() + 1)
   }
 
   return allSessions
@@ -531,31 +615,7 @@ export function resolveRound(payload: AnQuPayload): RoundResolveResult {
  */
 export function checkFloorConfig(payload: AnQuPayload): FloorConflict | null {
   const importedFloors = payload.f
-  const localFloorsMap = new Map<number, number>()
-
-  // 获取本地楼层配置
-  const allBins = loadBins()
-  for (let i = 0; i < allBins.length; i++) {
-    const bin = allBins[i]
-    const floorNo = bin['floor_no'] as number
-    const seqNo = bin['seq_no'] as number
-
-    const currentMax = localFloorsMap.get(floorNo)
-    if (currentMax == null || seqNo > currentMax) {
-      localFloorsMap.set(floorNo, seqNo)
-    }
-  }
-
-  // 转换为 Array
-  const localFloors: Array<[number, number]> = []
-  const localKeys = localFloorsMap.keys()
-  for (let i = 0; i < localKeys.length; i++) {
-    const floorNo = localKeys[i]
-    const maxSeq = localFloorsMap.get(floorNo)
-    if (maxSeq != null) {
-      localFloors.push([floorNo, maxSeq])
-    }
-  }
+  const localFloors = collectFloorConfig()
 
   // 辅助函数：在数组中查找楼层
   const findFloor = (floors: Array<[number, number]>, floorNo: number): number | null => {

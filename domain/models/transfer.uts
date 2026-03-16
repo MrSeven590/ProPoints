@@ -28,8 +28,8 @@ export type TransferEnvelope = {
  * 包含单个轮次的安曲数据和楼层配置
  */
 export type AnQuPayload = {
-  v: number                    // 版本号
-  kind: string                 // 载荷类型 "ANQ"
+  v: 1                         // 版本号（字面量类型）
+  kind: 'ANQ'                  // 载荷类型（字面量类型）
   ts: number                   // 时间戳
   c: number                    // classNo 班次号
   y: number                    // year 年份
@@ -55,8 +55,8 @@ export type AnQuBinData = {
  * 包含安曲数据 + 人员 + 系数配置
  */
 export type BundlePayload = {
-  v: number                    // 版本号
-  kind: string                 // 载荷类型 "BUNDLE"
+  v: 1                         // 版本号（字面量类型）
+  kind: 'BUNDLE'               // 载荷类型（字面量类型）
   ts: number                   // 时间戳
   anqu: AnQuPayload            // 安曲数据
   persons: PersonData[] | null // 人员数据（可选）
