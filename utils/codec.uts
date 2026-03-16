@@ -1,0 +1,111 @@
+/**
+ * 编解码工具
+ * Base64URL 和 UTF-8 字符串序列化
+ */
+
+// ============================================
+// Base64URL 编解码
+// ============================================
+
+/**
+ * 将标准 Base64 转换为 Base64URL
+ * + → -, / → _, 移除尾部 =
+ */
+function base64ToBase64Url(base64: string): string {
+  return base64
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '')
+}
+
+/**
+ * 将 Base64URL 转换为标准 Base64
+ * - → +, _ → /, 补充尾部 =
+ */
+function base64UrlToBase64(base64Url: string): string {
+  let base64 = base64Url
+    .replace(/-/g, '+')
+    .replace(/_/g, '/')
+
+  // 补充 padding
+  const padding = (4 - (base64.length % 4)) % 4
+  for (let i = 0; i < padding; i++) {
+    base64 += '='
+  }
+
+  return base64
+}
+
+// ============================================
+// UTF-8 字符串序列化（使用 TextEncoder/TextDecoder）
+// ============================================
+
+/**
+ * 将字符串编码为 Base64URL
+ * @param str 原始字符串
+ * @returns Base64URL 编码的字符串
+ */
+export function encodeBase64Url(str: string): string {
+  // 使用 TextEncoder 将字符串转为 UTF-8 字节数组
+  const encoder = new TextEncoder()
+  const bytes = encoder.encode(str)
+
+  // 将字节数组转为二进制字符串
+  let binaryString = ''
+  for (let i = 0; i < bytes.length; i++) {
+    binaryString += String.fromCharCode(bytes[i])
+  }
+
+  // 使用 btoa 进行 Base64 编码
+  const base64 = btoa(binaryString)
+
+  // 转换为 Base64URL
+  return base64ToBase64Url(base64)
+}
+
+/**
+ * 将 Base64URL 解码为字符串
+ * @param base64Url Base64URL 编码的字符串
+ * @returns 原始字符串
+ */
+export function decodeBase64Url(base64Url: string): string {
+  // 转换为标准 Base64
+  const base64 = base64UrlToBase64(base64Url)
+
+  // 使用 atob 进行 Base64 解码
+  const binaryString = atob(base64)
+
+  // 将二进制字符串转为字节数组
+  const bytes = new Uint8Array(binaryString.length)
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i)
+  }
+
+  // 使用 TextDecoder 将字节数组转为字符串
+  const decoder = new TextDecoder()
+  return decoder.decode(bytes)
+}
+
+// ============================================
+// JSON 序列化 + Base64URL 编码
+// ============================================
+
+/**
+ * 将对象序列化为 Base64URL 字符串
+ * @param obj 要序列化的对象
+ * @returns Base64URL 编码的字符串
+ */
+export function serializeToBase64Url(obj: any): string {
+  const jsonStr = JSON.stringify(obj)
+  return encodeBase64Url(jsonStr)
+}
+
+/**
+ * 将 Base64URL 字符串反序列化为对象
+ * @param base64Url Base64URL 编码的字符串
+ * @returns 反序列化的对象
+ */
+export function deserializeFromBase64Url(base64Url: string): any {
+  const jsonStr = decodeBase64Url(base64Url)
+  return JSON.parse(jsonStr)
+}

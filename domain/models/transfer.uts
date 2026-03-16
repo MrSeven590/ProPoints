@@ -1,0 +1,187 @@
+/**
+ * 数据传输类型定义
+ * PPX1 格式的数据传输信封和载荷类型
+ */
+
+// ============================================
+// PPX1 信封格式
+// ============================================
+
+/**
+ * PPX1 信封类型
+ * 格式: PPX1|<version>|<enc>|<payload>
+ */
+export type TransferEnvelope = {
+  version: number
+  encoding: string
+  payloadType: string
+  payload: string
+}
+
+// ============================================
+// 载荷类型
+// ============================================
+
+/**
+ * 安曲数据载荷
+ * 包含单个轮次的安曲数据和楼层配置
+ */
+export type AnQuPayload = {
+  v: number                    // 版本号
+  kind: string                 // 载荷类型 "ANQ"
+  ts: number                   // 时间戳
+  c: number                    // classNo 班次号
+  y: number                    // year 年份
+  n: number                    // roundNo 轮次号
+  m: number                    // micro 微调版本
+  f: Map<number, number>       // floors 楼层配置 floor_no -> max_seq_no
+  bins: AnQuBinData[]          // 曲块数据
+  skip: string[]               // 跳过的跨班曲块ID列表
+}
+
+/**
+ * 曲块数据（用于传输）
+ */
+export type AnQuBinData = {
+  id: string
+  seq: number
+  floor: number
+  koji: number
+}
+
+/**
+ * 完整配置包载荷
+ * 包含安曲数据 + 人员 + 系数配置
+ */
+export type BundlePayload = {
+  v: number                    // 版本号
+  kind: string                 // 载荷类型 "BUNDLE"
+  ts: number                   // 时间戳
+  anqu: AnQuPayload            // 安曲数据
+  persons: PersonData[] | null // 人员数据（可选）
+  coef: CoefData | null        // 系数数据（可选）
+}
+
+/**
+ * 人员数据（用于传输）
+ */
+export type PersonData = {
+  id: string
+  name: string
+  skill: number
+}
+
+/**
+ * 系数数据（用于传输）
+ */
+export type CoefData = {
+  stages: StageCoefData[]
+  duiQu: number
+  liangTang: number
+}
+
+/**
+ * 工序系数数据
+ */
+export type StageCoefData = {
+  code: string
+  name: string
+  coef: number
+}
+
+// ============================================
+// 轮次映射结果
+// ============================================
+
+/**
+ * 轮次解析状态
+ */
+export type RoundResolveStatus = 'EXACT_MATCH' | 'SOFT_MATCH' | 'AMBIGUOUS' | 'NOT_FOUND'
+
+/**
+ * 轮次解析结果
+ */
+export type RoundResolveResult = {
+  status: RoundResolveStatus
+  roundId: number | null
+  candidates: RoundCandidate[] | null
+  warnings: string[] | null
+}
+
+/**
+ * 轮次候选项
+ */
+export type RoundCandidate = {
+  roundId: number
+  classNo: number
+  year: number
+  roundNo: number
+  micro: number
+  label: string
+}
+
+// ============================================
+// 楼层冲突检测
+// ============================================
+
+/**
+ * 楼层冲突信息
+ */
+export type FloorConflict = {
+  hasConflict: boolean
+  localFloors: Map<number, number>
+  importedFloors: Map<number, number>
+  differences: FloorDifference[]
+}
+
+/**
+ * 楼层差异详情
+ */
+export type FloorDifference = {
+  floorNo: number
+  localMaxSeq: number | null
+  importedMaxSeq: number | null
+}
+
+// ============================================
+// 导入结果
+// ============================================
+
+/**
+ * 导入结果
+ */
+export type ImportResult = {
+  success: boolean
+  roundId: number | null
+  binsImported: number
+  binsSkipped: number
+  errors: string[]
+}
+
+// ============================================
+// 错误类型
+// ============================================
+
+/**
+ * 传输错误代码
+ */
+export type TransferErrorCode =
+  | 'INVALID_FORMAT'
+  | 'UNSUPPORTED_VERSION'
+  | 'INVALID_ENCODING'
+  | 'DECODE_FAILED'
+  | 'INVALID_PAYLOAD'
+  | 'ROUND_AMBIGUOUS'
+  | 'ROUND_REQUIRED'
+  | 'FLOOR_MISMATCH'
+  | 'EMPTY_BINS'
+  | 'PAYLOAD_TOO_LARGE'
+
+/**
+ * 传输错误
+ */
+export type TransferError = {
+  code: TransferErrorCode
+  message: string
+  details: string | null
+}

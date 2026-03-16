@@ -1,0 +1,605 @@
+/**
+ * 数据传输服务
+ * 负责 PPX1 格式的数据封装、解封和处理
+ */
+
+import {
+  AnQuPayload,
+  AnQuBinData,
+  BundlePayload,
+  PersonData,
+  CoefData,
+  StageCoefData,
+  TransferEnvelope,
+  RoundResolveResult,
+  RoundResolveStatus,
+  RoundCandidate,
+  FloorConflict,
+  FloorDifference,
+  ImportResult,
+  TransferError
+} from '../models/transfer.uts'
+
+import {
+  serializeToBase64Url,
+  deserializeFromBase64Url
+} from '../../utils/codec.uts'
+
+import {
+  getCurrentClassNo,
+  loadRounds,
+  loadPersons,
+  loadActiveCoefSet,
+  getBinSeqMax,
+  loadBins,
+  getSessionsByDateAndStage
+} from '../stores/AppStore.uts'
+
+import {
+  parseBinCode
+} from '../models/ferment.uts'
+
+import {
+  getCurrentTimestamp
+} from '../models/types.uts'
+
+import {
+  saveAnQuImportSnapshot,
+  ParsedAnQuItem
+} from './AnQuDataService.uts'
+
+// ============================================
+// 常量定义
+// ============================================
+
+const PPX1_VERSION = 1
+const PPX1_ENCODING = 'base64url'
+const PAYLOAD_KIND_ANQ = 'ANQ'
+const PAYLOAD_KIND_BUNDLE = 'BUNDLE'
+const SESSION_STATUS_SUBMITTED = 'submitted'
+
+// ============================================
+// Phase 3: 数据收集层（导出侧）
+// ============================================
+
+/**
+ * 收集指定轮次的安曲数据载荷
+ * @param roundId 轮次ID
+ * @returns AnQu载荷，如果轮次不存在返回null
+ */
+export function collectAnQuPayload(roundId: number): AnQuPayload | null {
+  const classNo = getCurrentClassNo()
+
+  // 获取轮次信息
+  const allRounds = loadRounds()
+  let roundInfo: UTSJSONObject | null = null
+  for (let i = 0; i < allRounds.length; i++) {
+    const id = allRounds[i]['id'] as number
+    if (id == roundId) {
+      roundInfo = allRounds[i]
+      break
+    }
+  }
+
+  if (roundInfo == null) {
+    return null
+  }
+
+  const year = roundInfo['year'] as number
+  const roundNo = roundInfo['round_no'] as number
+  const micro = roundInfo['micro'] as number
+
+  // 收集楼层配置
+  const floors = new Map<number, number>()
+  const allBins = loadBins()
+  for (let i = 0; i < allBins.length; i++) {
+    const bin = allBins[i]
+    const floorNo = bin['floor_no'] as number
+    const seqNo = bin['seq_no'] as number
+
+    const currentMax = floors.get(floorNo)
+    if (currentMax == null || seqNo > currentMax) {
+      floors.set(floorNo, seqNo)
+    }
+  }
+
+  // 收集曲块数据
+  const bins: AnQuBinData[] = []
+  const skippedBins: string[] = []
+
+  // 获取该轮次的所有安曲会话
+  const allSessions = getSessionsByRound(roundInfo)
+
+  for (let i = 0; i < allSessions.length; i++) {
+    const session = allSessions[i]
+    const sessionRoundId = session['round_id'] as number | null
+    const sessionStatus = session['status'] as string | null
+
+    // 只处理已提交的数据
+    if (sessionStatus != SESSION_STATUS_SUBMITTED) {
+      continue
+    }
+
+    // 过滤轮次
+    if (sessionRoundId != roundId) {
+      continue
+    }
+
+    // 提取 bins 数据
+    const sessionBins = session['bins']
+    if (sessionBins != null) {
+      const binArray = sessionBins as UTSJSONObject[]
+      for (let j = 0; j < binArray.length; j++) {
+        const bin = binArray[j]
+        const binCode = bin['bin_code'] as string
+        const kojiCount = bin['koji_count'] as number
+
+        // 解析曲块编号
+        const parsed = parseBinCode(binCode)
+        if (parsed == null) {
+          continue
+        }
+
+        const binClassNo = parsed['classNo'] as number
+        const binSeqNo = parsed['seqNo'] as number
+        const binFloorNo = parsed['floorNo'] as number
+
+        // 检查是否跨班
+        if (binClassNo != classNo) {
+          skippedBins.push(binCode)
+          continue
+        }
+
+        // 查找 binId
+        let binId: number | null = null
+        for (let k = 0; k < allBins.length; k++) {
+          const b = allBins[k]
+          const bClassNo = b['class_no'] as number
+          const bSeqNo = b['seq_no'] as number
+          const bFloorNo = b['floor_no'] as number
+
+          if (bClassNo == binClassNo && bSeqNo == binSeqNo && bFloorNo == binFloorNo) {
+            binId = b['id'] as number
+            break
+          }
+        }
+
+        if (binId != null) {
+          bins.push({
+            id: binCode,
+            seq: binId,
+            floor: binFloorNo,
+            koji: kojiCount
+          })
+        }
+      }
+    }
+  }
+
+  return {
+    v: PPX1_VERSION,
+    kind: PAYLOAD_KIND_ANQ,
+    ts: getCurrentTimestamp(),
+    c: classNo,
+    y: year,
+    n: roundNo,
+    m: micro,
+    f: floors,
+    bins: bins,
+    skip: skippedBins
+  }
+}
+
+/**
+ * 组装完整配置包载荷
+ * @param roundId 轮次ID
+ * @param includePersons 是否包含人员数据
+ * @param includeCoef 是否包含系数数据
+ * @returns Bundle载荷，如果轮次不存在返回null
+ */
+export function assembleBundlePayload(
+  roundId: number,
+  includePersons: boolean,
+  includeCoef: boolean
+): BundlePayload | null {
+  const anquPayload = collectAnQuPayload(roundId)
+  if (anquPayload == null) {
+    return null
+  }
+
+  // 收集人员数据
+  let personsData: PersonData[] | null = null
+  if (includePersons) {
+    const allPersons = loadPersons()
+    personsData = []
+    for (let i = 0; i < allPersons.length; i++) {
+      const person = allPersons[i]
+      personsData.push({
+        id: person['id'] as string,
+        name: person['name'] as string,
+        skill: person['skill_level'] as number
+      })
+    }
+  }
+
+  // 收集系数数据
+  let coefData: CoefData | null = null
+  if (includeCoef) {
+    const coefSet = loadActiveCoefSet()
+    if (coefSet != null) {
+      const stages = coefSet['stages'] as UTSJSONObject[]
+      const stagesData: StageCoefData[] = []
+
+      for (let i = 0; i < stages.length; i++) {
+        const stage = stages[i]
+        stagesData.push({
+          code: stage['stage_code'] as string,
+          name: stage['stage_name'] as string,
+          coef: stage['coef'] as number
+        })
+      }
+
+      coefData = {
+        stages: stagesData,
+        duiQu: coefSet['duiQu'] as number,
+        liangTang: coefSet['liangTang'] as number
+      }
+    }
+  }
+
+  return {
+    v: PPX1_VERSION,
+    kind: PAYLOAD_KIND_BUNDLE,
+    ts: getCurrentTimestamp(),
+    anqu: anquPayload,
+    persons: personsData,
+    coef: coefData
+  }
+}
+
+// ============================================
+// PPX1 信封封装/解封
+// ============================================
+
+/**
+ * 封装载荷为 PPX1 信封格式
+ * @param payload 载荷对象
+ * @returns PPX1 格式字符串
+ */
+export function seal(payload: any): string {
+  const payloadStr = serializeToBase64Url(payload)
+  const kind = payload['kind'] as string
+  return `PPX1|${PPX1_VERSION}|${PPX1_ENCODING}|${kind}|${payloadStr}`
+}
+
+/**
+ * 解封 PPX1 信封格式
+ * @param envelope PPX1 格式字符串
+ * @returns 解封结果，包含载荷或错误
+ */
+export function unseal(envelope: string): any | null {
+  const parts = envelope.split('|')
+
+  if (parts.length != 5) {
+    return null
+  }
+
+  const magic = parts[0]
+  const version = parseInt(parts[1])
+  const encoding = parts[2]
+  const kind = parts[3]
+  const payloadStr = parts[4]
+
+  if (magic != 'PPX1') {
+    return null
+  }
+
+  if (version != PPX1_VERSION) {
+    return null
+  }
+
+  if (encoding != PPX1_ENCODING) {
+    return null
+  }
+
+  try {
+    const payload = deserializeFromBase64Url(payloadStr)
+    return payload
+  } catch (e: Error) {
+    return null
+  }
+}
+
+// ============================================
+// 辅助函数
+// ============================================
+
+/**
+ * 获取指定轮次的所有会话
+ * @param roundInfo 轮次信息
+ * @returns 会话数组
+ */
+function getSessionsByRound(roundInfo: UTSJSONObject): UTSJSONObject[] {
+  const roundId = roundInfo['id'] as number
+  const allSessions: UTSJSONObject[] = []
+
+  // 注意：由于没有直接按 roundId 查询的 API，这里采用简化策略
+  // 只查询轮次创建日期及之后的会话，避免遍历所有历史数据
+  // 实际生产环境中，应该维护一个 roundId -> sessions 的索引
+
+  const startDate = roundInfo['start_date'] as string | null
+  if (startDate == null) {
+    return allSessions
+  }
+
+  // 简化实现：只查询轮次开始日期的会话
+  // 完整实现需要遍历 start_date 到当前日期的所有会话
+  const sessions = getSessionsByDateAndStage(startDate, 'AN_QU')
+
+  for (let i = 0; i < sessions.length; i++) {
+    const session = sessions[i]
+    const sessionRoundId = session['round_id'] as number | null
+    if (sessionRoundId == roundId) {
+      allSessions.push(session)
+    }
+  }
+
+  return allSessions
+}
+
+// ============================================
+// Phase 4: 轮次映射（导入侧）
+// ============================================
+
+/**
+ * 解析轮次映射
+ * @param payload 安曲载荷
+ * @returns 轮次解析结果
+ */
+export function resolveRound(payload: AnQuPayload): RoundResolveResult {
+  const classNo = payload.c
+  const year = payload.y
+  const roundNo = payload.n
+  const micro = payload.m
+
+  const allRounds = loadRounds()
+  const exactMatches: RoundCandidate[] = []
+  const softMatches: RoundCandidate[] = []
+
+  // 遍历所有轮次，查找匹配
+  for (let i = 0; i < allRounds.length; i++) {
+    const round = allRounds[i]
+    const rClassNo = round['class_no'] as number
+    const rYear = round['year'] as number
+    const rRoundNo = round['round_no'] as number
+    const rMicro = round['micro'] as number
+    const rId = round['id'] as number
+
+    // 精确匹配：(classNo, year, roundNo, micro) 全部相同
+    if (rClassNo == classNo && rYear == year && rRoundNo == roundNo && rMicro == micro) {
+      exactMatches.push({
+        roundId: rId,
+        classNo: rClassNo,
+        year: rYear,
+        roundNo: rRoundNo,
+        micro: rMicro,
+        label: `${rYear}年 第${rRoundNo}轮 (微调${rMicro})`
+      })
+    }
+    // 软匹配：(classNo, year, roundNo) 相同，micro 不同
+    else if (rClassNo == classNo && rYear == year && rRoundNo == roundNo) {
+      softMatches.push({
+        roundId: rId,
+        classNo: rClassNo,
+        year: rYear,
+        roundNo: rRoundNo,
+        micro: rMicro,
+        label: `${rYear}年 第${rRoundNo}轮 (微调${rMicro})`
+      })
+    }
+  }
+
+  // 1. 精确匹配：只有一个
+  if (exactMatches.length == 1) {
+    return {
+      status: 'EXACT_MATCH',
+      roundId: exactMatches[0].roundId,
+      candidates: null,
+      warnings: null
+    }
+  }
+
+  // 2. 精确匹配：多个（理论上不应该发生）
+  if (exactMatches.length > 1) {
+    return {
+      status: 'AMBIGUOUS',
+      roundId: null,
+      candidates: exactMatches,
+      warnings: ['发现多个完全匹配的轮次，请选择一个']
+    }
+  }
+
+  // 3. 软匹配：只有一个
+  if (softMatches.length == 1) {
+    const warnings: string[] = []
+    warnings.push(`微调版本不同：导入数据为 ${micro}，本地为 ${softMatches[0].micro}`)
+    return {
+      status: 'SOFT_MATCH',
+      roundId: softMatches[0].roundId,
+      candidates: null,
+      warnings: warnings
+    }
+  }
+
+  // 4. 软匹配：多个
+  if (softMatches.length > 1) {
+    return {
+      status: 'AMBIGUOUS',
+      roundId: null,
+      candidates: softMatches,
+      warnings: ['发现多个可能匹配的轮次（微调版本不同），请选择一个']
+    }
+  }
+
+  // 5. 无匹配
+  return {
+    status: 'NOT_FOUND',
+    roundId: null,
+    candidates: null,
+    warnings: [`未找到匹配的轮次：${year}年 第${roundNo}轮`]
+  }
+}
+
+// ============================================
+// Phase 5: 楼层冲突检测
+// ============================================
+
+/**
+ * 检查楼层配置冲突
+ * @param payload 安曲载荷
+ * @returns 楼层冲突信息，无冲突返回 null
+ */
+export function checkFloorConfig(payload: AnQuPayload): FloorConflict | null {
+  const importedFloors = payload.f
+  const localFloors = new Map<number, number>()
+
+  // 获取本地楼层配置
+  const allBins = loadBins()
+  for (let i = 0; i < allBins.length; i++) {
+    const bin = allBins[i]
+    const floorNo = bin['floor_no'] as number
+    const seqNo = bin['seq_no'] as number
+
+    const currentMax = localFloors.get(floorNo)
+    if (currentMax == null || seqNo > currentMax) {
+      localFloors.set(floorNo, seqNo)
+    }
+  }
+
+  // 检查是否有差异
+  const differences: FloorDifference[] = []
+  let hasConflict = false
+
+  // 检查导入的楼层
+  const importedKeys = importedFloors.keys()
+  for (let i = 0; i < importedKeys.length; i++) {
+    const floorNo = importedKeys[i]
+    const importedMaxSeq = importedFloors.get(floorNo)
+    const localMaxSeq = localFloors.get(floorNo)
+
+    if (localMaxSeq == null) {
+      // 本地没有这个楼层
+      differences.push({
+        floorNo: floorNo,
+        localMaxSeq: null,
+        importedMaxSeq: importedMaxSeq
+      })
+      hasConflict = true
+    } else if (importedMaxSeq != localMaxSeq) {
+      // 楼层配置不同
+      differences.push({
+        floorNo: floorNo,
+        localMaxSeq: localMaxSeq,
+        importedMaxSeq: importedMaxSeq
+      })
+      hasConflict = true
+    }
+  }
+
+  // 检查本地独有的楼层
+  const localKeys = localFloors.keys()
+  for (let i = 0; i < localKeys.length; i++) {
+    const floorNo = localKeys[i]
+    const importedMaxSeq = importedFloors.get(floorNo)
+
+    if (importedMaxSeq == null) {
+      // 导入数据没有这个楼层
+      differences.push({
+        floorNo: floorNo,
+        localMaxSeq: localFloors.get(floorNo),
+        importedMaxSeq: null
+      })
+      hasConflict = true
+    }
+  }
+
+  if (hasConflict) {
+    return {
+      hasConflict: true,
+      localFloors: localFloors,
+      importedFloors: importedFloors,
+      differences: differences
+    }
+  }
+
+  return null
+}
+
+// ============================================
+// Phase 6: 导入应用层
+// ============================================
+
+/**
+ * 应用安曲数据包
+ * @param payload 安曲载荷
+ * @param resolvedRoundId 解析后的轮次ID
+ * @returns 导入结果
+ */
+export function applyAnQuBundle(payload: AnQuPayload, resolvedRoundId: number): ImportResult {
+  const errors: string[] = []
+  let binsImported = 0
+  let binsSkipped = 0
+
+  // 验证数据
+  if (payload.bins.length == 0) {
+    errors.push('EMPTY_BINS: 没有可导入的曲块数据')
+    return {
+      success: false,
+      roundId: null,
+      binsImported: 0,
+      binsSkipped: 0,
+      errors: errors
+    }
+  }
+
+  // 构建导入快照数据
+  const parsedItems: ParsedAnQuItem[] = []
+
+  for (let i = 0; i < payload.bins.length; i++) {
+    const bin = payload.bins[i]
+    parsedItems.push({
+      binCode: bin.id,
+      kojiCount: bin.koji,
+      lineNumber: i + 1,
+      hasError: false,
+      errorMessage: ''
+    })
+    binsImported++
+  }
+
+  // 跳过的曲块计数
+  binsSkipped = payload.skip.length
+
+  // 保存快照（复用现有机制）
+  const classNo = payload.c
+  try {
+    saveAnQuImportSnapshot(classNo, resolvedRoundId, parsedItems)
+  } catch (e: Error) {
+    errors.push(`保存快照失败: ${e.message}`)
+    return {
+      success: false,
+      roundId: resolvedRoundId,
+      binsImported: 0,
+      binsSkipped: binsSkipped,
+      errors: errors
+    }
+  }
+
+  return {
+    success: true,
+    roundId: resolvedRoundId,
+    binsImported: binsImported,
+    binsSkipped: binsSkipped,
+    errors: errors
+  }
+}
