@@ -9,7 +9,8 @@
 
 /**
  * PPX1 信封类型
- * 格式: PPX1|<version>|<enc>|<payload>
+ * 格式: PPX1|<version>|<encoding>|<kind>|<payload>
+ * 示例: PPX1|1|base64url|ANQ|eyJ2IjoxLCJraW5kIjoiQU5RIi4uLn0
  */
 export type TransferEnvelope = {
   version: number
@@ -34,7 +35,7 @@ export type AnQuPayload = {
   y: number                    // year 年份
   n: number                    // roundNo 轮次号
   m: number                    // micro 微调版本
-  f: Map<number, number>       // floors 楼层配置 floor_no -> max_seq_no
+  f: Array<[number, number]>   // floors 楼层配置 [[floor_no, max_seq_no], ...]
   bins: AnQuBinData[]          // 曲块数据
   skip: string[]               // 跳过的跨班曲块ID列表
 }
@@ -129,8 +130,8 @@ export type RoundCandidate = {
  */
 export type FloorConflict = {
   hasConflict: boolean
-  localFloors: Map<number, number>
-  importedFloors: Map<number, number>
+  localFloors: Array<[number, number]>
+  importedFloors: Array<[number, number]>
   differences: FloorDifference[]
 }
 
@@ -184,4 +185,13 @@ export type TransferError = {
   code: TransferErrorCode
   message: string
   details: string | null
+}
+
+/**
+ * 解封结果类型
+ */
+export type UnsealResult = {
+  success: boolean
+  payload: any | null
+  error: TransferError | null
 }

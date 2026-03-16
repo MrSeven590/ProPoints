@@ -17,7 +17,8 @@ import {
   FloorConflict,
   FloorDifference,
   ImportResult,
-  TransferError
+  TransferError,
+  UnsealResult
 } from '../models/transfer.uts'
 
 import {
@@ -30,7 +31,6 @@ import {
   loadRounds,
   loadPersons,
   loadActiveCoefSet,
-  getBinSeqMax,
   loadBins,
   getSessionsByDateAndStage
 } from '../stores/AppStore.uts'
@@ -90,16 +90,27 @@ export function collectAnQuPayload(roundId: number): AnQuPayload | null {
   const micro = roundInfo['micro'] as number
 
   // 收集楼层配置
-  const floors = new Map<number, number>()
+  const floorsMap = new Map<number, number>()
   const allBins = loadBins()
   for (let i = 0; i < allBins.length; i++) {
     const bin = allBins[i]
     const floorNo = bin['floor_no'] as number
     const seqNo = bin['seq_no'] as number
 
-    const currentMax = floors.get(floorNo)
+    const currentMax = floorsMap.get(floorNo)
     if (currentMax == null || seqNo > currentMax) {
-      floors.set(floorNo, seqNo)
+      floorsMap.set(floorNo, seqNo)
+    }
+  }
+
+  // 转换为 Array<[number, number]>
+  const floors: Array<[number, number]> = []
+  const floorKeys = floorsMap.keys()
+  for (let i = 0; i < floorKeys.length; i++) {
+    const floorNo = floorKeys[i]
+    const maxSeq = floorsMap.get(floorNo)
+    if (maxSeq != null) {
+      floors.push([floorNo, maxSeq])
     }
   }
 
@@ -277,11 +288,19 @@ export function seal(payload: any): string {
  * @param envelope PPX1 格式字符串
  * @returns 解封结果，包含载荷或错误
  */
-export function unseal(envelope: string): any | null {
+export function unseal(envelope: string): UnsealResult {
   const parts = envelope.split('|')
 
   if (parts.length != 5) {
-    return null
+    return {
+      success: false,
+      payload: null,
+      error: {
+        code: 'INVALID_FORMAT',
+        message: 'PPX1 格式错误：应为 5 段',
+        details: `实际段数: ${parts.length}`
+      }
+    }
   }
 
   const magic = parts[0]
@@ -291,22 +310,73 @@ export function unseal(envelope: string): any | null {
   const payloadStr = parts[4]
 
   if (magic != 'PPX1') {
-    return null
+    return {
+      success: false,
+      payload: null,
+      error: {
+        code: 'INVALID_FORMAT',
+        message: 'PPX1 魔数错误',
+        details: `期望: PPX1, 实际: ${magic}`
+      }
+    }
   }
 
   if (version != PPX1_VERSION) {
-    return null
+    return {
+      success: false,
+      payload: null,
+      error: {
+        code: 'UNSUPPORTED_VERSION',
+        message: '不支持的版本',
+        details: `期望: ${PPX1_VERSION}, 实际: ${version}`
+      }
+    }
   }
 
   if (encoding != PPX1_ENCODING) {
-    return null
+    return {
+      success: false,
+      payload: null,
+      error: {
+        code: 'INVALID_ENCODING',
+        message: '不支持的编码',
+        details: `期望: ${PPX1_ENCODING}, 实际: ${encoding}`
+      }
+    }
   }
 
   try {
     const payload = deserializeFromBase64Url(payloadStr)
-    return payload
-  } catch (e: Error) {
-    return null
+
+    // 验证 payload.kind 与 envelope kind 一致
+    const payloadKind = payload['kind'] as string | null
+    if (payloadKind != kind) {
+      return {
+        success: false,
+        payload: null,
+        error: {
+          code: 'INVALID_PAYLOAD',
+          message: 'Payload kind 与信封 kind 不一致',
+          details: `信封: ${kind}, Payload: ${payloadKind}`
+        }
+      }
+    }
+
+    return {
+      success: true,
+      payload: payload,
+      error: null
+    }
+  } catch (e: any) {
+    return {
+      success: false,
+      payload: null,
+      error: {
+        code: 'DECODE_FAILED',
+        message: '解码失败',
+        details: e != null ? (e['message'] as string | null) : null
+      }
+    }
   }
 }
 
@@ -461,7 +531,7 @@ export function resolveRound(payload: AnQuPayload): RoundResolveResult {
  */
 export function checkFloorConfig(payload: AnQuPayload): FloorConflict | null {
   const importedFloors = payload.f
-  const localFloors = new Map<number, number>()
+  const localFloorsMap = new Map<number, number>()
 
   // 获取本地楼层配置
   const allBins = loadBins()
@@ -470,10 +540,31 @@ export function checkFloorConfig(payload: AnQuPayload): FloorConflict | null {
     const floorNo = bin['floor_no'] as number
     const seqNo = bin['seq_no'] as number
 
-    const currentMax = localFloors.get(floorNo)
+    const currentMax = localFloorsMap.get(floorNo)
     if (currentMax == null || seqNo > currentMax) {
-      localFloors.set(floorNo, seqNo)
+      localFloorsMap.set(floorNo, seqNo)
     }
+  }
+
+  // 转换为 Array
+  const localFloors: Array<[number, number]> = []
+  const localKeys = localFloorsMap.keys()
+  for (let i = 0; i < localKeys.length; i++) {
+    const floorNo = localKeys[i]
+    const maxSeq = localFloorsMap.get(floorNo)
+    if (maxSeq != null) {
+      localFloors.push([floorNo, maxSeq])
+    }
+  }
+
+  // 辅助函数：在数组中查找楼层
+  const findFloor = (floors: Array<[number, number]>, floorNo: number): number | null => {
+    for (let i = 0; i < floors.length; i++) {
+      if (floors[i][0] == floorNo) {
+        return floors[i][1]
+      }
+    }
+    return null
   }
 
   // 检查是否有差异
@@ -481,11 +572,10 @@ export function checkFloorConfig(payload: AnQuPayload): FloorConflict | null {
   let hasConflict = false
 
   // 检查导入的楼层
-  const importedKeys = importedFloors.keys()
-  for (let i = 0; i < importedKeys.length; i++) {
-    const floorNo = importedKeys[i]
-    const importedMaxSeq = importedFloors.get(floorNo)
-    const localMaxSeq = localFloors.get(floorNo)
+  for (let i = 0; i < importedFloors.length; i++) {
+    const floorNo = importedFloors[i][0]
+    const importedMaxSeq = importedFloors[i][1]
+    const localMaxSeq = findFloor(localFloors, floorNo)
 
     if (localMaxSeq == null) {
       // 本地没有这个楼层
@@ -507,16 +597,15 @@ export function checkFloorConfig(payload: AnQuPayload): FloorConflict | null {
   }
 
   // 检查本地独有的楼层
-  const localKeys = localFloors.keys()
-  for (let i = 0; i < localKeys.length; i++) {
-    const floorNo = localKeys[i]
-    const importedMaxSeq = importedFloors.get(floorNo)
+  for (let i = 0; i < localFloors.length; i++) {
+    const floorNo = localFloors[i][0]
+    const importedMaxSeq = findFloor(importedFloors, floorNo)
 
     if (importedMaxSeq == null) {
       // 导入数据没有这个楼层
       differences.push({
         floorNo: floorNo,
-        localMaxSeq: localFloors.get(floorNo),
+        localMaxSeq: localFloors[i][1],
         importedMaxSeq: null
       })
       hasConflict = true
