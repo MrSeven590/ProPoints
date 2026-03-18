@@ -17,11 +17,24 @@ import {
 } from './assignment.uts'
 
 // ============================================
-// 会话仓数据类型
+// 会话仓数据类型（存储层 DTO）
 // ============================================
 
 /**
- * 会话仓数据（用于存储和传输）
+ * 会话仓工人数据（存储层 DTO，snake_case 字段）
+ */
+export type SessionBinStorageWorkerData = {
+  person_id: number | null
+  person_name: string
+  points_units: PointsUnits
+  position_index: number
+  deducted_units: PointsUnits
+  penalty_reason: string
+  penalty_id: number | null
+}
+
+/**
+ * 会话仓数据（用于存储和传输，存储层 DTO，snake_case 字段）
  */
 export type SessionBinData = {
   bin_id: number
@@ -33,7 +46,7 @@ export type SessionBinData = {
   seq_no: number
   total_points_units: PointsUnits
   assigned_points_units: PointsUnits
-  workers: BinWorkerData[]
+  workers: SessionBinStorageWorkerData[]
 }
 
 // ============================================
@@ -70,13 +83,33 @@ export type LiangTangRoleData = {
 }
 
 /**
+ * 会话工人存储层数据（snake_case 字段）
+ */
+export type SessionWorkerStorageData = {
+  person_id: number | null
+  person_name: string
+  points_units: PointsUnits
+}
+
+/**
+ * 会话晾堂数据（用于存储和传输， storage DTO, snake_case)
+ */
+export type SessionLiangTangStorageData = {
+  WHEAT_MATERIAL: SessionWorkerStorageData[]
+  MACHINE_GUARD: SessionWorkerStorageData[]
+  KOJI_UNLOADER: SessionWorkerStorageData[]
+  MICRO_OPERATOR: SessionWorkerStorageData[]
+}
+
+/**
  * 会话晾堂数据（用于存储和传输）
+ * 注意：使用 storage worker DTO
  */
 export type SessionLiangTangData = {
-  WHEAT_MATERIAL: LiangTangWorkerData[]
-  MACHINE_GUARD: LiangTangWorkerData[]
-  KOJI_UNLOADER: LiangTangWorkerData[]
-  MICRO_OPERATOR: LiangTangWorkerData[]
+  WHEAT_MATERIAL: SessionWorkerStorageData[]
+  MACHINE_GUARD: SessionWorkerStorageData[]
+  KOJI_UNLOADER: SessionWorkerStorageData[]
+  MICRO_OPERATOR: SessionWorkerStorageData[]
 }
 
 // ============================================
@@ -84,19 +117,29 @@ export type SessionLiangTangData = {
 // ============================================
 
 /**
- * 堆曲工人数据
+ * 堆曲工人存储层数据（snake_case 字段）
+ */
+export type DuiQuStorageWorkerData = {
+  person_id: number | null
+  person_name: string
+  points_units: PointsUnits
+  position_index: number
+}
+
+/**
+ * 堆曲工人数据（页面层，camelCase 字段）
  */
 export type DuiQuWorkerData = SessionWorkerData & {
   positionIndex: number
 }
 
 /**
- * 会话堆曲数据（用于存储和传输）
+ * 会话堆曲数据（用于存储和传输，存储层 DTO）
  */
 export type SessionDuiQuData = {
   total_koji_count: number
   total_pool_units: PointsUnits
-  workers: DuiQuWorkerData[]
+  workers: DuiQuStorageWorkerData[]
 }
 
 // ============================================
@@ -128,13 +171,23 @@ export type SessionData = {
 
 export type SessionStorageState = SessionData
 
-export type EntryViewMode = 'create' | 'edit' | 'readonly'
+export type EntryViewMode = 'create' | 'edit' | 'view'
 
+// ============================================
+// Entry Bin Card State (用于 adapter 层输出)
+// ============================================
+
+/**
+ * Entry 页面仓卡片状态（adapter 输出类型）
+ * 注意：这个类型与页面内部使用的 BinCardData 不同
+ */
 export type EntryBinCardState = {
   stageBinId: number
+  binId: number
+  binCode: string
   kojiCount: number
   totalPointsUnits: PointsUnits
-  assignedPointsUnits: PointsUnits
+  assignedUnits: PointsUnits
   workers: SessionPenaltyWorkerData[]
 }
 

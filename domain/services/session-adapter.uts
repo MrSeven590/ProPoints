@@ -10,9 +10,13 @@ import {
   SessionCrossBinData,
   SessionLiangTangData,
   SessionDuiQuData,
-  SessionDuiQuStorageWorkerData,
+  DuiQuStorageWorkerData,
+  SessionWorkerStorageData,
   SessionEntryPageState,
-  EntryBinCardState
+  EntryBinCardState,
+  LiangTangRoleData,
+  LiangTangWorkerData,
+  DuiQuWorkerData
 } from '../models/session.uts'
 import {
   StageCode,
@@ -213,7 +217,7 @@ function parseDuiQu(duiQuRaw: UTSJSONObject | null): SessionDuiQuData | null {
   }
 
   const workersRaw = duiQuRaw['workers'] as UTSJSONObject[] | null
-  const workers: DuiQuWorkerData[] = []
+  const workers: DuiQuStorageWorkerData[] = []
   if (workersRaw != null) {
     for (let i = 0; i < workersRaw.length; i++) {
       const w = workersRaw[i]
@@ -221,8 +225,8 @@ function parseDuiQu(duiQuRaw: UTSJSONObject | null): SessionDuiQuData | null {
         person_id: w['person_id'] != null ? (w['person_id'] as number) : null,
         person_name: w['person_name'] != null ? (w['person_name'] as string) : '',
         points_units: w['points_units'] != null ? (w['points_units'] as number) : 0,
-        positionIndex: w['position_index'] != null ? (w['position_index'] as number) : i + 1
-      } as DuiQuWorkerData)
+        position_index: w['position_index'] != null ? (w['position_index'] as number) : i + 1
+      } as DuiQuStorageWorkerData)
     }
   }
 
@@ -297,8 +301,221 @@ export function sessionDataToEntryPageState(
   data: SessionData,
   options: SessionEntryStateBuildOptions
 ): SessionEntryPageState {
-  // TODO: 后续 commit 实现
-  return {} as SessionEntryPageState
+  // 构建 binCardsData Map
+  const binCardsData = new Map<number, EntryBinCardState>()
+  for (let i = 0; i < data.bins.length; i++) {
+    const bin = data.bins[i]
+    const workers: SessionPenaltyWorkerData[] = []
+    for (let j = 0; j < bin.workers.length; j++) {
+      const w = bin.workers[j]
+      workers.push({
+        personId: w.person_id,
+        personName: w.person_name,
+        pointsUnits: w.points_units,
+        positionIndex: w.position_index,
+        deductedUnits: w.deducted_units,
+        penaltyReason: w.penalty_reason,
+        penaltyId: w.penalty_id
+      } as SessionPenaltyWorkerData)
+    }
+
+    binCardsData.set(bin.stage_bin_id, {
+      stageBinId: bin.stage_bin_id,
+      binId: bin.bin_id,
+      binCode: bin.bin_code,
+      kojiCount: bin.koji_count,
+      totalPointsUnits: bin.total_points_units,
+      assignedUnits: bin.assigned_points_units,
+      workers: workers
+    } as EntryBinCardState)
+  }
+
+  // 构建 crossBin 数据
+  let showCrossBinSection = options.stageCode == 'YI_FAN' || options.stageCode == 'ER_FAN'
+  let crossBinPersonId: number | null = null
+  let crossBinPersonName = ''
+  let crossBinPointsUnits: PointsUnits = 0
+  let crossBinSources: AssignmentSourceCreateParams[] = []
+
+  if (data.cross_bin != null) {
+    if (data.cross_bin.enabled == false) {
+      // 明确禁用
+      showCrossBinSection = false
+    } else if (data.cross_bin.enabled == true) {
+      // 明确启用
+      showCrossBinSection = true
+      crossBinPersonId = data.cross_bin.person_id
+      crossBinPersonName = data.cross_bin.person_name
+      crossBinPointsUnits = data.cross_bin.points_units
+      crossBinSources = data.cross_bin.sources
+    }
+    // enabled == null 时保持默认值
+  }
+
+  // 构建 liangTangRolesData Map
+  const liangTangRolesData = new Map<string, LiangTangRoleData>()
+  const wheatMaterialWorkers: SessionWorkerData[] = []
+  const machineGuardWorkers: SessionWorkerData[] = []
+  const kojiUnloaderWorkers: SessionWorkerData[] = []
+  const microOperatorWorkers: SessionWorkerData[] = []
+
+  if (data.liang_tang != null) {
+    // WHEAT_MATERIAL
+    if (data.liang_tang.WHEAT_MATERIAL.length > 0) {
+      const workers: SessionWorkerData[] = []
+      for (let i = 0; i < data.liang_tang.WHEAT_MATERIAL.length; i++) {
+        const w = data.liang_tang.WHEAT_MATERIAL[i]
+        const worker = {
+          personId: w.person_id,
+          personName: w.person_name,
+          pointsUnits: w.points_units
+        } as SessionWorkerData
+        workers.push(worker)
+        wheatMaterialWorkers.push(worker)
+      }
+      liangTangRolesData.set('WHEAT_MATERIAL', {
+        roleCode: 'WHEAT_MATERIAL',
+        workers: workers
+      } as LiangTangRoleData)
+    }
+
+    // MACHINE_GUARD
+    if (data.liang_tang.MACHINE_GUARD.length > 0) {
+      const workers: SessionWorkerData[] = []
+      for (let i = 0; i < data.liang_tang.MACHINE_GUARD.length; i++) {
+        const w = data.liang_tang.MACHINE_GUARD[i]
+        const worker = {
+          personId: w.person_id,
+          personName: w.person_name,
+          pointsUnits: w.points_units
+        } as SessionWorkerData
+        workers.push(worker)
+        machineGuardWorkers.push(worker)
+      }
+      liangTangRolesData.set('MACHINE_GUARD', {
+        roleCode: 'MACHINE_GUARD',
+        workers: workers
+      } as LiangTangRoleData)
+    }
+
+    // KOJI_UNLOADER
+    if (data.liang_tang.KOJI_UNLOADER.length > 0) {
+      const workers: SessionWorkerData[] = []
+      for (let i = 0; i < data.liang_tang.KOJI_UNLOADER.length; i++) {
+        const w = data.liang_tang.KOJI_UNLOADER[i]
+        const worker = {
+          personId: w.person_id,
+          personName: w.person_name,
+          pointsUnits: w.points_units
+        } as SessionWorkerData
+        workers.push(worker)
+        kojiUnloaderWorkers.push(worker)
+      }
+      liangTangRolesData.set('KOJI_UNLOADER', {
+        roleCode: 'KOJI_UNLOADER',
+        workers: workers
+      } as LiangTangRoleData)
+    }
+
+    // MICRO_OPERATOR
+    if (data.liang_tang.MICRO_OPERATOR.length > 0) {
+      const workers: SessionWorkerData[] = []
+      for (let i = 0; i < data.liang_tang.MICRO_OPERATOR.length; i++) {
+        const w = data.liang_tang.MICRO_OPERATOR[i]
+        const worker = {
+          personId: w.person_id,
+          personName: w.person_name,
+          pointsUnits: w.points_units
+        } as SessionWorkerData
+        workers.push(worker)
+        microOperatorWorkers.push(worker)
+      }
+      liangTangRolesData.set('MICRO_OPERATOR', {
+        roleCode: 'MICRO_OPERATOR',
+        workers: workers
+      } as LiangTangRoleData)
+    }
+  }
+
+  // 构建 duiQuWorkers
+  const duiQuWorkers: DuiQuWorkerData[] = []
+  let duiQuTotalKojiCount = 0
+  let duiQuTotalPoolUnits: PointsUnits = 0
+
+  if (data.dui_qu != null) {
+    duiQuTotalKojiCount = data.dui_qu.total_koji_count
+    duiQuTotalPoolUnits = data.dui_qu.total_pool_units
+
+    for (let i = 0; i < data.dui_qu.workers.length; i++) {
+      const w = data.dui_qu.workers[i]
+      duiQuWorkers.push({
+        personId: w.person_id,
+        personName: w.person_name,
+        pointsUnits: w.points_units,
+        positionIndex: w.position_index
+      } as DuiQuWorkerData)
+    }
+  }
+
+  // 构建 selectedBins 和 stageBinInfos
+  const selectedBins: BinCode[] = []
+  const stageBinInfos: StageBinInfo[] = []
+  for (let i = 0; i < data.bins.length; i++) {
+    const bin = data.bins[i]
+    selectedBins.push({
+      class_no: bin.class_no,
+      floor_no: bin.floor_no,
+      seq_no: bin.seq_no
+    } as BinCode)
+    stageBinInfos.push({
+      bin_id: bin.bin_id,
+      stage_bin_id: bin.stage_bin_id,
+      koji_count: bin.koji_count,
+      bin_code: bin.bin_code
+    } as StageBinInfo)
+  }
+
+  // 检查缺失的安曲数据
+  const missingAnQuBins: string[] = []
+  const ANQU_REQUIRED_STAGES = ['YI_FAN', 'ER_FAN', 'CHAI_QU']
+  if (ANQU_REQUIRED_STAGES.indexOf(options.stageCode as string) != -1 &&
+      options.roundId != null && options.roundId != 0 &&
+      stageBinInfos.length > 0) {
+    // TODO: 需要导入 lookupKojiCountBatch 函数
+    // 暂时留空，在页面层处理
+  }
+
+  return {
+    hasData: true,
+    sessionDate: data.session_date,
+    coefSetId: data.coef_set_id,
+    coefSnapshot: data.coef_snapshot,
+    selectedBins: selectedBins,
+    stageBinInfos: stageBinInfos,
+    binCardsData: binCardsData,
+    showCrossBinSection: showCrossBinSection,
+    crossBinRoleCode: data.cross_bin?.role_code ?? options.defaultCrossBinRoleCode,
+    crossBinPersonId: crossBinPersonId,
+    crossBinPersonName: crossBinPersonName,
+    crossBinPointsUnits: crossBinPointsUnits,
+    crossBinSources: crossBinSources,
+    liangTangRolesData: liangTangRolesData,
+    wheatMaterialWorkers: wheatMaterialWorkers,
+    machineGuardWorkers: machineGuardWorkers,
+    kojiUnloaderWorkers: kojiUnloaderWorkers,
+    microOperatorWorkers: microOperatorWorkers,
+    duiQuWorkers: duiQuWorkers,
+    duiQuTotalKojiCount: duiQuTotalKojiCount,
+    duiQuTotalPoolUnits: duiQuTotalPoolUnits,
+    sessionStatus: data.status,
+    viewMode: data.status == 'submitted' ? 'view' : 'edit',
+    sessionRemark: data.remark,
+    sessionBonusUnits: data.session_bonus_units,
+    createdByManager: data.created_by_manager,
+    updatedByManager: data.updated_by_manager,
+    occupiedIds: [],
+    missingAnQuBins: missingAnQuBins
+  } as SessionEntryPageState
 }
 
 // ============================================
