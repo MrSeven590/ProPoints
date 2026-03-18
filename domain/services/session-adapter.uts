@@ -146,6 +146,7 @@ function parseCrossBin(crossBinRaw: UTSJSONObject | null): SessionCrossBinData |
     for (let i = 0; i < sourcesRaw.length; i++) {
       const s = sourcesRaw[i]
       sources.push({
+        assignment_id: s['assignment_id'] != null ? (s['assignment_id'] as number) : 0,
         stage_bin_id: s['stage_bin_id'] != null ? (s['stage_bin_id'] as number) : 0,
         source_points_units: s['source_points_units'] != null ? (s['source_points_units'] as number) : 0
       } as AssignmentSourceCreateParams)
@@ -183,14 +184,14 @@ function parseLiangTang(liangTangRaw: UTSJSONObject | null): SessionLiangTangDat
     const roleKey = roleKeys[i]
     const workersRaw = liangTangRaw[roleKey] as UTSJSONObject[] | null
     if (workersRaw != null) {
-      const workers: SessionWorkerData[] = []
+      const workers: SessionWorkerStorageData[] = []
       for (let j = 0; j < workersRaw.length; j++) {
         const w = workersRaw[j]
         workers.push({
           person_id: w['person_id'] != null ? (w['person_id'] as number) : null,
           person_name: w['person_name'] != null ? (w['person_name'] as string) : '',
           points_units: w['points_units'] != null ? (w['points_units'] as number) : 0
-        } as SessionWorkerData)
+        } as SessionWorkerStorageData)
       }
       // 使用下标赋值，因为 roleKey 是动态的
       if (roleKey == 'WHEAT_MATERIAL') {
