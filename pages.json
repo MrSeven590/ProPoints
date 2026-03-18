@@ -83,6 +83,18 @@
       "style": {
         "navigationBarTitleText": "安曲数据导入"
       }
+    },
+    {
+      "path": "pages/transfer/transfer-export",
+      "style": {
+        "navigationBarTitleText": "PPX1 数据导出"
+      }
+    },
+    {
+      "path": "pages/transfer/transfer-import",
+      "style": {
+        "navigationBarTitleText": "PPX1 数据导入"
+      }
     }
   ],
   "globalStyle": {

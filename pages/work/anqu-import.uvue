@@ -149,7 +149,7 @@
           <picker-view class="picker-view" :value="[pickerSelectedIndex]" @change="onRoundPickerChange">
             <picker-view-column>
               <view class="picker-item" v-for="(round, index) in rounds" :key="index">
-                <text class="picker-item-text">{{ round['year'] }}年 第{{ round['round_no'] }}轮{{ (round['micro_enabled'] as number) == 1 ? ' (有微机)' : '' }}</text>
+                <text class="picker-item-text">{{ getRoundDisplayText(round) }}</text>
               </view>
             </picker-view-column>
           </picker-view>
@@ -255,6 +255,20 @@
     },
 
     methods: {
+      /**
+       * 获取轮次显示文本（避免模板中的类型断言）
+       */
+      getRoundDisplayText(round: UTSJSONObject): string {
+        const year = round['year'] as number
+        const roundNo = round['round_no'] as number
+        const microEnabled = round['micro_enabled'] as number
+        let text = `${year}年 第${roundNo}轮`
+        if (microEnabled == 1) {
+          text += ' (有微机)'
+        }
+        return text
+      },
+
       onParse() {
         if (this.inputText.trim() == '') {
           uni.showToast({

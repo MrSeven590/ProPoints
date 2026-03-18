@@ -1,0 +1,539 @@
+<template>
+  <view class="page-container">
+    <view class="header">
+      <text class="header-title">PPX1 数据导出</text>
+    </view>
+
+    <!-- #ifdef APP -->
+    <scroll-view class="content" scroll-y="true">
+    <!-- #endif -->
+      <!-- 导出模式选择 -->
+      <view class="section">
+        <text class="section-title">导出模式</text>
+        <radio-group @change="onExportModeChange">
+          <label class="radio-item">
+            <radio value="config" :checked="exportMode == 'config'" />
+            <text class="radio-label">仅配置（花名册+系数）</text>
+          </label>
+          <label class="radio-item">
+            <radio value="anqu" :checked="exportMode == 'anqu'" />
+            <text class="radio-label">仅安曲数据</text>
+          </label>
+          <label class="radio-item">
+            <radio value="bundle" :checked="exportMode == 'bundle'" />
+            <text class="radio-label">安曲+配置</text>
+          </label>
+        </radio-group>
+      </view>
+
+      <!-- 配置区 -->
+      <view class="section" v-if="exportMode == 'anqu' || exportMode == 'bundle'">
+        <text class="section-title">选择轮次</text>
+        <view class="round-selector" @click="onShowRoundPicker">
+          <view class="picker-display">
+            <text class="picker-text">{{ getCurrentRoundLabel() }}</text>
+            <text class="picker-arrow">▼</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 数据包含选项 -->
+      <view class="section" v-if="exportMode == 'config' || exportMode == 'bundle'">
+        <text class="section-title">数据包含项</text>
+        <checkbox-group @change="onCheckboxChange">
+          <label class="checkbox-item">
+            <checkbox value="persons" :checked="includePersons" />
+            <text class="checkbox-label">包含人员数据</text>
+          </label>
+          <label class="checkbox-item">
+            <checkbox value="coef" :checked="includeCoef" />
+            <text class="checkbox-label">包含系数数据</text>
+          </label>
+        </checkbox-group>
+      </view>
+
+      <!-- 数据输出区 -->
+      <view class="section" v-if="ppx1Text != ''">
+        <view class="section-header">
+          <text class="section-title">PPX1 文本</text>
+          <text class="size-text">{{ getDataSize() }}</text>
+        </view>
+        <view class="ppx-box">
+          <textarea
+            class="ppx-textarea"
+            :value="ppx1Text"
+            :disabled="true"
+            :maxlength="-1"
+          />
+        </view>
+      </view>
+
+      <!-- 操作按钮 -->
+      <view class="section" v-if="ppx1Text != ''">
+        <view class="action-btn primary-btn" @click="onCopyToClipboard">
+          <text class="action-btn-text">复制到剪切板</text>
+        </view>
+      </view>
+
+      <!-- 二维码占位区 -->
+      <view class="section" v-if="ppx1Text != ''">
+        <text class="section-title">二维码</text>
+        <view class="qr-placeholder">
+          <text class="qr-text">二维码功能开发中...</text>
+        </view>
+      </view>
+
+      <!-- 空状态提示 -->
+      <view class="section hint-section" v-if="ppx1Text == ''">
+        <text class="hint-text">请选择轮次以生成PPX1数据</text>
+      </view>
+    <!-- #ifdef APP -->
+    </scroll-view>
+    <!-- #endif -->
+
+    <!-- 轮次选择器 -->
+    <view class="modal-mask" v-show="showRoundPickerModal" @click="onRoundPickerCancel">
+      <view class="modal-content" @click.stop="">
+        <view class="modal-header">
+          <text class="modal-title">选择轮次</text>
+        </view>
+        <view class="picker-body">
+          <picker-view class="picker-view" :value="[pickerViewIndex]" @change="onRoundPickerChange">
+            <picker-view-column>
+              <view class="picker-item" v-for="(label, index) in roundOptions" :key="index">
+                <text class="picker-item-text">{{ label }}</text>
+              </view>
+            </picker-view-column>
+          </picker-view>
+        </view>
+        <view class="modal-footer">
+          <view class="modal-btn cancel-btn" @click="onRoundPickerCancel">
+            <text class="modal-btn-text">取消</text>
+          </view>
+          <view class="modal-btn confirm-btn" @click="onRoundPickerConfirm">
+            <text class="modal-btn-text">确定</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+  import {
+    listTransferRoundsForCurrentClass,
+    exportConfigData,
+    exportAnQuData,
+    exportBundleData,
+    type TransferRoundOption
+  } from '../../domain/stores/AppStore.uts'
+
+  export default {
+    data() {
+      return {
+        exportMode: 'anqu' as string, // 'config' | 'anqu' | 'bundle'
+        roundOptions: [] as string[],
+        roundIds: [] as number[],
+        selectedRoundIndex: 0 as number,
+        includePersons: false as boolean,
+        includeCoef: false as boolean,
+        ppx1Text: '' as string,
+        showRoundPickerModal: false as boolean,
+        pickerViewIndex: 0 as number,
+        tempSelectedRoundIndex: 0 as number
+      }
+    },
+
+    onLoad() {
+      this.loadRoundList()
+    },
+
+    methods: {
+      loadRoundList() {
+        const options = listTransferRoundsForCurrentClass()
+
+        const labels: string[] = []
+        const ids: number[] = []
+
+        for (let i = 0; i < options.length; i++) {
+          const option = options[i]
+          labels.push(option.label)
+          ids.push(option.id)
+        }
+
+        this.roundOptions = labels
+        this.roundIds = ids
+
+        if (ids.length > 0) {
+          this.selectedRoundIndex = 0
+          this.generatePPX1Data()
+        }
+      },
+
+      onExportModeChange(e: UniRadioGroupChangeEvent) {
+        this.exportMode = e.detail.value
+        this.generatePPX1Data()
+      },
+
+      onShowRoundPicker() {
+        if (this.roundOptions.length == 0) {
+          uni.showToast({
+            title: '暂无可选轮次',
+            icon: 'none'
+          })
+          return
+        }
+        this.tempSelectedRoundIndex = this.selectedRoundIndex
+        this.pickerViewIndex = this.selectedRoundIndex
+        this.showRoundPickerModal = true
+      },
+
+      onRoundPickerChange(e: UniPickerViewChangeEvent) {
+        const index = e.detail.value[0]
+        this.pickerViewIndex = index
+        this.tempSelectedRoundIndex = index
+      },
+
+      onRoundPickerCancel() {
+        this.showRoundPickerModal = false
+      },
+
+      onRoundPickerConfirm() {
+        const index = this.tempSelectedRoundIndex
+        this.selectedRoundIndex = index
+        this.showRoundPickerModal = false
+        this.generatePPX1Data()
+      },
+
+      onCheckboxChange(e: UniCheckboxGroupChangeEvent) {
+        const values = e.detail.value
+        this.includePersons = values.includes('persons')
+        this.includeCoef = values.includes('coef')
+        this.generatePPX1Data()
+      },
+
+      generatePPX1Data() {
+        let ppx1Result: string | null = null
+
+        if (this.exportMode == 'config') {
+          // 仅导出配置
+          ppx1Result = exportConfigData(this.includePersons, this.includeCoef)
+        } else if (this.exportMode == 'anqu') {
+          // 仅导出安曲
+          if (this.selectedRoundIndex >= 0 && this.selectedRoundIndex < this.roundIds.length) {
+            ppx1Result = exportAnQuData(this.roundIds[this.selectedRoundIndex])
+          }
+        } else if (this.exportMode == 'bundle') {
+          // 导出安曲+配置
+          if (this.selectedRoundIndex >= 0 && this.selectedRoundIndex < this.roundIds.length) {
+            ppx1Result = exportBundleData(this.roundIds[this.selectedRoundIndex], this.includePersons, this.includeCoef)
+          }
+        }
+
+        if (ppx1Result == null) {
+          this.ppx1Text = ''
+          uni.showToast({
+            title: '数据收集失败',
+            icon: 'none'
+          })
+          return
+        }
+
+        this.ppx1Text = ppx1Result
+      },
+
+      getCurrentRoundLabel(): string {
+        if (this.selectedRoundIndex >= 0 && this.selectedRoundIndex < this.roundOptions.length) {
+          return this.roundOptions[this.selectedRoundIndex]
+        }
+        return '请选择轮次'
+      },
+
+      getDataSize(): string {
+        if (this.ppx1Text == '') {
+          return ''
+        }
+        const bytes = this.ppx1Text.length
+        if (bytes < 1024) {
+          return `约 ${bytes} B`
+        } else if (bytes < 1024 * 1024) {
+          const kb = (bytes / 1024).toFixed(1)
+          return `约 ${kb} KB`
+        } else {
+          const mb = (bytes / (1024 * 1024)).toFixed(1)
+          return `约 ${mb} MB`
+        }
+      },
+
+      onCopyToClipboard() {
+        if (this.ppx1Text == '') {
+          uni.showToast({
+            title: '没有数据可复制',
+            icon: 'none'
+          })
+          return
+        }
+
+        uni.setClipboardData({
+          data: this.ppx1Text,
+          success: () => {
+            uni.showToast({
+              title: '已复制到剪切板',
+              icon: 'success'
+            })
+          },
+          fail: () => {
+            uni.showToast({
+              title: '复制失败',
+              icon: 'none'
+            })
+          }
+        })
+      }
+    }
+  }
+</script>
+
+<style>
+  .page-container {
+    flex: 1;
+    background-color: #f5f5f5;
+  }
+
+  .header {
+    background-color: #007aff;
+    padding: 20px 16px;
+  }
+
+  .header-title {
+    font-size: 24px;
+    font-weight: bold;
+    color: #ffffff;
+  }
+
+  .content {
+    flex: 1;
+  }
+
+  .section {
+    margin: 12px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  .section-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333333;
+    margin-bottom: 12px;
+  }
+
+  .section-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .size-text {
+    font-size: 14px;
+    color: #007aff;
+    font-weight: bold;
+  }
+
+  .round-selector {
+    margin-top: 8px;
+  }
+
+  .picker-display {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px;
+    background-color: #f8f8f8;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: #e0e0e0;
+    border-style: solid;
+  }
+
+  .picker-text {
+    font-size: 16px;
+    color: #333333;
+  }
+
+  .picker-arrow {
+    font-size: 12px;
+    color: #999999;
+  }
+
+  .radio-item {
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 0;
+  }
+
+  .radio-label {
+    font-size: 15px;
+    color: #333333;
+    margin-left: 8px;
+  }
+
+  .checkbox-item {
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 0;
+  }
+
+  .checkbox-label {
+    font-size: 15px;
+    color: #333333;
+    margin-left: 8px;
+  }
+
+  .ppx-box {
+    margin-top: 8px;
+  }
+
+  .ppx-textarea {
+    width: 100%;
+    height: 150px;
+    background-color: #f8f9fa;
+    border-width: 1px;
+    border-color: #eeeeee;
+    border-style: solid;
+    border-radius: 6px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 12px;
+    color: #666666;
+    line-height: 18px;
+  }
+
+  .action-btn {
+    padding: 14px;
+    border-radius: 6px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 12px;
+  }
+
+  .primary-btn {
+    background-color: #007aff;
+  }
+
+  .action-btn-text {
+    font-size: 16px;
+    color: #ffffff;
+    font-weight: bold;
+  }
+
+  .qr-placeholder {
+    height: 120px;
+    border-width: 2px;
+    border-color: #cccccc;
+    border-style: dashed;
+    border-radius: 8px;
+    align-items: center;
+    justify-content: center;
+    background-color: #fafafa;
+    margin-top: 8px;
+  }
+
+  .qr-text {
+    color: #999999;
+    font-size: 14px;
+  }
+
+  .hint-section {
+    align-items: center;
+    padding: 40px 16px;
+  }
+
+  .hint-text {
+    font-size: 14px;
+    color: #999999;
+  }
+
+  .modal-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .modal-content {
+    width: 320px;
+    background-color: #ffffff;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .modal-header {
+    padding: 16px;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .modal-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #333333;
+  }
+
+  .picker-body {
+    height: 200px;
+  }
+
+  .picker-view {
+    width: 100%;
+    height: 100%;
+  }
+
+  .picker-item {
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .picker-item-text {
+    font-size: 16px;
+    color: #333333;
+  }
+
+  .modal-footer {
+    flex-direction: row;
+    border-top-width: 1px;
+    border-top-color: #f0f0f0;
+    border-top-style: solid;
+  }
+
+  .modal-btn {
+    flex: 1;
+    padding: 14px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cancel-btn {
+    border-right-width: 1px;
+    border-right-color: #f0f0f0;
+    border-right-style: solid;
+  }
+
+  .modal-btn-text {
+    font-size: 16px;
+    color: #007aff;
+  }
+
+  .cancel-btn .modal-btn-text {
+    color: #999999;
+  }
+</style>

@@ -20,6 +20,19 @@ export type TransferEnvelope = {
 }
 
 // ============================================
+// 基础类型定义
+// ============================================
+
+/**
+ * 楼层配置对
+ * [floor_no, max_seq_no]
+ */
+export type FloorConfigPair = {
+  floorNo: number
+  maxSeqNo: number
+}
+
+// ============================================
 // 载荷类型
 // ============================================
 
@@ -35,7 +48,7 @@ export type AnQuPayload = {
   y: number                    // year 年份
   n: number                    // roundNo 轮次号
   m: number                    // micro 微调版本
-  f: Array<[number, number]>   // floors 楼层配置 [[floor_no, max_seq_no], ...]
+  f: FloorConfigPair[]         // floors 楼层配置
   bins: AnQuBinData[]          // 曲块数据
   skip: string[]               // 跳过的跨班曲块ID列表
 }
@@ -51,6 +64,19 @@ export type AnQuBinData = {
 }
 
 /**
+ * 配置数据载荷
+ * 包含人员和系数配置
+ */
+export type ConfigPayload = {
+  v: 1                         // 版本号（字面量类型）
+  kind: 'CONFIG'               // 载荷类型（字面量类型）
+  ts: number                   // 时间戳
+  c: number                    // classNo 班次号
+  persons: PersonData[] | null // 人员数据（可选）
+  coef: CoefData | null        // 系数数据（可选）
+}
+
+/**
  * 完整配置包载荷
  * 包含安曲数据 + 人员 + 系数配置
  */
@@ -58,16 +84,27 @@ export type BundlePayload = {
   v: 1                         // 版本号（字面量类型）
   kind: 'BUNDLE'               // 载荷类型（字面量类型）
   ts: number                   // 时间戳
+  c: number                    // classNo 班次号（顶层）
   anqu: AnQuPayload            // 安曲数据
   persons: PersonData[] | null // 人员数据（可选）
   coef: CoefData | null        // 系数数据（可选）
 }
 
 /**
+ * 传输载荷联合类型
+ */
+export type TransferPayload = AnQuPayload | ConfigPayload | BundlePayload
+
+/**
+ * 载荷类型标识
+ */
+export type PayloadKind = 'ANQ' | 'CONFIG' | 'BUNDLE'
+
+/**
  * 人员数据（用于传输）
  */
 export type PersonData = {
-  id: string
+  id: number
   name: string
   skill: number
 }
@@ -77,8 +114,8 @@ export type PersonData = {
  */
 export type CoefData = {
   stages: StageCoefData[]
-  duiQu: number
-  liangTang: number
+  duiQu: DuiQuCoefItem[]
+  liangTang: LiangTangCoefItem[]
 }
 
 /**
@@ -88,6 +125,22 @@ export type StageCoefData = {
   code: string
   name: string
   coef: number
+}
+
+/**
+ * 堆曲系数项
+ */
+export type DuiQuCoefItem = {
+  key: string
+  value: number
+}
+
+/**
+ * 晾堂系数项
+ */
+export type LiangTangCoefItem = {
+  key: string
+  value: number
 }
 
 // ============================================
@@ -122,26 +175,57 @@ export type RoundCandidate = {
 }
 
 // ============================================
-// 楼层冲突检测
+// 导入警告和冲突
 // ============================================
 
 /**
- * 楼层冲突信息
+ * 导入警告
  */
-export type FloorConflict = {
-  hasConflict: boolean
-  localFloors: Array<[number, number]>
-  importedFloors: Array<[number, number]>
-  differences: FloorDifference[]
+export type ImportWarning = {
+  code: 'ROUND_SOFT_MATCH'
+  message: string
+  details: string | null
 }
 
 /**
- * 楼层差异详情
+ * 冲突类型
  */
-export type FloorDifference = {
-  floorNo: number
-  localMaxSeq: number | null
-  importedMaxSeq: number | null
+export type ConflictType = 'FLOOR_CONFIG' | 'ROSTER' | 'COEF'
+
+/**
+ * 冲突项
+ */
+export type ConflictItem = {
+  type: ConflictType
+  title: string
+  summary: string
+  details: string | null
+}
+
+/**
+ * 楼层冲突项（包含详细楼层数据）
+ */
+export type FloorConflictItem = {
+  type: 'FLOOR_CONFIG'
+  title: string
+  summary: string
+  details: string | null
+  localFloors: FloorConfigPair[]
+  importedFloors: FloorConfigPair[]
+}
+
+/**
+ * 导入冲突项（联合类型）
+ * 支持基础冲突项和楼层冲突项
+ */
+export type ImportConflictItem = ConflictItem | FloorConflictItem
+
+/**
+ * 导入冲突摘要
+ */
+export type ImportConflictSummary = {
+  hasConflict: boolean
+  items: ImportConflictItem[]
 }
 
 // ============================================
@@ -153,9 +237,15 @@ export type FloorDifference = {
  */
 export type ImportResult = {
   success: boolean
+  payloadKind: PayloadKind
   roundId: number | null
   binsImported: number
   binsSkipped: number
+  personsImported: number
+  coefUpdated: boolean
+  floorConfigApplied: boolean
+  snapshotSaved: boolean
+  warnings: string[]
   errors: string[]
 }
 
@@ -174,9 +264,10 @@ export type TransferErrorCode =
   | 'INVALID_PAYLOAD'
   | 'ROUND_AMBIGUOUS'
   | 'ROUND_REQUIRED'
-  | 'FLOOR_MISMATCH'
   | 'EMPTY_BINS'
   | 'PAYLOAD_TOO_LARGE'
+  | 'CLASS_MISMATCH'
+  | 'ACTIVE_COEF_SET_MISSING'
 
 /**
  * 传输错误
@@ -192,6 +283,28 @@ export type TransferError = {
  */
 export type UnsealResult = {
   success: boolean
-  payload: any | null
+  payload: TransferPayload | null
   error: TransferError | null
+}
+
+// ============================================
+// 导入预览
+// ============================================
+
+/**
+ * 导入预览结果
+ * 整合了解封、轮次匹配、冲突检测的完整信息
+ */
+export type ImportPreview = {
+  success: boolean
+  error: TransferError | null
+  payload: TransferPayload | null
+  payloadKind: PayloadKind | null
+  matchStatus: RoundResolveStatus | null
+  resolvedRoundId: number | null
+  candidates: RoundCandidate[] | null
+  warnings: ImportWarning[]
+  conflictSummary: ImportConflictSummary | null
+  requiresConfirmation: boolean
+  canImport: boolean
 }

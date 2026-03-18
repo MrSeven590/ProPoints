@@ -78,7 +78,8 @@ export function decodeBase64Url(base64Url: string): string {
   // 将二进制字符串转为字节数组
   const bytes = new Uint8Array(binaryString.length)
   for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i)
+    const charCode = binaryString.charCodeAt(i)
+    bytes[i] = charCode != null ? charCode : 0
   }
 
   // 使用 TextDecoder 将字节数组转为字符串
@@ -107,5 +108,9 @@ export function serializeToBase64Url(obj: any): string {
  */
 export function deserializeFromBase64Url(base64Url: string): any {
   const jsonStr = decodeBase64Url(base64Url)
-  return JSON.parse(jsonStr)
+  const parsed = JSON.parse(jsonStr)
+  if (parsed == null) {
+    throw new Error('JSON parse returned null')
+  }
+  return parsed
 }

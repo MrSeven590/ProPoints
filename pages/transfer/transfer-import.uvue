@@ -1,0 +1,1245 @@
+<template>
+  <view class="page-container">
+    <view class="header">
+      <text class="header-title">PPX1 数据导入</text>
+    </view>
+
+    <!-- #ifdef APP -->
+    <scroll-view class="content" scroll-y="true">
+    <!-- #endif -->
+      <!-- 输入区 -->
+      <view class="section" v-if="step == 1">
+        <text class="section-title">粘贴 PPX1 文本</text>
+        <view class="input-box">
+          <textarea
+            class="input-textarea"
+            placeholder="请粘贴 PPX1 格式数据&#10;格式: PPX1|1|base64url|ANQ|..."
+            v-model="inputText"
+            :maxlength="-1"
+          />
+        </view>
+        <view class="hint-row">
+          <text class="hint-text">支持 PPX1 信封格式</text>
+        </view>
+      </view>
+
+      <!-- 解析按钮 -->
+      <view class="section" v-if="step == 1">
+        <view class="action-btn primary-btn" @click="onParseData">
+          <text class="action-btn-text">解析数据</text>
+        </view>
+      </view>
+
+      <!-- 轮次匹配状态 -->
+      <view class="section" v-if="step == 2">
+        <view class="status-card" :class="getMatchStatusClass()">
+          <text class="status-title">{{ getMatchStatusTitle() }}</text>
+          <text class="status-desc">{{ getMatchStatusDesc() }}</text>
+        </view>
+      </view>
+
+      <!-- 轮次候选列表 (AMBIGUOUS) -->
+      <view class="section" v-if="step == 2 && matchStatus == 'AMBIGUOUS'">
+        <text class="section-title">选择轮次</text>
+        <radio-group @change="onCandidateChange">
+          <label class="candidate-item" v-for="(candidate, index) in candidates" :key="index">
+            <radio :value="index.toString()" :checked="selectedCandidateIndex == index" />
+            <view class="candidate-info">
+              <text class="candidate-label">{{ candidate.label }}</text>
+              <text class="candidate-detail">班级{{ candidate.classNo }} | 微调{{ candidate.micro }}</text>
+            </view>
+          </label>
+        </radio-group>
+      </view>
+
+      <!-- 轮次选择 (NOT_FOUND) -->
+      <view class="section" v-if="step == 2 && matchStatus == 'NOT_FOUND'">
+        <text class="section-title">选择目标轮次</text>
+        <view class="round-selector" @click="onShowRoundPicker">
+          <view class="picker-display">
+            <text class="picker-text">{{ getSelectedRoundText() }}</text>
+            <text class="picker-arrow">▼</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 需要确认的警告和冲突 -->
+      <view class="section" v-if="step == 2 && requiresConfirmation">
+        <view class="warning-card">
+          <text class="warning-title">⚠️ 需要确认</text>
+          <text class="warning-desc">检测到配置与本地数据存在差异，需要您确认后继续</text>
+          <view class="conflict-list">
+            <text class="conflict-item" v-for="(display, index) in conflictDisplays" :key="index">
+              • {{ display.title }}
+            </text>
+          </view>
+          <view class="warning-btn" @click="onShowConflictModal">
+            <text class="warning-btn-text">查看详情并确认</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 数据预览 -->
+      <view class="section" v-if="step == 2 && parsedPayload != null">
+        <text class="section-title">数据预览</text>
+        <view class="preview-stats">
+          <text class="preview-label">数据类型</text>
+          <text class="preview-value">{{ getPayloadKindText() }}</text>
+        </view>
+        <view class="preview-stats" v-if="payloadKind == 'ANQ' || payloadKind == 'BUNDLE'">
+          <text class="preview-text">曲块数量: {{ getBinsCount() }}</text>
+          <text class="preview-text">跳过数量: {{ getSkipCount() }}</text>
+        </view>
+        <view class="preview-stats" v-if="payloadKind == 'CONFIG' || payloadKind == 'BUNDLE'">
+          <text class="preview-text">包含人员: {{ hasPersonsData() ? '是' : '否' }}</text>
+          <text class="preview-text">包含系数: {{ hasCoefData() ? '是' : '否' }}</text>
+        </view>
+      </view>
+
+      <!-- 底部操作按钮 -->
+      <view class="section" v-if="step == 2">
+        <view class="action-btn secondary-btn" @click="onBackToInput">
+          <text class="action-btn-text">重新输入</text>
+        </view>
+        <view
+          class="action-btn primary-btn"
+          @click="onConfirmImport"
+          :class="canImport() ? '' : 'disabled-btn'"
+        >
+          <text class="action-btn-text">确认导入</text>
+        </view>
+      </view>
+
+      <!-- 空状态 -->
+      <view class="section hint-section" v-if="step == 1 && inputText == ''">
+        <text class="hint-text">请粘贴 PPX1 格式数据</text>
+      </view>
+    <!-- #ifdef APP -->
+    </scroll-view>
+    <!-- #endif -->
+
+    <!-- 轮次选择器 Modal -->
+    <view class="modal-mask" v-show="showRoundPicker" @click="onRoundPickerCancel">
+      <view class="modal-content" @click.stop="">
+        <view class="modal-header">
+          <text class="modal-title">选择轮次</text>
+        </view>
+        <view class="picker-body">
+          <picker-view class="picker-view" :value="[pickerSelectedIndex]" @change="onRoundPickerChange">
+            <picker-view-column>
+              <view class="picker-item" v-for="(label, index) in roundOptions" :key="index">
+                <text class="picker-item-text">{{ label }}</text>
+              </view>
+            </picker-view-column>
+          </picker-view>
+        </view>
+        <view class="modal-footer">
+          <view class="modal-btn cancel-btn" @click="onRoundPickerCancel">
+            <text class="modal-btn-text">取消</text>
+          </view>
+          <view class="modal-btn confirm-btn" @click="onRoundPickerConfirm">
+            <text class="modal-btn-text">确定</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 统一冲突提示 Modal -->
+    <view class="modal-mask" v-show="showConflictModal" @click="onCloseConflictModal">
+      <view class="modal-content conflict-modal" @click.stop="">
+        <view class="modal-header">
+          <text class="modal-title">配置确认</text>
+        </view>
+        <view class="modal-body">
+          <scroll-view class="conflict-scroll" scroll-y="true">
+            <!-- 警告信息 -->
+            <view v-if="warnings.length > 0" class="warning-section">
+              <text class="section-label">⚠️ 警告</text>
+              <view class="warning-item" v-for="(warning, index) in warnings" :key="index">
+                <text class="warning-text">{{ warning.message }}</text>
+              </view>
+            </view>
+
+            <!-- 冲突列表 -->
+            <view v-if="conflictDisplays.length > 0" class="conflict-section">
+              <text class="section-label">⚠️ 以下配置将被覆盖</text>
+              <view class="conflict-list">
+                <view class="conflict-item" v-for="(display, index) in conflictDisplays" :key="index">
+                  <text class="conflict-title">{{ display.title }}</text>
+                  <text class="conflict-summary">{{ display.summary }}</text>
+
+                  <!-- 楼层冲突详情 -->
+                  <view v-if="display.type == 'FLOOR_CONFIG'" class="conflict-details">
+                    <view class="compare-group">
+                      <text class="compare-label">本地配置</text>
+                      <view class="compare-value local-value">
+                        <text class="compare-text" v-for="(floor, fIndex) in display.localFloorsText" :key="fIndex">
+                          {{ floor }}
+                        </text>
+                      </view>
+                    </view>
+                    <view class="compare-group">
+                      <text class="compare-label">导入配置</text>
+                      <view class="compare-value import-value">
+                        <text class="compare-text" v-for="(floor, fIndex) in display.importedFloorsText" :key="fIndex">
+                          {{ floor }}
+                        </text>
+                      </view>
+                    </view>
+                    <view class="floor-choice">
+                      <text class="choice-label">选择:</text>
+                      <view class="choice-options">
+                        <view class="choice-option" :class="applyFloorConfig ? '' : 'active'" @click="onSelectKeepLocal">
+                          <text class="choice-text">保留本地</text>
+                        </view>
+                        <view class="choice-option" :class="applyFloorConfig ? 'active' : ''" @click="onSelectApplyImport">
+                          <text class="choice-text">应用导入</text>
+                        </view>
+                      </view>
+                    </view>
+                  </view>
+
+                  <!-- 花名册/系数冲突提示 -->
+                  <view v-else class="override-notice">
+                    <text class="notice-text">{{ display.overrideNotice }}</text>
+                  </view>
+                </view>
+              </view>
+            </view>
+          </scroll-view>
+        </view>
+        <view class="modal-footer">
+          <view class="modal-btn cancel-btn" @click="onCloseConflictModal">
+            <text class="modal-btn-text">取消</text>
+          </view>
+          <view class="modal-btn confirm-btn" @click="onConfirmAllConflicts">
+            <text class="modal-btn-text">确认导入</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+  import {
+    TransferPayload,
+    AnQuPayload,
+    ConfigPayload,
+    BundlePayload,
+    RoundCandidate,
+    FloorConflictItem,
+    ImportWarning,
+    ConflictItem,
+    ImportConflictItem
+  } from '../../domain/models/transfer.uts'
+
+  import {
+    listTransferRoundsForCurrentClass,
+    previewTransferImport,
+    applyTransferImport,
+    type TransferRoundOption,
+    type ImportPreview
+  } from '../../domain/stores/AppStore.uts'
+
+  type MatchStatus = 'NONE' | 'EXACT_MATCH' | 'SOFT_MATCH' | 'AMBIGUOUS' | 'NOT_FOUND'
+  type PayloadKind = 'ANQ' | 'CONFIG' | 'BUNDLE'
+
+  // 预处理的冲突展示数据（避免模板中传递联合类型参数）
+  type ConflictDisplayItem = {
+    type: string
+    title: string
+    summary: string
+    // 楼层冲突专用字段
+    localFloorsText: string[]
+    importedFloorsText: string[]
+    // 覆盖提示
+    overrideNotice: string
+  }
+
+  export default {
+    data() {
+      return {
+        step: 1 as number,
+        inputText: '' as string,
+        parsedPayload: null as TransferPayload | null,
+        payloadKind: null as PayloadKind | null,
+        matchStatus: 'NONE' as MatchStatus,
+        resolvedRoundId: 0 as number,
+        candidates: [] as RoundCandidate[],
+        selectedCandidateIndex: 0 as number,
+        warnings: [] as ImportWarning[],
+        conflicts: [] as ImportConflictItem[],
+        // 预处理的冲突展示数据
+        conflictDisplays: [] as ConflictDisplayItem[],
+        hasConflict: false as boolean,
+        requiresConfirmation: false as boolean,
+        conflictResolved: false as boolean,
+        applyFloorConfig: true as boolean, // 是否应用导入的楼层配置
+        canImportFromPreview: true as boolean, // 从预览获取的 canImport
+        showRoundPicker: false as boolean,
+        showConflictModal: false as boolean,
+        roundOptions: [] as string[],
+        roundIds: [] as number[],
+        pickerSelectedIndex: 0 as number,
+        tempPickerIndex: 0 as number
+      }
+    },
+
+    onLoad() {
+      this.loadRoundList()
+    },
+
+    methods: {
+      loadRoundList() {
+        const options = listTransferRoundsForCurrentClass()
+
+        const labels: string[] = []
+        const ids: number[] = []
+
+        for (let i = 0; i < options.length; i++) {
+          const option = options[i]
+          labels.push(option.label)
+          ids.push(option.id)
+        }
+
+        this.roundOptions = labels
+        this.roundIds = ids
+
+        if (ids.length > 0) {
+          this.pickerSelectedIndex = 0
+          this.resolvedRoundId = ids[0]
+        }
+      },
+
+      onParseData() {
+        if (this.inputText == '') {
+          uni.showToast({
+            title: '请输入数据',
+            icon: 'none'
+          })
+          return
+        }
+
+        const preview = previewTransferImport(this.inputText)
+
+        if (!preview.success) {
+          const errorMsg = preview.error != null ? preview.error.message : '解析失败'
+          uni.showToast({
+            title: errorMsg,
+            icon: 'none',
+            duration: 2000
+          })
+          return
+        }
+
+        // 重置确认状态,避免继承旧数据
+        this.conflictResolved = false
+        this.showConflictModal = false
+        this.applyFloorConfig = true
+
+        // 保存完整 payload 和 kind
+        this.parsedPayload = preview.payload
+        this.payloadKind = preview.payloadKind as PayloadKind | null
+        this.matchStatus = preview.matchStatus as MatchStatus
+        this.resolvedRoundId = preview.resolvedRoundId != null ? preview.resolvedRoundId : 0
+        this.candidates = preview.candidates != null ? preview.candidates : ([] as RoundCandidate[])
+        this.warnings = preview.warnings
+
+        // 处理冲突
+        this.hasConflict = preview.conflictSummary != null && preview.conflictSummary.hasConflict
+        // UTS 协变数组需要转换：UTSArray<out UTSObject> -> UTSArray<ImportConflictItem>
+        if (preview.conflictSummary != null) {
+          const items = preview.conflictSummary.items
+          const conflictItems: ImportConflictItem[] = []
+          for (let i = 0; i < items.length; i++) {
+            conflictItems.push(items[i] as ImportConflictItem)
+          }
+          this.conflicts = conflictItems
+
+          // 预处理冲突展示数据（避免模板中传递联合类型参数）
+          this.conflictDisplays = this.preprocessConflicts(conflictItems)
+        } else {
+          this.conflicts = [] as ImportConflictItem[]
+          this.conflictDisplays = [] as ConflictDisplayItem[]
+        }
+        this.requiresConfirmation = preview.requiresConfirmation
+
+        // 保存预览的 canImport
+        this.canImportFromPreview = preview.canImport
+
+        // 处理候选轮次
+        if (preview.matchStatus == 'AMBIGUOUS' && this.candidates.length > 0) {
+          this.selectedCandidateIndex = 0
+          this.resolvedRoundId = this.candidates[0].roundId
+        }
+
+        this.step = 2
+      },
+
+      onCandidateChange(e: UniRadioGroupChangeEvent) {
+        const index = parseInt(e.detail.value)
+        this.selectedCandidateIndex = index
+        if (index >= 0 && index < this.candidates.length) {
+          this.resolvedRoundId = this.candidates[index].roundId
+        }
+      },
+
+      onShowRoundPicker() {
+        if (this.roundOptions.length == 0) {
+          uni.showToast({
+            title: '暂无可选轮次',
+            icon: 'none'
+          })
+          return
+        }
+        this.tempPickerIndex = this.pickerSelectedIndex
+        this.showRoundPicker = true
+      },
+
+      onRoundPickerChange(e: UniPickerViewChangeEvent) {
+        const index = e.detail.value[0]
+        this.tempPickerIndex = index
+      },
+
+      onRoundPickerCancel() {
+        this.showRoundPicker = false
+      },
+
+      onRoundPickerConfirm() {
+        this.pickerSelectedIndex = this.tempPickerIndex
+        if (this.pickerSelectedIndex >= 0 && this.pickerSelectedIndex < this.roundIds.length) {
+          this.resolvedRoundId = this.roundIds[this.pickerSelectedIndex]
+        }
+        this.showRoundPicker = false
+      },
+
+      onShowConflictModal() {
+        this.showConflictModal = true
+      },
+
+      onCloseConflictModal() {
+        this.showConflictModal = false
+      },
+
+      onSelectKeepLocal() {
+        // 用户选择保留本地楼层配置
+        this.applyFloorConfig = false
+      },
+
+      onSelectApplyImport() {
+        // 用户选择应用导入楼层配置
+        this.applyFloorConfig = true
+      },
+
+      onConfirmAllConflicts() {
+        // 用户确认所有冲突,继续导入
+        this.conflictResolved = true
+        this.showConflictModal = false
+        uni.showToast({
+          title: '已确认冲突',
+          icon: 'success',
+          duration: 2000
+        })
+      },
+
+      /**
+       * 预处理冲突数据，生成模板可直接使用的展示项
+       * 解决问题：避免模板中传递联合类型参数
+       */
+      preprocessConflicts(items: ImportConflictItem[]): ConflictDisplayItem[] {
+        const displays: ConflictDisplayItem[] = []
+
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i]
+          const itemObj = item as UTSJSONObject
+          const type = itemObj['type'] as string
+
+          // 基础字段
+          const title = this.getConflictTitle(item)
+          const summary = this.getConflictSummary(item)
+
+          // 楼层冲突专用字段
+          let localFloorsText: string[] = []
+          let importedFloorsText: string[] = []
+          let overrideNotice = ''
+
+          if (type == 'FLOOR_CONFIG') {
+            const floorItem = item as FloorConflictItem
+            // 预处理本地楼层数据
+            localFloorsText = []
+            const localFloors = floorItem.localFloors
+            for (let j = 0; j < localFloors.length; j++) {
+              const floor = localFloors[j]
+              localFloorsText.push(`${floor.floorNo}楼: ${floor.maxSeqNo}仓`)
+            }
+            // 预处理导入楼层数据
+            importedFloorsText = []
+            const importedFloors = floorItem.importedFloors
+            for (let j = 0; j < importedFloors.length; j++) {
+              const floor = importedFloors[j]
+              importedFloorsText.push(`${floor.floorNo}楼: ${floor.maxSeqNo}仓`)
+            }
+          } else if (type == 'ROSTER') {
+            overrideNotice = '导入后将覆盖本地花名册'
+          } else if (type == 'COEF') {
+            overrideNotice = '导入后将覆盖本地系数配置'
+          }
+
+          displays.push({
+            type: type,
+            title: title,
+            summary: summary,
+            localFloorsText: localFloorsText,
+            importedFloorsText: importedFloorsText,
+            overrideNotice: overrideNotice
+          })
+        }
+
+        return displays
+      },
+
+      // ===== 保留这些函数用于脚本内部调用，但模板不再直接调用 =====
+      getConflictItemType(conflict: UTSObject): string {
+        const conflictObj = conflict as UTSJSONObject
+        return conflictObj['type'] as string
+      },
+
+      getConflictSummary(conflict: UTSObject): string {
+        const conflictObj = conflict as UTSJSONObject
+        return conflictObj['summary'] as string
+      },
+
+      getFloorConflictLocal(conflict: UTSObject): string[] {
+        const result: string[] = []
+        const floorConflict = conflict as FloorConflictItem
+        const floors = floorConflict.localFloors
+        for (let j = 0; j < floors.length; j++) {
+          const floor = floors[j]
+          result.push(`${floor.floorNo}楼: ${floor.maxSeqNo}仓`)
+        }
+        return result
+      },
+
+      getFloorConflictImport(conflict: UTSObject): string[] {
+        const result: string[] = []
+        const floorConflict = conflict as FloorConflictItem
+        const floors = floorConflict.importedFloors
+        for (let j = 0; j < floors.length; j++) {
+          const floor = floors[j]
+          result.push(`${floor.floorNo}楼: ${floor.maxSeqNo}仓`)
+        }
+        return result
+      },
+
+      onBackToInput() {
+        this.step = 1
+        this.parsedPayload = null
+        this.payloadKind = null
+        this.matchStatus = 'NONE'
+        this.resolvedRoundId = 0
+        this.candidates = []
+        this.selectedCandidateIndex = 0
+        this.warnings = []
+        this.hasConflict = false
+        this.requiresConfirmation = false
+        this.conflictResolved = false
+        this.applyFloorConfig = true
+        this.showConflictModal = false
+        this.conflicts = []
+        this.canImportFromPreview = true
+      },
+
+      onConfirmImport() {
+        if (!this.canImport()) {
+          uni.showToast({
+            title: '请先确认冲突或选择轮次',
+            icon: 'none'
+          })
+          return
+        }
+
+        if (this.parsedPayload == null) {
+          uni.showToast({
+            title: '没有数据可导入',
+            icon: 'none'
+          })
+          return
+        }
+
+        // CONFIG 不需要 roundId
+        const needsRoundId = this.payloadKind == 'ANQ' || this.payloadKind == 'BUNDLE'
+        const roundIdToUse = needsRoundId ? this.resolvedRoundId : null
+
+        const result = applyTransferImport(this.parsedPayload, roundIdToUse, this.applyFloorConfig)
+
+        if (result.success) {
+          let msg = '导入成功'
+          if (this.payloadKind == 'ANQ') {
+            msg = `导入成功: ${result.binsImported} 仓`
+          } else if (this.payloadKind == 'CONFIG') {
+            msg = `配置导入成功: ${result.personsImported} 人`
+          } else if (this.payloadKind == 'BUNDLE') {
+            msg = `导入成功: ${result.binsImported} 仓, ${result.personsImported} 人`
+          }
+          uni.showToast({
+            title: msg,
+            icon: 'success'
+          })
+          setTimeout(() => {
+            uni.navigateBack({})
+          }, 1500)
+        } else {
+          const errorMsg = result.errors.length > 0 ? result.errors[0] : '导入失败'
+          uni.showToast({
+            title: errorMsg,
+            icon: 'none',
+            duration: 2000
+          })
+        }
+      },
+
+      canImport(): boolean {
+        // 如果预览明确返回 canImport=false,直接使用
+        if (!this.canImportFromPreview) {
+          return false
+        }
+
+        // 如果需要确认但尚未确认,不允许导入
+        if (this.requiresConfirmation && !this.conflictResolved) {
+          return false
+        }
+
+        return true
+      },
+
+      getMatchStatusClass(): string {
+        if (this.matchStatus == 'EXACT_MATCH') {
+          return 'status-success'
+        } else if (this.matchStatus == 'SOFT_MATCH') {
+          return 'status-warning'
+        } else if (this.matchStatus == 'AMBIGUOUS' || this.matchStatus == 'NOT_FOUND') {
+          return 'status-error'
+        }
+        return ''
+      },
+
+      getMatchStatusTitle(): string {
+        if (this.matchStatus == 'EXACT_MATCH') {
+          return '✓ 精确匹配'
+        } else if (this.matchStatus == 'SOFT_MATCH') {
+          return '⚠ 软匹配'
+        } else if (this.matchStatus == 'AMBIGUOUS') {
+          return '❓ 多个匹配'
+        } else if (this.matchStatus == 'NOT_FOUND') {
+          return '✗ 未找到匹配'
+        }
+        return ''
+      },
+
+      getMatchStatusDesc(): string {
+        if (this.matchStatus == 'EXACT_MATCH') {
+          return '找到完全匹配的轮次'
+        } else if (this.matchStatus == 'SOFT_MATCH') {
+          const warning = this.warnings.length > 0 ? this.warnings[0].message : '微调版本不同'
+          return warning
+        } else if (this.matchStatus == 'AMBIGUOUS') {
+          return '发现多个可能的轮次,请选择一个'
+        } else if (this.matchStatus == 'NOT_FOUND') {
+          return '未找到匹配的轮次,请选择目标轮次'
+        }
+        return ''
+      },
+
+      getSelectedRoundText(): string {
+        if (this.pickerSelectedIndex >= 0 && this.pickerSelectedIndex < this.roundOptions.length) {
+          return this.roundOptions[this.pickerSelectedIndex]
+        }
+        return '请选择轮次'
+      },
+
+      getBinsCount(): number {
+        if (this.parsedPayload == null) {
+          return 0
+        }
+        if (this.payloadKind == 'ANQ') {
+          return (this.parsedPayload as AnQuPayload).bins.length
+        } else if (this.payloadKind == 'BUNDLE') {
+          return (this.parsedPayload as BundlePayload).anqu.bins.length
+        }
+        return 0
+      },
+
+      getSkipCount(): number {
+        if (this.parsedPayload == null) {
+          return 0
+        }
+        if (this.payloadKind == 'ANQ') {
+          return (this.parsedPayload as AnQuPayload).skip.length
+        } else if (this.payloadKind == 'BUNDLE') {
+          return (this.parsedPayload as BundlePayload).anqu.skip.length
+        }
+        return 0
+      },
+
+      getConflictTitle(conflict: UTSObject): string {
+        const conflictObj = conflict as UTSJSONObject
+        const type = conflictObj['type'] as string
+        if (type == 'FLOOR_CONFIG') {
+          return '楼层配置冲突'
+        } else if (type == 'ROSTER') {
+          return '花名册冲突'
+        } else if (type == 'COEF') {
+          return '系数配置冲突'
+        }
+        return '配置冲突'
+      },
+
+      getPayloadKindText(): string {
+        if (this.payloadKind == 'ANQ') {
+          return '安曲数据'
+        } else if (this.payloadKind == 'CONFIG') {
+          return '配置数据'
+        } else if (this.payloadKind == 'BUNDLE') {
+          return '安曲+配置'
+        }
+        return '未知'
+      },
+
+      hasPersonsData(): boolean {
+        if (this.payloadKind == 'CONFIG') {
+          return (this.parsedPayload as ConfigPayload).persons != null
+        } else if (this.payloadKind == 'BUNDLE') {
+          return (this.parsedPayload as BundlePayload).persons != null
+        }
+        return false
+      },
+
+      hasCoefData(): boolean {
+        if (this.payloadKind == 'CONFIG') {
+          return (this.parsedPayload as ConfigPayload).coef != null
+        } else if (this.payloadKind == 'BUNDLE') {
+          return (this.parsedPayload as BundlePayload).coef != null
+        }
+        return false
+      }
+    }
+  }
+</script>
+
+<style>
+  .page-container {
+    flex: 1;
+    background-color: #f5f5f5;
+  }
+
+  .header {
+    background-color: #007aff;
+    padding: 20px 16px;
+  }
+
+  .header-title {
+    font-size: 24px;
+    font-weight: bold;
+    color: #ffffff;
+  }
+
+  .content {
+    flex: 1;
+  }
+
+  .section {
+    margin: 12px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  .section-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333333;
+    margin-bottom: 12px;
+  }
+
+  .input-box {
+    margin-top: 8px;
+  }
+
+  .input-textarea {
+    width: 100%;
+    height: 150px;
+    background-color: #f8f9fa;
+    border-width: 1px;
+    border-color: #eeeeee;
+    border-style: solid;
+    border-radius: 6px;
+    padding: 10px;
+    font-family: monospace;
+    font-size: 12px;
+    color: #333333;
+    line-height: 18px;
+  }
+
+  .hint-row {
+    margin-top: 8px;
+  }
+
+  .hint-text {
+    font-size: 13px;
+    color: #999999;
+  }
+
+  .status-card {
+    padding: 12px;
+    border-radius: 6px;
+    border-width: 2px;
+    border-style: solid;
+  }
+
+  .status-success {
+    background-color: #e8f5e9;
+    border-color: #4cd964;
+  }
+
+  .status-warning {
+    background-color: #fff3e0;
+    border-color: #f0ad4e;
+  }
+
+  .status-error {
+    background-color: #ffebee;
+    border-color: #dd524d;
+  }
+
+  .status-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333333;
+    margin-bottom: 6px;
+  }
+
+  .status-desc {
+    font-size: 14px;
+    color: #666666;
+  }
+
+  .candidate-item {
+    flex-direction: row;
+    align-items: center;
+    padding: 12px;
+    margin-bottom: 8px;
+    background-color: #f8f8f8;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: #e0e0e0;
+    border-style: solid;
+  }
+
+  .candidate-info {
+    flex: 1;
+    margin-left: 12px;
+  }
+
+  .candidate-label {
+    font-size: 15px;
+    color: #333333;
+    font-weight: bold;
+    margin-bottom: 4px;
+  }
+
+  .candidate-detail {
+    font-size: 13px;
+    color: #666666;
+  }
+
+  .round-selector {
+    margin-top: 8px;
+  }
+
+  .picker-display {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px;
+    background-color: #f8f8f8;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: #e0e0e0;
+    border-style: solid;
+  }
+
+  .picker-text {
+    font-size: 16px;
+    color: #333333;
+  }
+
+  .picker-arrow {
+    font-size: 12px;
+    color: #999999;
+  }
+
+  .warning-card {
+    padding: 12px;
+    background-color: #fff3e0;
+    border-radius: 6px;
+    border-width: 2px;
+    border-color: #f0ad4e;
+    border-style: solid;
+  }
+
+  .warning-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #f0ad4e;
+    margin-bottom: 6px;
+  }
+
+  .warning-desc {
+    font-size: 14px;
+    color: #666666;
+    margin-bottom: 12px;
+  }
+
+  .warning-btn {
+    padding: 8px 16px;
+    background-color: #f0ad4e;
+    border-radius: 4px;
+    align-self: flex-start;
+  }
+
+  .warning-btn-text {
+    font-size: 14px;
+    color: #ffffff;
+    font-weight: bold;
+  }
+
+  .conflict-list {
+    margin-top: 8px;
+    margin-bottom: 12px;
+  }
+
+  .conflict-item {
+    font-size: 13px;
+    color: #666666;
+    margin-bottom: 4px;
+  }
+
+  .preview-stats {
+    padding: 12px;
+    background-color: #e8f4ff;
+    border-radius: 6px;
+    margin-bottom: 8px;
+  }
+
+  .preview-label {
+    font-size: 13px;
+    color: #666666;
+    margin-bottom: 4px;
+  }
+
+  .preview-value {
+    font-size: 15px;
+    color: #007aff;
+    font-weight: bold;
+  }
+
+  .preview-text {
+    font-size: 14px;
+    color: #007aff;
+    margin-bottom: 4px;
+  }
+
+  .action-btn {
+    padding: 14px;
+    border-radius: 6px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 12px;
+  }
+
+  .primary-btn {
+    background-color: #007aff;
+  }
+
+  .secondary-btn {
+    background-color: #ffffff;
+    border-width: 1px;
+    border-color: #007aff;
+    border-style: solid;
+  }
+
+  .disabled-btn {
+    background-color: #cccccc;
+  }
+
+  .action-btn-text {
+    font-size: 16px;
+    color: #ffffff;
+    font-weight: bold;
+  }
+
+  .secondary-btn .action-btn-text {
+    color: #007aff;
+  }
+
+  .hint-section {
+    align-items: center;
+    padding: 40px 16px;
+  }
+
+  .modal-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .modal-content {
+    width: 320px;
+    background-color: #ffffff;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .conflict-modal {
+    width: 340px;
+  }
+
+  .modal-header {
+    padding: 16px;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .modal-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #333333;
+  }
+
+  .modal-body {
+    max-height: 300px;
+  }
+
+  .conflict-scroll {
+    max-height: 300px;
+    padding: 16px;
+  }
+
+  .compare-group {
+    margin-bottom: 16px;
+  }
+
+  .compare-label {
+    font-size: 14px;
+    color: #666666;
+    margin-bottom: 8px;
+  }
+
+  .compare-value {
+    padding: 12px;
+    border-radius: 6px;
+  }
+
+  .local-value {
+    background-color: #e8f4ff;
+  }
+
+  .import-value {
+    background-color: #fff3e0;
+  }
+
+  .compare-text {
+    font-size: 14px;
+    color: #333333;
+    margin-bottom: 4px;
+  }
+
+  .warning-text {
+    padding: 16px;
+  }
+
+  .warning-desc {
+    font-size: 14px;
+    color: #666666;
+    margin-bottom: 12px;
+    display: block;
+  }
+
+  .warning-section {
+    margin-bottom: 20px;
+    padding: 12px;
+    background-color: #fff8e1;
+    border-radius: 6px;
+  }
+
+  .section-label {
+    font-size: 16px;
+    font-weight: 600;
+    color: #333333;
+    margin-bottom: 12px;
+    display: block;
+  }
+
+  .warning-item {
+    margin-bottom: 8px;
+    padding: 8px;
+    background-color: #ffffff;
+    border-radius: 4px;
+  }
+
+  .conflict-section {
+    margin-top: 16px;
+  }
+
+  .override-notice {
+    margin-top: 8px;
+    padding: 8px;
+    background-color: #fff3e0;
+    border-radius: 4px;
+  }
+
+  .notice-text {
+    font-size: 13px;
+    color: #e65100;
+  }
+
+  .conflict-list {
+    padding: 0;
+  }
+
+  .conflict-item {
+    margin-bottom: 20px;
+    padding-bottom: 20px;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .conflict-item:last-child {
+    border-bottom-width: 0;
+    margin-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .conflict-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #333333;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  .conflict-summary {
+    font-size: 14px;
+    color: #666666;
+    margin-bottom: 12px;
+    display: block;
+  }
+
+  .conflict-details {
+    margin-top: 12px;
+  }
+
+  .floor-choice {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top-width: 1px;
+    border-top-color: #e0e0e0;
+    border-top-style: solid;
+  }
+
+  .choice-label {
+    font-size: 14px;
+    color: #666666;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  .choice-options {
+    flex-direction: row;
+    gap: 12px;
+  }
+
+  .choice-option {
+    flex: 1;
+    padding: 10px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: #d0d0d0;
+    border-style: solid;
+    align-items: center;
+    justify-content: center;
+    background-color: #ffffff;
+  }
+
+  .choice-option.active {
+    background-color: #007aff;
+    border-color: #007aff;
+  }
+
+  .choice-text {
+    font-size: 14px;
+    color: #333333;
+  }
+
+  .choice-option.active .choice-text {
+    color: #ffffff;
+  }
+
+  .picker-body {
+    height: 200px;
+  }
+
+  .picker-view {
+    width: 100%;
+    height: 100%;
+  }
+
+  .picker-item {
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .picker-item-text {
+    font-size: 16px;
+    color: #333333;
+  }
+
+  .modal-footer {
+    flex-direction: row;
+    border-top-width: 1px;
+    border-top-color: #f0f0f0;
+    border-top-style: solid;
+  }
+
+  .modal-btn {
+    flex: 1;
+    padding: 14px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cancel-btn {
+    border-right-width: 1px;
+    border-right-color: #f0f0f0;
+    border-right-style: solid;
+  }
+
+  .modal-btn-text {
+    font-size: 16px;
+    color: #007aff;
+  }
+
+  .cancel-btn .modal-btn-text {
+    color: #999999;
+  }
+</style>

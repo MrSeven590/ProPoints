@@ -1,24 +1,35 @@
 /**
  * 数据传输服务
  * 负责 PPX1 格式的数据封装、解封和处理
- */
+ **/
 
 import {
   AnQuPayload,
   AnQuBinData,
   BundlePayload,
+  ConfigPayload,
+  TransferPayload,
+  PayloadKind,
   PersonData,
   CoefData,
   StageCoefData,
+  DuiQuCoefItem,
+  LiangTangCoefItem,
   TransferEnvelope,
   RoundResolveResult,
   RoundResolveStatus,
   RoundCandidate,
-  FloorConflict,
-  FloorDifference,
+  ImportWarning,
+  ConflictType,
+  ConflictItem,
+  FloorConflictItem,
+  ImportConflictItem,
+  ImportConflictSummary,
   ImportResult,
   TransferError,
-  UnsealResult
+  TransferErrorCode,
+  UnsealResult,
+  FloorConfigPair
 } from '../models/transfer.uts'
 
 import {
@@ -26,14 +37,7 @@ import {
   deserializeFromBase64Url
 } from '../../utils/codec.uts'
 
-import {
-  getCurrentClassNo,
-  loadRounds,
-  loadPersons,
-  loadActiveCoefSet,
-  loadBins,
-  getSessionsByDateAndStage
-} from '../stores/AppStore.uts'
+// 移除对 AppStore 的依赖，改为接受数据作为参数
 
 import {
   parseBinCode
@@ -44,7 +48,6 @@ import {
 } from '../models/types.uts'
 
 import {
-  saveAnQuImportSnapshot,
   ParsedAnQuItem
 } from './AnQuDataService.uts'
 
@@ -55,9 +58,10 @@ import {
 const PPX1_VERSION = 1
 const PPX1_ENCODING = 'base64url'
 const PAYLOAD_KIND_ANQ = 'ANQ'
+const PAYLOAD_KIND_CONFIG = 'CONFIG'
 const PAYLOAD_KIND_BUNDLE = 'BUNDLE'
 const SESSION_STATUS_SUBMITTED = 'submitted'
-const MAX_ROUND_QUERY_DAYS = 180
+export const MAX_ROUND_QUERY_DAYS = 180
 
 // ============================================
 // Phase 3: 数据收集层（导出侧）
@@ -66,13 +70,22 @@ const MAX_ROUND_QUERY_DAYS = 180
 /**
  * 收集指定轮次的安曲数据载荷
  * @param roundId 轮次ID
+ * @param classNo 当前班次号
+ * @param allRounds 所有轮次数据
+ * @param floorConfig 楼层配置（从持久化存储读取）
+ * @param allBins 所有曲块数据
+ * @param allSessions 所有会话数据
  * @returns AnQu载荷，如果轮次不存在返回null
  */
-export function collectAnQuPayload(roundId: number): AnQuPayload | null {
-  const classNo = getCurrentClassNo()
-
-  // 获取轮次信息
-  const allRounds = loadRounds()
+export function collectAnQuPayload(
+  roundId: number,
+  classNo: number,
+  allRounds: UTSJSONObject[],
+  floorConfig: UTSJSONObject | null,
+  allBins: UTSJSONObject[],
+  allSessions: UTSJSONObject[]
+): AnQuPayload | null {
+  // 查找轮次信息
   let roundInfo: UTSJSONObject | null = null
   for (let i = 0; i < allRounds.length; i++) {
     const id = allRounds[i]['id'] as number
@@ -90,11 +103,10 @@ export function collectAnQuPayload(roundId: number): AnQuPayload | null {
   const roundNo = roundInfo['round_no'] as number
   const micro = roundInfo['micro'] as number
 
-  // 收集楼层配置
-  const floors = collectFloorConfig()
+  // 使用传入的楼层配置
+  const floors = convertFloorConfigToPairs(floorConfig)
 
   // 建立 bin 索引 Map: "classNo-seqNo-floorNo" -> binId
-  const allBins = loadBins()
   const binIndexMap = new Map<string, number>()
   for (let i = 0; i < allBins.length; i++) {
     const bin = allBins[i]
@@ -110,8 +122,7 @@ export function collectAnQuPayload(roundId: number): AnQuPayload | null {
   const bins: AnQuBinData[] = []
   const skippedBins: string[] = []
 
-  // 获取该轮次的所有安曲会话
-  const allSessions = getSessionsByRound(roundInfo)
+  // 过滤该轮次的会话
 
   for (let i = 0; i < allSessions.length; i++) {
     const session = allSessions[i]
@@ -184,66 +195,86 @@ export function collectAnQuPayload(roundId: number): AnQuPayload | null {
 }
 
 /**
+ * 组装配置数据载荷
+ * @param classNo 当前班次号
+ * @param allPersons 所有人员数据（可选）
+ * @param activeCoefSet 当前系数集（可选）
+ * @param includePersons 是否包含人员数据
+ * @param includeCoef 是否包含系数数据
+ * @returns Config载荷
+ */
+export function assembleConfigPayload(
+  classNo: number,
+  allPersons: UTSJSONObject[] | null,
+  activeCoefSet: UTSJSONObject | null,
+  includePersons: boolean,
+  includeCoef: boolean
+): ConfigPayload {
+  let personsData: PersonData[] | null = null
+  if (includePersons && allPersons != null) {
+    personsData = toTransferPersonData(allPersons)
+  }
+
+  let coefData: CoefData | null = null
+  if (includeCoef && activeCoefSet != null) {
+    coefData = toTransferCoefData(activeCoefSet)
+  }
+
+  return {
+    v: PPX1_VERSION,
+    kind: PAYLOAD_KIND_CONFIG,
+    ts: getCurrentTimestamp(),
+    c: classNo,
+    persons: personsData,
+    coef: coefData
+  }
+}
+
+/**
  * 组装完整配置包载荷
  * @param roundId 轮次ID
+ * @param classNo 当前班次号
+ * @param allRounds 所有轮次数据
+ * @param allBins 所有曲块数据
+ * @param allSessions 所有会话数据
+ * @param allPersons 所有人员数据（可选）
+ * @param activeCoefSet 当前系数集（可选）
  * @param includePersons 是否包含人员数据
  * @param includeCoef 是否包含系数数据
  * @returns Bundle载荷，如果轮次不存在返回null
  */
 export function assembleBundlePayload(
   roundId: number,
+  classNo: number,
+  allRounds: UTSJSONObject[],
+  floorConfig: UTSJSONObject | null,
+  allBins: UTSJSONObject[],
+  allSessions: UTSJSONObject[],
+  allPersons: UTSJSONObject[] | null,
+  activeCoefSet: UTSJSONObject | null,
   includePersons: boolean,
   includeCoef: boolean
 ): BundlePayload | null {
-  const anquPayload = collectAnQuPayload(roundId)
+  const anquPayload = collectAnQuPayload(roundId, classNo, allRounds, floorConfig, allBins, allSessions)
   if (anquPayload == null) {
     return null
   }
 
-  // 收集人员数据
   let personsData: PersonData[] | null = null
-  if (includePersons) {
-    const allPersons = loadPersons()
-    personsData = []
-    for (let i = 0; i < allPersons.length; i++) {
-      const person = allPersons[i]
-      personsData.push({
-        id: person['id'] as string,
-        name: person['name'] as string,
-        skill: person['skill_level'] as number
-      })
-    }
+  if (includePersons && allPersons != null) {
+    personsData = toTransferPersonData(allPersons)
   }
 
-  // 收集系数数据
   let coefData: CoefData | null = null
-  if (includeCoef) {
-    const coefSet = loadActiveCoefSet()
-    if (coefSet != null) {
-      const stages = coefSet['stages'] as UTSJSONObject[]
-      const stagesData: StageCoefData[] = []
-
-      for (let i = 0; i < stages.length; i++) {
-        const stage = stages[i]
-        stagesData.push({
-          code: stage['stage_code'] as string,
-          name: stage['stage_name'] as string,
-          coef: stage['coef'] as number
-        })
-      }
-
-      coefData = {
-        stages: stagesData,
-        duiQu: coefSet['duiQu'] as number,
-        liangTang: coefSet['liangTang'] as number
-      }
-    }
+  if (includeCoef && activeCoefSet != null) {
+    coefData = toTransferCoefData(activeCoefSet)
   }
 
   return {
     v: PPX1_VERSION,
     kind: PAYLOAD_KIND_BUNDLE,
     ts: getCurrentTimestamp(),
+    c: classNo,
     anqu: anquPayload,
     persons: personsData,
     coef: coefData
@@ -255,13 +286,393 @@ export function assembleBundlePayload(
 // ============================================
 
 /**
+ * 验证 AnQu 载荷结构
+ * @param anquPayload AnQu 载荷对象
+ * @param prefix 错误消息前缀（用于嵌套验证）
+ * @returns 验证错误，无错误返回 null
+ */
+function validateAnQuPayload(anquPayload: UTSJSONObject, prefix: string = ''): TransferError | null {
+  // 验证必需字段
+  const anqFields = ['c', 'y', 'n', 'm', 'f', 'bins', 'skip']
+  for (let i = 0; i < anqFields.length; i++) {
+    const field = anqFields[i]
+    if (anquPayload[field] == null) {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}ANQ 载荷缺少必需字段: ${field}`,
+        details: `期望类型: ${field == 'f' || field == 'bins' || field == 'skip' ? 'array' : 'number'}`
+      }
+    }
+  }
+
+  // 验证数字字段
+  const numFields = ['c', 'y', 'n', 'm']
+  for (let i = 0; i < numFields.length; i++) {
+    const field = numFields[i]
+    const value = anquPayload[field]
+    if (typeof value != 'number') {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}字段 ${field} 类型错误`,
+        details: `期望: number, 实际: ${typeof value}`
+      }
+    }
+  }
+
+  // 验证数组字段
+  const arrayFields = ['f', 'bins', 'skip']
+  for (let i = 0; i < arrayFields.length; i++) {
+    const field = arrayFields[i]
+    const value = anquPayload[field]
+    if (!Array.isArray(value)) {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}字段 ${field} 类型错误`,
+        details: `期望: array, 实际: ${typeof value}`
+      }
+    }
+  }
+
+  // 验证 bins 数组元素结构
+  const bins = anquPayload['bins'] as any[]
+  for (let i = 0; i < bins.length; i++) {
+    const bin = bins[i]
+    if (typeof bin != 'object' || bin == null) {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}bins[${i}] 不是有效对象`,
+        details: `期望: object, 实际: ${typeof bin}`
+      }
+    }
+    const binObj = bin as UTSJSONObject
+    const binId = binObj['id']
+    const binKoji = binObj['koji']
+
+    if (binId == null || typeof binId != 'string' || binKoji == null || typeof binKoji != 'number') {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}bins[${i}] 结构错误`,
+        details: `期望: {id: string, koji: number}`
+      }
+    }
+  }
+
+  // 验证 f (floors) 数组元素结构
+  const floors = anquPayload['f'] as any[]
+  for (let i = 0; i < floors.length; i++) {
+    const floor = floors[i]
+    if (typeof floor != 'object' || floor == null) {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}f[${i}] 结构错误`,
+        details: `期望: FloorConfigPair`
+      }
+    }
+
+    const floorObj = floor as UTSJSONObject
+    const floorNo = floorObj['floorNo']
+    const maxSeqNo = floorObj['maxSeqNo']
+
+    if (floorNo == null || typeof floorNo != 'number' || maxSeqNo == null || typeof maxSeqNo != 'number') {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}f[${i}] 元素类型错误`,
+        details: `期望: {floorNo: number, maxSeqNo: number}`
+      }
+    }
+  }
+
+  // 验证 skip 数组元素类型
+  const skip = anquPayload['skip'] as any[]
+  for (let i = 0; i < skip.length; i++) {
+    if (typeof skip[i] != 'string') {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}skip[${i}] 类型错误`,
+        details: `期望: string, 实际: ${typeof skip[i]}`
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * 验证 persons 数组结构
+ */
+function validatePersonsArray(persons: any, prefix: string = ''): TransferError | null {
+  if (!Array.isArray(persons)) {
+    return {
+      code: 'INVALID_PAYLOAD',
+      message: `${prefix}persons 类型错误`,
+      details: '期望类型: PersonData[]'
+    }
+  }
+
+  for (let i = 0; i < persons.length; i++) {
+    const rawPerson = persons[i]
+    if (typeof rawPerson != 'object' || rawPerson == null) {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}persons[${i}] 类型错误`,
+        details: '期望类型: PersonData'
+      }
+    }
+
+    const person = rawPerson as UTSJSONObject
+    const personId = person['id']
+    const personName = person['name']
+    const personSkill = person['skill']
+
+    if (personId == null || typeof personId != 'number') {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}persons[${i}].id 类型错误`,
+        details: '期望类型: number'
+      }
+    }
+    if (personName == null || typeof personName != 'string') {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}persons[${i}].name 类型错误`,
+        details: '期望类型: string'
+      }
+    }
+    if (personSkill == null || typeof personSkill != 'number') {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}persons[${i}].skill 类型错误`,
+        details: '期望类型: number'
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * 验证 coef 对象结构
+ */
+function validateCoefData(coef: any, prefix: string = ''): TransferError | null {
+  if (typeof coef != 'object' || coef == null) {
+    return {
+      code: 'INVALID_PAYLOAD',
+      message: `${prefix}coef 类型错误`,
+      details: '期望类型: CoefData'
+    }
+  }
+
+  const coefObj = coef as UTSJSONObject
+
+  if (!Array.isArray(coefObj['stages'])) {
+    return {
+      code: 'INVALID_PAYLOAD',
+      message: `${prefix}coef.stages 类型错误`,
+      details: '期望类型: StageCoefData[]'
+    }
+  }
+
+  const stages = coefObj['stages'] as any[]
+  for (let i = 0; i < stages.length; i++) {
+    const rawStage = stages[i]
+    if (typeof rawStage != 'object' || rawStage == null) {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}coef.stages[${i}] 类型错误`,
+        details: '期望类型: StageCoefData'
+      }
+    }
+
+    const stage = rawStage as UTSJSONObject
+    const stageCode = stage['code']
+    const stageName = stage['name']
+    const stageCoef = stage['coef']
+
+    if (stageCode == null || typeof stageCode != 'string') {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}coef.stages[${i}].code 类型错误`,
+        details: '期望类型: string'
+      }
+    }
+    if (stageName == null || typeof stageName != 'string') {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}coef.stages[${i}].name 类型错误`,
+        details: '期望类型: string'
+      }
+    }
+    if (stageCoef == null || typeof stageCoef != 'number') {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}coef.stages[${i}].coef 类型错误`,
+        details: '期望类型: number'
+      }
+    }
+  }
+
+  if (!Array.isArray(coefObj['duiQu'])) {
+    return {
+      code: 'INVALID_PAYLOAD',
+      message: `${prefix}coef.duiQu 类型错误`,
+      details: '期望类型: DuiQuCoefItem[]'
+    }
+  }
+
+  const duiQu = coefObj['duiQu'] as any[]
+  for (let i = 0; i < duiQu.length; i++) {
+    const rawItem = duiQu[i]
+    if (typeof rawItem != 'object' || rawItem == null) {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}coef.duiQu[${i}] 类型错误`,
+        details: '期望类型: DuiQuCoefItem'
+      }
+    }
+
+    const item = rawItem as UTSJSONObject
+    const itemKey = item['key']
+    const itemValue = item['value']
+
+    if (itemKey == null || typeof itemKey != 'string') {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}coef.duiQu[${i}].key 类型错误`,
+        details: '期望类型: string'
+      }
+    }
+    if (itemValue == null || typeof itemValue != 'number') {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}coef.duiQu[${i}].value 类型错误`,
+        details: '期望类型: number'
+      }
+    }
+  }
+
+  if (!Array.isArray(coefObj['liangTang'])) {
+    return {
+      code: 'INVALID_PAYLOAD',
+      message: `${prefix}coef.liangTang 类型错误`,
+      details: '期望类型: LiangTangCoefItem[]'
+    }
+  }
+
+  const liangTang = coefObj['liangTang'] as any[]
+  for (let i = 0; i < liangTang.length; i++) {
+    const rawItem = liangTang[i]
+    if (typeof rawItem != 'object' || rawItem == null) {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}coef.liangTang[${i}] 类型错误`,
+        details: '期望类型: LiangTangCoefItem'
+      }
+    }
+
+    const item = rawItem as UTSJSONObject
+    const itemKey = item['key']
+    const itemValue = item['value']
+
+    if (itemKey == null || typeof itemKey != 'string') {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}coef.liangTang[${i}].key 类型错误`,
+        details: '期望类型: string'
+      }
+    }
+    if (itemValue == null || typeof itemValue != 'number') {
+      return {
+        code: 'INVALID_PAYLOAD',
+        message: `${prefix}coef.liangTang[${i}].value 类型错误`,
+        details: '期望类型: number'
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * 验证 Config 载荷结构
+ */
+export function validateConfigPayload(payload: UTSJSONObject, prefix: string = ''): TransferError | null {
+  if (payload['c'] == null || typeof payload['c'] != 'number') {
+    return {
+      code: 'INVALID_PAYLOAD',
+      message: `${prefix}缺少或类型错误: c`,
+      details: '期望类型: number'
+    }
+  }
+
+  if (payload['persons'] != null) {
+    const personsError = validatePersonsArray(payload['persons'] as any, `${prefix}`)
+    if (personsError != null) {
+      return personsError
+    }
+  }
+
+  if (payload['coef'] != null) {
+    const coefError = validateCoefData(payload['coef'] as any, `${prefix}`)
+    if (coefError != null) {
+      return coefError
+    }
+  }
+
+  return null
+}
+
+/**
+ * 验证 Bundle 载荷结构
+ */
+export function validateBundlePayload(payload: UTSJSONObject, prefix: string = ''): TransferError | null {
+  if (payload['c'] == null || typeof payload['c'] != 'number') {
+    return {
+      code: 'INVALID_PAYLOAD',
+      message: `${prefix}缺少或类型错误: c`,
+      details: '期望类型: number'
+    }
+  }
+
+  if (payload['anqu'] == null) {
+    return {
+      code: 'INVALID_PAYLOAD',
+      message: `${prefix}缺少必需字段: anqu`,
+      details: '期望类型: AnQuPayload'
+    }
+  }
+
+  const anquPayload = payload['anqu'] as UTSJSONObject
+  const anquError = validateAnQuPayload(anquPayload, `${prefix}anqu: `)
+  if (anquError != null) {
+    return anquError
+  }
+
+  if (payload['persons'] != null) {
+    const personsError = validatePersonsArray(payload['persons'] as any, `${prefix}`)
+    if (personsError != null) {
+      return personsError
+    }
+  }
+
+  if (payload['coef'] != null) {
+    const coefError = validateCoefData(payload['coef'] as any, `${prefix}`)
+    if (coefError != null) {
+      return coefError
+    }
+  }
+
+  return null
+}
+
+/**
  * 封装载荷为 PPX1 信封格式
- * @param payload 载荷对象（AnQuPayload 或 BundlePayload）
+ * @param payload 载荷对象（AnQuPayload、ConfigPayload 或 BundlePayload）
  * @returns PPX1 格式字符串
  */
-export function seal(payload: AnQuPayload | BundlePayload): string {
+export function seal(payload: TransferPayload): string {
   const payloadStr = serializeToBase64Url(payload)
-  const kind = payload.kind
+  const payloadObj = payload as UTSJSONObject
+  const kind = payloadObj['kind'] as string
   return `PPX1|${PPX1_VERSION}|${PPX1_ENCODING}|${kind}|${payloadStr}`
 }
 
@@ -329,9 +740,10 @@ export function unseal(envelope: string): UnsealResult {
 
   try {
     const payload = deserializeFromBase64Url(payloadStr)
+    const payloadObj = payload as UTSJSONObject
 
     // 验证 payload.kind 与 envelope kind 一致
-    const payloadKind = payload['kind'] as string | null
+    const payloadKind = payloadObj['kind'] as string | null
     if (payloadKind != kind) {
       return {
         success: false,
@@ -348,7 +760,7 @@ export function unseal(envelope: string): UnsealResult {
     const requiredFields = ['v', 'kind', 'ts']
     for (let i = 0; i < requiredFields.length; i++) {
       const field = requiredFields[i]
-      if (payload[field] == null) {
+      if (payloadObj[field] == null) {
         return {
           success: false,
           payload: null,
@@ -363,38 +775,37 @@ export function unseal(envelope: string): UnsealResult {
 
     // 根据 kind 验证特定字段
     if (kind == PAYLOAD_KIND_ANQ) {
-      const anqFields = ['c', 'y', 'n', 'm', 'f', 'bins', 'skip']
-      for (let i = 0; i < anqFields.length; i++) {
-        const field = anqFields[i]
-        if (payload[field] == null) {
-          return {
-            success: false,
-            payload: null,
-            error: {
-              code: 'INVALID_PAYLOAD',
-              message: `ANQ 载荷缺少必需字段: ${field}`,
-              details: `期望类型: ${field == 'f' || field == 'bins' || field == 'skip' ? 'array' : 'number'}`
-            }
-          }
-        }
-      }
-    } else if (kind == PAYLOAD_KIND_BUNDLE) {
-      if (payload['anqu'] == null) {
+      const validationError = validateAnQuPayload(payloadObj, '')
+      if (validationError != null) {
         return {
           success: false,
           payload: null,
-          error: {
-            code: 'INVALID_PAYLOAD',
-            message: 'BUNDLE 载荷缺少必需字段: anqu',
-            details: '期望类型: AnQuPayload'
-          }
+          error: validationError
+        }
+      }
+    } else if (kind == PAYLOAD_KIND_CONFIG) {
+      const validationError = validateConfigPayload(payloadObj, '')
+      if (validationError != null) {
+        return {
+          success: false,
+          payload: null,
+          error: validationError
+        }
+      }
+    } else if (kind == PAYLOAD_KIND_BUNDLE) {
+      const validationError = validateBundlePayload(payloadObj, '')
+      if (validationError != null) {
+        return {
+          success: false,
+          payload: null,
+          error: validationError
         }
       }
     }
 
     return {
       success: true,
-      payload: payload,
+      payload: payload as TransferPayload,
       error: null
     }
   } catch (e: any) {
@@ -404,7 +815,7 @@ export function unseal(envelope: string): UnsealResult {
       error: {
         code: 'DECODE_FAILED',
         message: '解码失败',
-        details: e != null ? (e['message'] as string | null) : null
+        details: e != null ? ((e as UTSJSONObject)['message'] as string | null) : null
       }
     }
   }
@@ -413,110 +824,476 @@ export function unseal(envelope: string): UnsealResult {
 // ============================================
 // 辅助函数
 // ============================================
+// ============================================
+// DTO 转换函数
+// ============================================
 
 /**
- * 收集楼层配置
- * @returns 楼层配置数组 [[floor_no, max_seq_no], ...]
+ * 楼层配置转换为传输格式
  */
-function collectFloorConfig(): Array<[number, number]> {
-  const floorsMap = new Map<number, number>()
-  const allBins = loadBins()
+export function convertFloorConfigToPairs(config: UTSJSONObject | null): FloorConfigPair[] {
+  if (config == null) {
+    return []
+  }
+  const pairs: FloorConfigPair[] = []
 
-  for (let i = 0; i < allBins.length; i++) {
-    const bin = allBins[i]
-    const floorNo = bin['floor_no'] as number
-    const seqNo = bin['seq_no'] as number
-
-    const currentMax = floorsMap.get(floorNo)
-    if (currentMax == null || seqNo > currentMax) {
-      floorsMap.set(floorNo, seqNo)
+  // 使用 for-in 遍历 UTSJSONObject
+  for (const key in config) {
+    const floorNo = parseInt(key)
+    const maxSeqNo = config[key] as number
+    if (!isNaN(floorNo)) {
+      pairs.push({ floorNo, maxSeqNo })
     }
   }
 
-  // 转换为 Array<[number, number]>
-  const floors: Array<[number, number]> = []
-  const floorKeys = floorsMap.keys()
-  for (let i = 0; i < floorKeys.length; i++) {
-    const floorNo = floorKeys[i]
-    const maxSeq = floorsMap.get(floorNo)
-    if (maxSeq != null) {
-      floors.push([floorNo, maxSeq])
-    }
-  }
+  // 按 floorNo 排序
+  pairs.sort((a, b) => a.floorNo - b.floorNo)
 
-  return floors
+  return pairs
 }
 
 /**
- * 获取指定轮次的所有会话
- * @param roundInfo 轮次信息
- * @returns 会话数组
+ * 传输格式转换为楼层配置
  */
-function getSessionsByRound(roundInfo: UTSJSONObject): UTSJSONObject[] {
-  const roundId = roundInfo['id'] as number
-  const allSessions: UTSJSONObject[] = []
+export function convertFloorPairsToConfig(floors: FloorConfigPair[]): UTSJSONObject {
+  const config = {} as UTSJSONObject
+  for (let i = 0; i < floors.length; i++) {
+    const floorNo = floors[i].floorNo
+    const maxSeqNo = floors[i].maxSeqNo
+    config[floorNo.toString()] = maxSeqNo
+  }
+  return config
+}
 
-  const startDate = roundInfo['start_date'] as string | null
-  if (startDate == null) {
-    return allSessions
+/**
+ * 人员数据转换为传输格式
+ */
+export function toTransferPersonData(persons: UTSJSONObject[]): PersonData[] {
+  const result: PersonData[] = []
+  for (let i = 0; i < persons.length; i++) {
+    const person = persons[i]
+    result.push({
+      id: person['id'] as number,
+      name: person['name'] as string,
+      skill: person['skill_level'] as number
+    })
+  }
+  return result
+}
+
+/**
+ * 传输格式转换为人员数据
+ */
+export function fromTransferPersonData(persons: PersonData[]): UTSJSONObject[] {
+  const result: UTSJSONObject[] = []
+  for (let i = 0; i < persons.length; i++) {
+    const person = persons[i]
+    result.push({
+      id: person.id,
+      name: person.name,
+      skill_level: person.skill
+    } as UTSJSONObject)
+  }
+  return result
+}
+
+/**
+ * 系数数据转换为传输格式
+ */
+export function toTransferCoefData(activeCoefSet: UTSJSONObject): CoefData {
+  const rawStages = activeCoefSet['stages'] as UTSJSONObject[]
+  const rawDuiQu = activeCoefSet['duiQu'] as UTSJSONObject
+  const rawLiangTang = activeCoefSet['liangTang'] as UTSJSONObject
+
+  const stages: StageCoefData[] = []
+  const duiQu: DuiQuCoefItem[] = []
+  const liangTang: LiangTangCoefItem[] = []
+
+  for (let i = 0; i < rawStages.length; i++) {
+    const stage = rawStages[i]
+    stages.push({
+      code: stage['stage_code'] as string,
+      name: stage['stage_name'] as string,
+      coef: stage['coef'] as number
+    })
   }
 
-  // 计算日期范围
-  const startTime = new Date(startDate).getTime()
-  const currentTime = Date.now()
-  const daysDiff = Math.floor((currentTime - startTime) / (1000 * 60 * 60 * 24))
+  // 使用 for-in 遍历 duiQu
+  for (const key in rawDuiQu) {
+    duiQu.push({ key, value: rawDuiQu[key] as number })
+  }
+  // 按 key 排序（使用简单比较，UTS 不支持 localeCompare）
+  duiQu.sort((a, b) => {
+    if (a.key < b.key) return -1
+    if (a.key > b.key) return 1
+    return 0
+  })
 
-  // 检查是否超过 180 天上限
-  let queryStartDate = startDate
-  if (daysDiff > MAX_ROUND_QUERY_DAYS) {
-    // 超限警告
-    console.log(`[警告] 轮次跨度超过 ${MAX_ROUND_QUERY_DAYS} 天（实际: ${daysDiff} 天），可能存在未导出的数据`)
+  // 使用 for-in 遍历 liangTang
+  for (const key in rawLiangTang) {
+    liangTang.push({ key, value: rawLiangTang[key] as number })
+  }
+  // 按 key 排序
+  liangTang.sort((a, b) => {
+    if (a.key < b.key) return -1
+    if (a.key > b.key) return 1
+    return 0
+  })
 
-    // 限制查询范围为最近 180 天
-    const limitTime = currentTime - (MAX_ROUND_QUERY_DAYS * 24 * 60 * 60 * 1000)
-    const limitDate = new Date(limitTime)
-    queryStartDate = limitDate.toISOString().split('T')[0]
+  return { stages, duiQu, liangTang }
+}
+
+/**
+ * 传输格式转换为存储系数stages
+ */
+export function toStorageCoefStages(stages: StageCoefData[]): UTSJSONObject[] {
+  const result: UTSJSONObject[] = []
+  for (let i = 0; i < stages.length; i++) {
+    const stage = stages[i]
+    result.push({
+      stage_code: stage.code,
+      stage_name: stage.name,
+      coef: stage.coef
+    } as UTSJSONObject)
+  }
+  return result
+}
+
+/**
+ * 传输格式转换为存储duiQu映射
+ */
+export function toStorageDuiQuMap(items: DuiQuCoefItem[]): UTSJSONObject {
+  const result = {} as UTSJSONObject
+  for (let i = 0; i < items.length; i++) {
+    result[items[i].key] = items[i].value
+  }
+  return result
+}
+
+/**
+ * 传输格式转换为存储liangTang映射
+ */
+export function toStorageLiangTangMap(items: LiangTangCoefItem[]): UTSJSONObject {
+  const result = {} as UTSJSONObject
+  for (let i = 0; i < items.length; i++) {
+    result[items[i].key] = items[i].value
+  }
+  return result
+}
+
+/**
+ * 传输格式系数转换为存储格式（完整转换）
+ * 这是 toTransferCoefData 的反向函数
+ */
+export function fromTransferCoefData(coef: CoefData): UTSJSONObject {
+  const normalized = normalizeTransferCoefData(coef)
+  return {
+    stages: toStorageCoefStages(normalized.stages),
+    duiQu: toStorageDuiQuMap(normalized.duiQu),
+    liangTang: toStorageLiangTangMap(normalized.liangTang)
+  } as UTSJSONObject
+}
+
+/**
+ * 合并导入的系数到当前激活版本
+ */
+export function mergeImportedCoefIntoActiveSet(
+  importedCoef: CoefData,
+  currentCoefSet: UTSJSONObject | null
+): UTSJSONObject | null {
+  if (currentCoefSet == null) {
+    return null
   }
 
-  // 遍历日期范围查询会话
-  let currentDate = new Date(queryStartDate)
-  const endDate = new Date()
+  return {
+    id: currentCoefSet['id'],
+    name: currentCoefSet['name'],
+    effectiveFrom: currentCoefSet['effectiveFrom'],
+    effectiveTo: currentCoefSet['effectiveTo'],
+    stages: toStorageCoefStages(importedCoef.stages),
+    duiQu: toStorageDuiQuMap(importedCoef.duiQu),
+    liangTang: toStorageLiangTangMap(importedCoef.liangTang)
+  } as UTSJSONObject
+}
 
-  while (currentDate <= endDate) {
-    const dateStr = currentDate.toISOString().split('T')[0]
-    const sessions = getSessionsByDateAndStage(dateStr, 'AN_QU')
+/**
+ * 构建安曲快照项
+ */
+export function buildAnQuSnapshotItems(bins: AnQuBinData[]): ParsedAnQuItem[] {
+  const result: ParsedAnQuItem[] = []
+  for (let i = 0; i < bins.length; i++) {
+    const bin = bins[i]
+    result.push({
+      binCode: bin.id,
+      kojiCount: bin.koji,
+      lineNumber: i + 1,
+      hasError: false,
+      errorMessage: '',
+      errorCode: ''
+    })
+  }
+  return result
+}
 
-    for (let i = 0; i < sessions.length; i++) {
-      const session = sessions[i]
-      const sessionRoundId = session['round_id'] as number | null
-      if (sessionRoundId == roundId) {
-        allSessions.push(session)
+// ============================================
+// Payload 辅助函数
+// ============================================
+
+/**
+ * 提取 payload 的班次号
+ */
+export function extractPayloadClassNo(payload: TransferPayload): number | null {
+  const payloadObj = payload as UTSJSONObject
+  const kind = payloadObj['kind'] as string
+
+  if (kind == 'ANQ') {
+    return payloadObj['c'] as number
+  } else if (kind == 'CONFIG') {
+    return payloadObj['c'] as number
+  } else if (kind == 'BUNDLE') {
+    return payloadObj['c'] as number
+  }
+  return null
+}
+
+/**
+ * 验证班次匹配
+ */
+export function validateClassMatch(payloadClassNo: number | null, currentClassNo: number): TransferError | null {
+  if (payloadClassNo == null) {
+    return {
+      code: 'INVALID_PAYLOAD',
+      message: '无法提取 payload 班次号',
+      details: null
+    }
+  }
+  if (payloadClassNo != currentClassNo) {
+    return {
+      code: 'CLASS_MISMATCH',
+      message: '班次不匹配',
+      details: `当前班次: ${currentClassNo}, 导入班次: ${payloadClassNo}`
+    }
+  }
+  return null
+}
+
+// ============================================
+// 冲突检测函数
+// ============================================
+
+/**
+ * 检测楼层配置冲突
+ */
+export function checkFloorConfigConflict(
+  importedFloors: FloorConfigPair[],
+  localFloorConfig: UTSJSONObject | null
+): FloorConflictItem | null {
+  const localPairs = convertFloorConfigToPairs(localFloorConfig)
+
+  const localMap = new Map<number, number>()
+  for (let i = 0; i < localPairs.length; i++) {
+    localMap.set(localPairs[i].floorNo, localPairs[i].maxSeqNo)
+  }
+
+  const importedMap = new Map<number, number>()
+  for (let i = 0; i < importedFloors.length; i++) {
+    importedMap.set(importedFloors[i].floorNo, importedFloors[i].maxSeqNo)
+  }
+
+  let hasConflict = false
+  const allFloors = new Set<number>()
+
+  for (let i = 0; i < localPairs.length; i++) {
+    allFloors.add(localPairs[i].floorNo)
+  }
+  for (let i = 0; i < importedFloors.length; i++) {
+    allFloors.add(importedFloors[i].floorNo)
+  }
+
+  const floorArray = Array.from(allFloors)
+  for (let i = 0; i < floorArray.length; i++) {
+    const floor = floorArray[i]
+    const localMax = localMap.get(floor)
+    const importedMax = importedMap.get(floor)
+    if (localMax != importedMax) {
+      hasConflict = true
+      break
+    }
+  }
+
+  if (!hasConflict) {
+    return null
+  }
+
+  return {
+    type: 'FLOOR_CONFIG',
+    title: '楼层配置冲突',
+    summary: '导入的楼层配置与本地不一致',
+    details: null,
+    localFloors: localPairs,
+    importedFloors: importedFloors
+  }
+}
+
+/**
+ * 检测花名册冲突
+ */
+export function checkRosterConflict(
+  importedPersons: PersonData[] | null,
+  localPersons: UTSJSONObject[]
+): ConflictItem | null {
+  if (importedPersons == null) {
+    return null
+  }
+
+  const localMap = new Map<number, UTSJSONObject>()
+  for (let i = 0; i < localPersons.length; i++) {
+    const person = localPersons[i]
+    localMap.set(person['id'] as number, person)
+  }
+
+  const importedMap = new Map<number, PersonData>()
+  for (let i = 0; i < importedPersons.length; i++) {
+    const person = importedPersons[i]
+    importedMap.set(person.id, person)
+  }
+
+  let added = 0
+  let removed = 0
+  let modified = 0
+
+  for (let i = 0; i < importedPersons.length; i++) {
+    const imported = importedPersons[i]
+    const local = localMap.get(imported.id)
+    if (local == null) {
+      added++
+    } else {
+      const localName = local['name'] as string
+      const localSkill = local['skill_level'] as number
+      if (localName != imported.name || localSkill != imported.skill) {
+        modified++
       }
     }
-
-    // 增加一天
-    currentDate.setDate(currentDate.getDate() + 1)
   }
 
-  return allSessions
+  for (let i = 0; i < localPersons.length; i++) {
+    const local = localPersons[i]
+    const id = local['id'] as number
+    if (!importedMap.has(id)) {
+      removed++
+    }
+  }
+
+  if (added == 0 && removed == 0 && modified == 0) {
+    return null
+  }
+
+  return {
+    type: 'ROSTER',
+    title: '花名册冲突',
+    summary: `新增 ${added} 人，删除 ${removed} 人，修改 ${modified} 人`,
+    details: null
+  }
 }
 
-// ============================================
-// Phase 4: 轮次映射（导入侧）
-// ============================================
+/**
+ * 检测系数冲突
+ */
+export function checkCoefConflict(
+  importedCoef: CoefData | null,
+  activeCoefSet: UTSJSONObject | null
+): ConflictItem | null {
+  if (importedCoef == null) {
+    return null
+  }
+
+  if (activeCoefSet == null) {
+    return null
+  }
+
+  const localCoef = toTransferCoefData(activeCoefSet)
+
+  const importedStr = JSON.stringify(importedCoef)
+  const localStr = JSON.stringify(localCoef)
+
+  if (importedStr == localStr) {
+    return null
+  }
+
+  return {
+    type: 'COEF',
+    title: '系数冲突',
+    summary: '导入的系数与本地不一致',
+    details: null
+  }
+}
+
+/**
+ * 检测导入冲突
+ */
+export function detectImportConflicts(
+  payload: TransferPayload,
+  localFloorConfig: UTSJSONObject | null,
+  localPersons: UTSJSONObject[],
+  activeCoefSet: UTSJSONObject | null
+): ImportConflictSummary | null {
+  const items: ImportConflictItem[] = []
+  const payloadObj = payload as UTSJSONObject
+  const kind = payloadObj['kind'] as string
+
+  if (kind == 'ANQ') {
+    const anqPayload = payload as AnQuPayload
+    const floorConflict = checkFloorConfigConflict(anqPayload.f, localFloorConfig)
+    if (floorConflict != null) {
+      items.push(floorConflict)
+    }
+  } else if (kind == 'CONFIG') {
+    const configPayload = payload as ConfigPayload
+    const rosterConflict = checkRosterConflict(configPayload.persons, localPersons)
+    if (rosterConflict != null) {
+      items.push(rosterConflict)
+    }
+    const coefConflict = checkCoefConflict(configPayload.coef, activeCoefSet)
+    if (coefConflict != null) {
+      items.push(coefConflict)
+    }
+  } else if (kind == 'BUNDLE') {
+    const bundlePayload = payload as BundlePayload
+    const floorConflict = checkFloorConfigConflict(bundlePayload.anqu.f, localFloorConfig)
+    if (floorConflict != null) {
+      items.push(floorConflict)
+    }
+    const rosterConflict = checkRosterConflict(bundlePayload.persons, localPersons)
+    if (rosterConflict != null) {
+      items.push(rosterConflict)
+    }
+    const coefConflict = checkCoefConflict(bundlePayload.coef, activeCoefSet)
+    if (coefConflict != null) {
+      items.push(coefConflict)
+    }
+  }
+
+  if (items.length == 0) {
+    return null
+  }
+
+  return {
+    hasConflict: true,
+    items: items
+  }
+}
 
 /**
  * 解析轮次映射
  * @param payload 安曲载荷
  * @returns 轮次解析结果
  */
-export function resolveRound(payload: AnQuPayload): RoundResolveResult {
+export function resolveRound(payload: AnQuPayload, allRounds: UTSJSONObject[]): RoundResolveResult {
   const classNo = payload.c
   const year = payload.y
   const roundNo = payload.n
   const micro = payload.m
 
-  const allRounds = loadRounds()
   const exactMatches: RoundCandidate[] = []
   const softMatches: RoundCandidate[] = []
 
@@ -601,154 +1378,5 @@ export function resolveRound(payload: AnQuPayload): RoundResolveResult {
     roundId: null,
     candidates: null,
     warnings: [`未找到匹配的轮次：${year}年 第${roundNo}轮`]
-  }
-}
-
-// ============================================
-// Phase 5: 楼层冲突检测
-// ============================================
-
-/**
- * 检查楼层配置冲突
- * @param payload 安曲载荷
- * @returns 楼层冲突信息，无冲突返回 null
- */
-export function checkFloorConfig(payload: AnQuPayload): FloorConflict | null {
-  const importedFloors = payload.f
-  const localFloors = collectFloorConfig()
-
-  // 辅助函数：在数组中查找楼层
-  const findFloor = (floors: Array<[number, number]>, floorNo: number): number | null => {
-    for (let i = 0; i < floors.length; i++) {
-      if (floors[i][0] == floorNo) {
-        return floors[i][1]
-      }
-    }
-    return null
-  }
-
-  // 检查是否有差异
-  const differences: FloorDifference[] = []
-  let hasConflict = false
-
-  // 检查导入的楼层
-  for (let i = 0; i < importedFloors.length; i++) {
-    const floorNo = importedFloors[i][0]
-    const importedMaxSeq = importedFloors[i][1]
-    const localMaxSeq = findFloor(localFloors, floorNo)
-
-    if (localMaxSeq == null) {
-      // 本地没有这个楼层
-      differences.push({
-        floorNo: floorNo,
-        localMaxSeq: null,
-        importedMaxSeq: importedMaxSeq
-      })
-      hasConflict = true
-    } else if (importedMaxSeq != localMaxSeq) {
-      // 楼层配置不同
-      differences.push({
-        floorNo: floorNo,
-        localMaxSeq: localMaxSeq,
-        importedMaxSeq: importedMaxSeq
-      })
-      hasConflict = true
-    }
-  }
-
-  // 检查本地独有的楼层
-  for (let i = 0; i < localFloors.length; i++) {
-    const floorNo = localFloors[i][0]
-    const importedMaxSeq = findFloor(importedFloors, floorNo)
-
-    if (importedMaxSeq == null) {
-      // 导入数据没有这个楼层
-      differences.push({
-        floorNo: floorNo,
-        localMaxSeq: localFloors[i][1],
-        importedMaxSeq: null
-      })
-      hasConflict = true
-    }
-  }
-
-  if (hasConflict) {
-    return {
-      hasConflict: true,
-      localFloors: localFloors,
-      importedFloors: importedFloors,
-      differences: differences
-    }
-  }
-
-  return null
-}
-
-// ============================================
-// Phase 6: 导入应用层
-// ============================================
-
-/**
- * 应用安曲数据包
- * @param payload 安曲载荷
- * @param resolvedRoundId 解析后的轮次ID
- * @returns 导入结果
- */
-export function applyAnQuBundle(payload: AnQuPayload, resolvedRoundId: number): ImportResult {
-  const errors: string[] = []
-  let binsImported = 0
-  let binsSkipped = 0
-
-  // 验证数据
-  if (payload.bins.length == 0) {
-    errors.push('EMPTY_BINS: 没有可导入的曲块数据')
-    return {
-      success: false,
-      roundId: null,
-      binsImported: 0,
-      binsSkipped: 0,
-      errors: errors
-    }
-  }
-
-  // 构建导入快照数据
-  const parsedItems: ParsedAnQuItem[] = []
-
-  for (let i = 0; i < payload.bins.length; i++) {
-    const bin = payload.bins[i]
-    parsedItems.push({
-      binCode: bin.id,
-      kojiCount: bin.koji,
-      lineNumber: i + 1,
-      hasError: false,
-      errorMessage: ''
-    })
-    binsImported++
-  }
-
-  // 跳过的曲块计数
-  binsSkipped = payload.skip.length
-
-  // 保存快照（复用现有机制）
-  const classNo = payload.c
-  try {
-    saveAnQuImportSnapshot(classNo, resolvedRoundId, parsedItems)
-  } catch (e: Error) {
-    errors.push(`保存快照失败: ${e.message}`)
-    return {
-      success: false,
-      roundId: resolvedRoundId,
-      binsImported: 0,
-      binsSkipped: binsSkipped,
-      errors: errors
-    }
-  }
-
-  return {
-    success: true,
-    roundId: resolvedRoundId,
-    binsImported: binsImported,
-    binsSkipped: binsSkipped,
-    errors: errors
   }
 }

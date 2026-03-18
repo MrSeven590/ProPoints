@@ -113,14 +113,24 @@
       <!-- 数据管理 -->
       <text class="group-label">数据管理</text>
       <view class="section">
-        <view class="menu-item" @click="goToAnQuImport">
+        <view class="menu-item" @click="goToPPX1Import">
           <text class="menu-icon">入</text>
-          <text class="menu-text">安曲数据导入</text>
+          <text class="menu-text">PPX1 数据导入</text>
+          <text class="menu-arrow">›</text>
+        </view>
+        <view class="menu-item" @click="goToPPX1Export">
+          <text class="menu-icon">出</text>
+          <text class="menu-text">PPX1 数据导出</text>
+          <text class="menu-arrow">›</text>
+        </view>
+        <view class="menu-item" @click="goToAnQuImport">
+          <text class="menu-icon">旧</text>
+          <text class="menu-text">安曲数据导入(旧)</text>
           <text class="menu-arrow">›</text>
         </view>
         <view class="menu-item" @click="goToAnQuExport">
-          <text class="menu-icon">出</text>
-          <text class="menu-text">安曲数据导出</text>
+          <text class="menu-icon">旧</text>
+          <text class="menu-text">安曲数据导出(旧)</text>
           <text class="menu-arrow">›</text>
         </view>
         <view class="menu-item menu-item-last" @click="exportExcelTemplate">
@@ -233,6 +243,14 @@
 
       goToRosterImport() {
         uni.navigateTo({ url: '/pages/mine/roster-import' })
+      },
+
+      goToPPX1Import() {
+        uni.navigateTo({ url: '/pages/transfer/transfer-import' })
+      },
+
+      goToPPX1Export() {
+        uni.navigateTo({ url: '/pages/transfer/transfer-export' })
       },
 
       goToAnQuImport() {

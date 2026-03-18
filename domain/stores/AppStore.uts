@@ -10,6 +10,8 @@ import {
   saveManagerName as saveManagerNameToStorage,
   getBinSeqMaxForFloor,
   setBinSeqMaxForFloor as setBinSeqMaxForFloorInStorage,
+  loadBinSeqMaxByFloor,
+  saveBinSeqMaxByFloor,
   saveDraftSession as saveDraftSessionToRepo,
   saveSubmittedSession as saveSubmittedSessionToRepo,
   loadSessionForEdit as loadSessionForEditFromRepo,
@@ -45,6 +47,39 @@ import { getAnQuImportSnapshotKey } from '../../storage/storage-keys.uts'
 import { resetAllStorage as resetAllStorageFromInit } from '../../storage/init.uts'
 
 import { getCurrentTimestamp } from '../models/types.uts'
+
+import {
+  collectAnQuPayload,
+  assembleConfigPayload,
+  assembleBundlePayload,
+  seal,
+  unseal,
+  resolveRound,
+  extractPayloadClassNo,
+  validateClassMatch,
+  detectImportConflicts,
+  convertFloorPairsToConfig,
+  buildAnQuSnapshotItems,
+  fromTransferPersonData,
+  mergeImportedCoefIntoActiveSet,
+  MAX_ROUND_QUERY_DAYS
+} from '../services/TransferService.uts'
+
+import {
+  AnQuPayload,
+  ConfigPayload,
+  BundlePayload,
+  TransferPayload,
+  PayloadKind,
+  UnsealResult,
+  RoundResolveResult,
+  ImportResult,
+  ImportPreview,
+  ImportWarning,
+  ImportConflictSummary,
+  RoundResolveStatus,
+  RoundCandidate
+} from '../models/transfer.uts'
 
 // ============================================
 // 事件名称常量
@@ -219,6 +254,36 @@ export function getAllDraftSessions(): UTSJSONObject[] {
  */
 export function getSessionsByDateAndStage(date: string, stageCode: string): UTSJSONObject[] {
   return getSessionsByDateAndStageFromRepo(date, stageCode)
+}
+
+/**
+ * 获取某轮次的所有已提交会话
+ * @param roundId 轮次ID
+ * @returns 会话数组
+ */
+function getSessionsByRoundId(roundId: number): UTSJSONObject[] {
+  const allSessions: UTSJSONObject[] = []
+
+  // 获取最近180天的所有会话
+  const today = new Date()
+  for (let i = 0; i < MAX_ROUND_QUERY_DAYS; i++) {
+    const date = new Date(today.getTime() - i * 24 * 60 * 60 * 1000)
+    const dateStr = date.toISOString().split('T')[0]
+    const sessions = getSessionsByDate(dateStr)
+
+    for (let j = 0; j < sessions.length; j++) {
+      const session = sessions[j]
+      const sessionRoundId = session['round_id'] as number | null
+      const sessionStatus = session['status'] as string | null
+
+      // 只收集已提交且匹配轮次的会话
+      if (sessionStatus == 'submitted' && sessionRoundId == roundId) {
+        allSessions.push(session)
+      }
+    }
+  }
+
+  return allSessions
 }
 
 // ============================================
@@ -530,4 +595,522 @@ export function removeAnQuImportSnapshot(classNo: number, roundId: number): void
  */
 export function resetAllStorage(): void {
   resetAllStorageFromInit()
+}
+
+// ============================================
+// 数据传输中心
+// ============================================
+
+/**
+ * 轮次选项类型
+ */
+export type TransferRoundOption = {
+  id: number
+  label: string
+}
+
+/**
+ * 获取当前班次的传输轮次列表
+ * @returns 轮次选项数组（已过滤、排序、带标签）
+ */
+export function listTransferRoundsForCurrentClass(): TransferRoundOption[] {
+  const classNo = getCurrentClassNo()
+  const allRounds = loadRounds()
+  const classRounds: UTSJSONObject[] = []
+
+  // 过滤当前班次的轮次
+  for (let i = 0; i < allRounds.length; i++) {
+    const round = allRounds[i]
+    const roundClassNo = round['class_no'] as number
+    if (roundClassNo == classNo) {
+      classRounds.push(round)
+    }
+  }
+
+  // 按 ID 降序排序（最新的在前）
+  classRounds.sort((a: UTSJSONObject, b: UTSJSONObject): number => {
+    const aId = a['id'] as number
+    const bId = b['id'] as number
+    return bId - aId
+  })
+
+  // 生成选项列表
+  const options: TransferRoundOption[] = []
+  for (let i = 0; i < classRounds.length; i++) {
+    const round = classRounds[i]
+    const id = round['id'] as number
+    const year = round['year'] as number
+    const roundNo = round['round_no'] as number
+    const micro = round['micro'] as number
+
+    const label = `${year}年 第${roundNo}轮 (微调${micro})`
+    options.push({ id: id, label: label } as TransferRoundOption)
+  }
+
+  return options
+}
+
+/**
+ * 导出安曲数据（PPX1 格式）
+ * @param roundId 轮次ID
+ * @returns PPX1 格式字符串，如果轮次不存在返回 null
+ */
+export function exportAnQuData(roundId: number): string | null {
+  const classNo = getCurrentClassNo()
+  const allRounds = loadRounds()
+  const floorConfig = loadBinSeqMaxByFloor()
+  const allBins = loadBins()
+  const allSessions = getSessionsByRoundId(roundId)
+
+  const payload = collectAnQuPayload(roundId, classNo, allRounds, floorConfig, allBins, allSessions)
+  if (payload == null) {
+    return null
+  }
+  return seal(payload)
+}
+
+/**
+ * 导出配置数据（PPX1 格式）
+ * @param includePersons 是否包含人员数据
+ * @param includeCoef 是否包含系数数据
+ * @returns PPX1 格式字符串
+ */
+export function exportConfigData(
+  includePersons: boolean = true,
+  includeCoef: boolean = true
+): string {
+  const classNo = getCurrentClassNo()
+  const allPersons = includePersons ? loadPersons() : null
+  const activeCoefSet = includeCoef ? loadActiveCoefSet() : null
+
+  const payload = assembleConfigPayload(classNo, allPersons, activeCoefSet, includePersons, includeCoef)
+  return seal(payload)
+}
+
+/**
+ * 导出完整配置包（PPX1 格式）
+ * @param roundId 轮次ID
+ * @param includePersons 是否包含人员数据
+ * @param includeCoef 是否包含系数数据
+ * @returns PPX1 格式字符串，如果轮次不存在返回 null
+ */
+export function exportBundleData(
+  roundId: number,
+  includePersons: boolean,
+  includeCoef: boolean
+): string | null {
+  const classNo = getCurrentClassNo()
+  const allRounds = loadRounds()
+  const floorConfig = loadBinSeqMaxByFloor()
+  const allBins = loadBins()
+  const allSessions = getSessionsByRoundId(roundId)
+  const allPersons = includePersons ? loadPersons() : null
+  const activeCoefSet = includeCoef ? loadActiveCoefSet() : null
+
+  const payload = assembleBundlePayload(
+    roundId,
+    classNo,
+    allRounds,
+    floorConfig,
+    allBins,
+    allSessions,
+    allPersons,
+    activeCoefSet,
+    includePersons,
+    includeCoef
+  )
+  if (payload == null) {
+    return null
+  }
+  return seal(payload)
+}
+
+/**
+ * 预览传输导入
+ * 整合解封、轮次匹配、楼层冲突检测的完整流程
+ * @param envelope PPX1 格式字符串
+ * @returns 导入预览结果
+ */
+/**
+ * 预览传输导入
+ * @param envelope PPX1 格式字符串
+ * @returns 导入预览结果
+ */
+export function previewTransferImport(envelope: string): ImportPreview {
+  const unsealResult = unseal(envelope)
+
+  if (!unsealResult.success) {
+    return {
+      success: false,
+      error: unsealResult.error,
+      payload: null,
+      payloadKind: null,
+      matchStatus: null,
+      resolvedRoundId: null,
+      candidates: null,
+      warnings: [],
+      conflictSummary: null,
+      requiresConfirmation: false,
+      canImport: false
+    }
+  }
+
+  const payload = unsealResult.payload
+  if (payload == null) {
+    return {
+      success: false,
+      error: {
+        code: 'INVALID_PAYLOAD',
+        message: '载荷为空',
+        details: null
+      },
+      payload: null,
+      payloadKind: null,
+      matchStatus: null,
+      resolvedRoundId: null,
+      candidates: null,
+      warnings: [],
+      conflictSummary: null,
+      requiresConfirmation: false,
+      canImport: false
+    }
+  }
+
+  const currentClassNo = getCurrentClassNo()
+  const payloadClassNo = extractPayloadClassNo(payload)
+  const classError = validateClassMatch(payloadClassNo, currentClassNo)
+
+  // 提取 payload kind（UTS 联合类型需要先转换）
+  const payloadObj = payload as UTSJSONObject
+  const payloadKind = payloadObj['kind'] as string
+
+  if (classError != null) {
+    return {
+      success: false,
+      error: classError,
+      payload: payload,
+      payloadKind: payloadKind,
+      matchStatus: null,
+      resolvedRoundId: null,
+      candidates: null,
+      warnings: [],
+      conflictSummary: null,
+      requiresConfirmation: false,
+      canImport: false
+    }
+  }
+
+  const warnings: ImportWarning[] = []
+  let matchStatus: RoundResolveStatus | null = null
+  let resolvedRoundId: number | null = null
+  let candidates: RoundCandidate[] | null = null
+
+  if (payloadKind == 'ANQ' || payloadKind == 'BUNDLE') {
+    const anquPayload = payloadKind == 'ANQ' ? (payload as AnQuPayload) : ((payload as BundlePayload).anqu)
+    const allRounds = loadRounds()
+    const roundResult = resolveRound(anquPayload, allRounds)
+
+    matchStatus = roundResult.status
+    resolvedRoundId = roundResult.roundId
+    // 直接赋值，类型已匹配
+    candidates = roundResult.candidates
+
+    if (roundResult.status == 'SOFT_MATCH') {
+      warnings.push({
+        code: 'ROUND_SOFT_MATCH',
+        message: '轮次 micro 版本不完全匹配',
+        details: roundResult.warnings != null && roundResult.warnings.length > 0 ? roundResult.warnings[0] : null
+      })
+    } else if (roundResult.status == 'AMBIGUOUS') {
+      return {
+        success: false,
+        error: {
+          code: 'ROUND_AMBIGUOUS',
+          message: '轮次匹配存在歧义，找到多个候选轮次',
+          details: `找到 ${candidates != null ? candidates.length : 0} 个候选轮次`
+        },
+        payload: null,
+        payloadKind: null,
+        matchStatus: roundResult.status,
+        resolvedRoundId: null,
+        candidates: candidates,
+        warnings: [],
+        conflictSummary: null,
+        requiresConfirmation: false,
+        canImport: false
+      }
+    } else if (roundResult.status == 'NOT_FOUND') {
+      return {
+        success: false,
+        error: {
+          code: 'ROUND_REQUIRED',
+          message: '未找到匹配的轮次',
+          details: '请先创建对应的轮次记录'
+        },
+        payload: null,
+        payloadKind: null,
+        matchStatus: roundResult.status,
+        resolvedRoundId: null,
+        candidates: null,
+        warnings: [],
+        conflictSummary: null,
+        requiresConfirmation: false,
+        canImport: false
+      }
+    }
+  }
+
+  const localFloorConfig = loadBinSeqMaxByFloor()
+  const localPersons = loadPersons()
+  const activeCoefSet = loadActiveCoefSet()
+
+  const conflictSummary = detectImportConflicts(payload, localFloorConfig, localPersons, activeCoefSet)
+
+  // 如果能执行到这里，说明前面没有遇到阻塞性错误（有错误会提前返回）
+  const hasWarnings = warnings.length > 0
+  const hasConflicts = conflictSummary != null && conflictSummary.hasConflict
+
+  // canImport 逻辑：轮次匹配成功（ANQ/BUNDLE）
+  let canImport = false
+  if (payloadKind == 'CONFIG') {
+    // CONFIG 类型：即使有冲突也可导入（用户确认后覆盖）
+    canImport = true
+  } else if (payloadKind == 'ANQ' || payloadKind == 'BUNDLE') {
+    // ANQ/BUNDLE 类型：需要轮次匹配成功
+    if (matchStatus == 'EXACT_MATCH' || matchStatus == 'SOFT_MATCH') {
+      canImport = resolvedRoundId != null
+    }
+  }
+
+  // requiresConfirmation 逻辑：区分警告和冲突的确认级别
+  // - 冲突必须确认（将覆盖本地配置）
+  // - 警告需要确认（如轮次 micro 差异）
+  const requiresConfirmation = hasConflicts || hasWarnings
+
+  return {
+    success: true,
+    error: null,
+    payload: payload,
+    payloadKind: payloadKind,
+    matchStatus: matchStatus,
+    resolvedRoundId: resolvedRoundId,
+    candidates: candidates,
+    warnings: warnings,
+    conflictSummary: conflictSummary,
+    requiresConfirmation: requiresConfirmation,
+    canImport: canImport
+  }
+}
+
+/**
+ * 应用传输导入（统一入口）
+ */
+export function applyTransferImport(
+  payload: TransferPayload,
+  resolvedRoundId: number | null,
+  applyFloorConfig: boolean = true
+): ImportResult {
+  const payloadObj = payload as UTSJSONObject
+  const kind = payloadObj['kind'] as string
+
+  if (kind == 'ANQ') {
+    return applyAnQuImportInStore(payload as AnQuPayload, resolvedRoundId!, applyFloorConfig)
+  } else if (kind == 'CONFIG') {
+    return applyConfigImportInStore(payload as ConfigPayload)
+  } else if (kind == 'BUNDLE') {
+    return applyBundleImportInStore(payload as BundlePayload, resolvedRoundId!, applyFloorConfig)
+  }
+
+  return {
+    success: false,
+    payloadKind: kind,
+    roundId: null,
+    binsImported: 0,
+    binsSkipped: 0,
+    personsImported: 0,
+    coefUpdated: false,
+    floorConfigApplied: false,
+    snapshotSaved: false,
+    warnings: [],
+    errors: ['未知的载荷类型']
+  }
+}
+
+function applyAnQuImportInStore(payload: AnQuPayload, resolvedRoundId: number, applyFloorConfig: boolean): ImportResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+
+  // 只有在用户选择应用导入配置时才保存楼层配置
+  if (applyFloorConfig) {
+    const floorConfig = convertFloorPairsToConfig(payload.f)
+    saveBinSeqMaxByFloor(floorConfig)
+  }
+
+  const snapshotItems = buildAnQuSnapshotItems(payload.bins)
+  const classNo = payload.c
+
+  try {
+    saveAnQuImportSnapshot(classNo, resolvedRoundId, { items: snapshotItems } as UTSJSONObject)
+  } catch (e: Error) {
+    errors.push(`保存快照失败: ${e.message}`)
+    return {
+      success: false,
+      payloadKind: 'ANQ',
+      roundId: resolvedRoundId,
+      binsImported: 0,
+      binsSkipped: payload.skip.length,
+      personsImported: 0,
+      coefUpdated: false,
+      floorConfigApplied: applyFloorConfig,
+      snapshotSaved: false,
+      warnings: warnings,
+      errors: errors
+    }
+  }
+
+  return {
+    success: true,
+    payloadKind: 'ANQ',
+    roundId: resolvedRoundId,
+    binsImported: payload.bins.length,
+    binsSkipped: payload.skip.length,
+    personsImported: 0,
+    coefUpdated: false,
+    floorConfigApplied: applyFloorConfig,
+    snapshotSaved: true,
+    warnings: warnings,
+    errors: errors
+  }
+}
+
+function applyConfigImportInStore(payload: ConfigPayload): ImportResult {
+  const errors: string[] = []
+  const warnings: string[] = []
+  let personsImported = 0
+  let coefUpdated = false
+
+  if (payload.persons != null) {
+    const storagePersons = fromTransferPersonData(payload.persons)
+    savePersonsToRepo(storagePersons)
+    personsImported = payload.persons.length
+  }
+
+  if (payload.coef != null) {
+    const activeSetId = loadActiveCoefSetIdFromRepo()
+    if (activeSetId == null) {
+      errors.push('当前激活系数版本不存在')
+      return {
+        success: false,
+        payloadKind: 'CONFIG',
+        roundId: null,
+        binsImported: 0,
+        binsSkipped: 0,
+        personsImported: personsImported,
+        coefUpdated: false,
+        floorConfigApplied: false,
+        snapshotSaved: false,
+        warnings: warnings,
+        errors: errors
+      }
+    }
+
+    const currentCoefSet = loadCoefSetFromRepo(activeSetId)
+    const updatedCoefSet = mergeImportedCoefIntoActiveSet(payload.coef, currentCoefSet)
+
+    if (updatedCoefSet == null) {
+      errors.push('合并系数失败')
+      return {
+        success: false,
+        payloadKind: 'CONFIG',
+        roundId: null,
+        binsImported: 0,
+        binsSkipped: 0,
+        personsImported: personsImported,
+        coefUpdated: false,
+        floorConfigApplied: false,
+        snapshotSaved: false,
+        warnings: warnings,
+        errors: errors
+      }
+    }
+
+    saveCoefSetToRepo(activeSetId, updatedCoefSet)
+    coefUpdated = true
+  }
+
+  if (payload.persons != null || payload.coef != null) {
+    const classNo = getCurrentClassNo()
+    saveLiangTangDefaultToRepo(classNo, {} as UTSJSONObject)
+    saveDuiQuDefaultToRepo(classNo, [])
+  }
+
+  if (payload.persons == null && payload.coef == null) {
+    warnings.push('CONFIG 包未包含任何可导入配置')
+  }
+
+  return {
+    success: true,
+    payloadKind: 'CONFIG',
+    roundId: null,
+    binsImported: 0,
+    binsSkipped: 0,
+    personsImported: personsImported,
+    coefUpdated: coefUpdated,
+    floorConfigApplied: false,
+    snapshotSaved: false,
+    warnings: warnings,
+    errors: errors
+  }
+}
+
+function applyBundleImportInStore(payload: BundlePayload, resolvedRoundId: number, applyFloorConfig: boolean): ImportResult {
+  const configPart: ConfigPayload = {
+    v: 1,
+    kind: 'CONFIG',
+    ts: payload.ts,
+    c: payload.c,
+    persons: payload.persons,
+    coef: payload.coef
+  }
+
+  const configResult = applyConfigImportInStore(configPart)
+
+  if (!configResult.success) {
+    return {
+      success: false,
+      payloadKind: 'BUNDLE',
+      roundId: null,
+      binsImported: 0,
+      binsSkipped: 0,
+      personsImported: configResult.personsImported,
+      coefUpdated: configResult.coefUpdated,
+      floorConfigApplied: false,
+      snapshotSaved: false,
+      warnings: configResult.warnings,
+      errors: configResult.errors
+    }
+  }
+
+  const anquResult = applyAnQuImportInStore(payload.anqu, resolvedRoundId, applyFloorConfig)
+
+  return {
+    success: configResult.success && anquResult.success,
+    payloadKind: 'BUNDLE',
+    roundId: anquResult.roundId,
+    binsImported: anquResult.binsImported,
+    binsSkipped: anquResult.binsSkipped,
+    personsImported: configResult.personsImported,
+    coefUpdated: configResult.coefUpdated,
+    floorConfigApplied: anquResult.floorConfigApplied,
+    snapshotSaved: anquResult.snapshotSaved,
+    warnings: configResult.warnings.concat(anquResult.warnings),
+    errors: configResult.errors.concat(anquResult.errors)
+  }
+}
+
+/**
+ * 应用传输数据(旧接口,保持向后兼容)
+ */
+export function applyTransferData(payload: AnQuPayload, roundId: number, applyFloorConfig: boolean = true): ImportResult {
+  return applyTransferImport(payload, roundId, applyFloorConfig)
 }
