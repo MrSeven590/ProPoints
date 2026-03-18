@@ -265,3 +265,92 @@ export function getPositionLabel(stageCode: StageCode, positionIndex: number): s
   }
   return `中${positionIndex - 1}`
 }
+
+// ============================================
+// 跨仓数据类型
+// ============================================
+
+/**
+ * 跨仓数据（用于 entry 页面状态管理）
+ */
+export type CrossBinData = {
+  enabled: boolean
+  roleCode: RoleCode
+  roleName: string
+  personId: number | null
+  personName: string
+  pointsUnits: PointsUnits
+  sources: AssignmentSource[]
+}
+
+// ============================================
+// 组件间通信 Payload 类型
+// ============================================
+
+/**
+ * 跨仓变更 Payload（biz-cross-bin-input 组件）
+ */
+export type CrossBinChangePayload = {
+  personId: number | null
+  personName: string
+  pointsUnits: PointsUnits
+  sources: AssignmentSourceCreateParams[]
+}
+
+/**
+ * 人员选择 Payload（biz-person-select 组件）
+ */
+export type PersonSelectPayload = {
+  personId: number
+  personName: string
+}
+
+/**
+ * 仓卡片变更 Payload（biz-bin-card 组件）
+ */
+export type SessionWorkerData = {
+  personId: number | null
+  personName: string
+  pointsUnits: PointsUnits
+}
+
+export type SessionPenaltyWorkerData = SessionWorkerData & {
+  positionIndex: number
+  deductedUnits: PointsUnits
+  penaltyReason: string
+  penaltyId: number | null
+}
+
+/**
+ * 仓卡片变更 Payload（biz-bin-card 组件）
+ */
+export type BinCardChangePayload = {
+  stageBinId: number
+  workers: SessionPenaltyWorkerData[]
+}
+
+/**
+ * 仓曲量变更 Payload（biz-bin-card 组件）
+ */
+export type BinKojiChangePayload = {
+  stageBinId: number
+  kojiCount: number
+}
+
+/**
+ * 仓扣分变更 Payload（biz-bin-card 组件）
+ */
+export type BinPenaltyChangePayload = {
+  stageBinId: number
+  workerIndex: number
+  deductedUnits: PointsUnits
+  reason: string
+}
+
+/**
+ * 会话角色卡片变更 Payload（biz-session-role-card 组件）
+ */
+export type SessionRoleCardChangePayload = {
+  roleCode: RoleCode
+  workers: SessionWorkerData[]
+}

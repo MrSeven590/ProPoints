@@ -1,0 +1,180 @@
+/**
+ * 会话相关数据传输对象（DTO）类型定义
+ */
+
+import {
+  StageCode,
+  RoleCode,
+  SessionStatus,
+  DateString,
+  PointsUnits
+} from './types.uts'
+import { BinCode, StageBinInfo, BinWorkerData } from './ferment.uts'
+import {
+  AssignmentSourceCreateParams,
+  SessionWorkerData,
+  SessionPenaltyWorkerData
+} from './assignment.uts'
+
+// ============================================
+// 会话仓数据类型
+// ============================================
+
+/**
+ * 会话仓数据（用于存储和传输）
+ */
+export type SessionBinData = {
+  bin_id: number
+  stage_bin_id: number
+  koji_count: number
+  bin_code: string
+  class_no: number
+  floor_no: number
+  seq_no: number
+  total_points_units: PointsUnits
+  assigned_points_units: PointsUnits
+  workers: BinWorkerData[]
+}
+
+// ============================================
+// 跨仓数据类型
+// ============================================
+
+/**
+ * 会话跨仓数据（用于存储和传输）
+ */
+export type SessionCrossBinData = {
+  enabled: boolean
+  role_code: RoleCode
+  person_id: number | null
+  person_name: string
+  points_units: PointsUnits
+  sources: AssignmentSourceCreateParams[]
+}
+
+// ============================================
+// 晾堂数据类型
+// ============================================
+
+/**
+ * 晾堂工人数据
+ */
+export type LiangTangWorkerData = SessionWorkerData
+
+/**
+ * 晾堂岗位数据（按角色分组）
+ */
+export type LiangTangRoleData = {
+  roleCode: RoleCode
+  workers: LiangTangWorkerData[]
+}
+
+/**
+ * 会话晾堂数据（用于存储和传输）
+ */
+export type SessionLiangTangData = {
+  WHEAT_MATERIAL: LiangTangWorkerData[]
+  MACHINE_GUARD: LiangTangWorkerData[]
+  KOJI_UNLOADER: LiangTangWorkerData[]
+  MICRO_OPERATOR: LiangTangWorkerData[]
+}
+
+// ============================================
+// 堆曲数据类型
+// ============================================
+
+/**
+ * 堆曲工人数据
+ */
+export type DuiQuWorkerData = SessionWorkerData & {
+  positionIndex: number
+}
+
+/**
+ * 会话堆曲数据（用于存储和传输）
+ */
+export type SessionDuiQuData = {
+  total_koji_count: number
+  total_pool_units: PointsUnits
+  workers: DuiQuWorkerData[]
+}
+
+// ============================================
+// 会话数据类型
+// ============================================
+
+/**
+ * 会话数据（用于存储和传输）
+ */
+export type SessionCoefSnapshot = UTSJSONObject
+
+export type SessionData = {
+  session_date: DateString
+  class_no: number
+  stage_code: StageCode
+  round_id: number | null
+  coef_set_id: number
+  coef_snapshot: SessionCoefSnapshot | null
+  bins: SessionBinData[]
+  cross_bin: SessionCrossBinData | null
+  liang_tang: SessionLiangTangData | null
+  dui_qu: SessionDuiQuData | null
+  status: SessionStatus
+  remark: string
+  session_bonus_units: PointsUnits
+  created_by_manager: string
+  updated_by_manager: string
+}
+
+export type SessionStorageState = SessionData
+
+export type EntryViewMode = 'create' | 'edit' | 'readonly'
+
+export type EntryBinCardState = {
+  stageBinId: number
+  kojiCount: number
+  totalPointsUnits: PointsUnits
+  assignedPointsUnits: PointsUnits
+  workers: SessionPenaltyWorkerData[]
+}
+
+export type SessionEntryPageState = {
+  hasData: boolean
+  sessionDate: DateString
+  coefSetId: number
+  coefSnapshot: SessionCoefSnapshot | null
+  selectedBins: BinCode[]
+  stageBinInfos: StageBinInfo[]
+  binCardsData: Map<number, EntryBinCardState>
+  showCrossBinSection: boolean
+  crossBinRoleCode: RoleCode
+  crossBinPersonId: number | null
+  crossBinPersonName: string
+  crossBinPointsUnits: PointsUnits
+  crossBinSources: AssignmentSourceCreateParams[]
+  liangTangRolesData: Map<string, LiangTangRoleData>
+  wheatMaterialWorkers: SessionWorkerData[]
+  machineGuardWorkers: SessionWorkerData[]
+  kojiUnloaderWorkers: SessionWorkerData[]
+  microOperatorWorkers: SessionWorkerData[]
+  duiQuWorkers: DuiQuWorkerData[]
+  duiQuTotalKojiCount: number
+  duiQuTotalPoolUnits: PointsUnits
+  sessionStatus: SessionStatus
+  viewMode: EntryViewMode
+  sessionRemark: string
+  sessionBonusUnits: PointsUnits
+  createdByManager: string
+  updatedByManager: string
+  occupiedIds: number[]
+  missingAnQuBins: string[]
+}
+
+// ============================================
+// Entry 页面状态类型
+// ============================================
+
+/**
+ * Entry 页面状态（用于页面内部状态管理）
+ */
+export type EntryPageState = SessionEntryPageState

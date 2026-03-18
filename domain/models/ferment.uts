@@ -144,3 +144,33 @@ export type FermentRoundCreateParams = {
 export function isMicroEnabled(round: FermentRound): boolean {
   return round.micro_enabled == 1
 }
+
+// ============================================
+// 仓工人和卡片数据类型
+// ============================================
+
+/**
+ * 仓工人数据（用于 entry 页面和组件间传递）
+ */
+export type BinWorkerData = {
+  personId: number | null
+  personName: string
+  pointsUnits: number
+  positionIndex: number
+  deductedUnits: number
+  penaltyReason: string
+  penaltyId: number | null
+}
+
+/**
+ * 仓卡片数据（用于 entry 页面状态管理）
+ */
+export type BinCardData = {
+  stageBinId: number
+  binId: number
+  binCode: string
+  kojiCount: number
+  totalPointsUnits: number
+  assignedUnits: number
+  workers: BinWorkerData[]
+}

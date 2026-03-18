@@ -418,7 +418,7 @@ function normalizeSessionData(raw: UTSJSONObject): NormalizedSessionData {
       const stageBinId = binRaw['stage_bin_id'] as number | null
       const binCode = binRaw['bin_code'] as string | null
       const kojiCount = binRaw['koji_count'] as number | null
-      const totalPointsUnits = binRaw['totalPointsUnits'] as number | null
+      const totalPointsUnits = binRaw['total_points_units'] as number | null
 
       const workersRaw = binRaw['workers'] as UTSJSONObject[] | null
       const workers: NormalizedWorker[] = []
@@ -535,8 +535,8 @@ function normalizeSessionData(raw: UTSJSONObject): NormalizedSessionData {
   let duiQu: NormalizedDuiQu | null = null
 
   if (duiQuRaw != null) {
-    const totalKojiCount = duiQuRaw['totalKojiCount'] as number | null
-    const totalPoolUnits = duiQuRaw['totalPoolUnits'] as number | null
+    const totalKojiCount = duiQuRaw['total_koji_count'] as number | null
+    const totalPoolUnits = duiQuRaw['total_pool_units'] as number | null
     const workersRaw = duiQuRaw['workers'] as UTSJSONObject[] | null
 
     const workers: NormalizedDuiQuWorker[] = []

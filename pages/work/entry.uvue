@@ -2147,8 +2147,8 @@ export default {
                 binId: binId != null ? binId : i + 1,
                 binCode: binCode != null ? binCode : `${classNo}-${floorNo}-${seqNo}`,
                 kojiCount: kojiCount != null ? kojiCount : 0,
-                totalPointsUnits: binObj['totalPointsUnits'] != null ? (binObj['totalPointsUnits'] as number) : 0,
-                assignedUnits: binObj['assignedUnits'] != null ? (binObj['assignedUnits'] as number) : 0,
+                totalPointsUnits: binObj['total_points_units'] != null ? (binObj['total_points_units'] as number) : 0,
+                assignedUnits: binObj['assigned_points_units'] != null ? (binObj['assigned_points_units'] as number) : 0,
                 workers: workers
               } as BinCardData);
             }
@@ -2315,8 +2315,8 @@ export default {
       if (this.showDuiQuSection == true) {
         const duiQuData = sessionData['dui_qu'] as UTSJSONObject | null;
         if (duiQuData != null) {
-          duiQuTotalKojiCount = duiQuData['totalKojiCount'] != null ? (duiQuData['totalKojiCount'] as number) : 0;
-          duiQuTotalPoolUnits = duiQuData['totalPoolUnits'] != null ? (duiQuData['totalPoolUnits'] as number) : 0;
+          duiQuTotalKojiCount = duiQuData['total_koji_count'] != null ? (duiQuData['total_koji_count'] as number) : 0;
+          duiQuTotalPoolUnits = duiQuData['total_pool_units'] != null ? (duiQuData['total_pool_units'] as number) : 0;
 
           const workersRaw = duiQuData['workers'] as UTSJSONObject[] | null;
           if (workersRaw != null && workersRaw.length > 0) {
@@ -2785,8 +2785,8 @@ export default {
           class_no: classNo,
           floor_no: floorNo,
           seq_no: seqNo,
-          totalPointsUnits: cardData != null ? cardData.totalPointsUnits : 0,
-          assignedUnits: cardData != null ? cardData.assignedUnits : 0,
+          total_points_units: cardData != null ? cardData.totalPointsUnits : 0,
+          assigned_points_units: cardData != null ? cardData.assignedUnits : 0,
           workers: workersData,
         } as UTSJSONObject);
       }
@@ -2848,8 +2848,8 @@ export default {
           } as UTSJSONObject);
         }
         duiQuData = {
-          totalKojiCount: this.duiQuTotalKojiCount,
-          totalPoolUnits: this.duiQuTotalPoolUnits,
+          total_koji_count: this.duiQuTotalKojiCount,
+          total_pool_units: this.duiQuTotalPoolUnits,
           workers: workersData,
         } as UTSJSONObject;
       }
