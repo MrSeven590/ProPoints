@@ -1,0 +1,320 @@
+/**
+ * Session 数据适配器
+ * 负责在 Storage DTO (snake_case) 和 Page State (camelCase) 之间进行转换
+ */
+
+import {
+  SessionData,
+  SessionBinData,
+  SessionBinStorageWorkerData,
+  SessionCrossBinData,
+  SessionLiangTangData,
+  SessionDuiQuData,
+  SessionDuiQuStorageWorkerData,
+  SessionEntryPageState,
+  EntryBinCardState
+} from '../models/session.uts'
+import {
+  StageCode,
+  RoleCode,
+  SessionStatus,
+  PointsUnits
+} from '../models/types.uts'
+import { BinCode, StageBinInfo, BinWorkerData } from '../models/ferment.uts'
+import {
+  AssignmentSourceCreateParams,
+  SessionWorkerData,
+  SessionPenaltyWorkerData
+} from '../models/assignment.uts'
+
+// ============================================
+// 常量定义
+// ============================================
+
+const DEFAULT_COEF_SET_ID = 1
+
+// ============================================
+// 辅助类型定义
+// ============================================
+
+/**
+ * Session 数据解析选项
+ */
+export type SessionDataParseOptions = {
+  stageCode: StageCode
+  roundId: number | null
+}
+
+/**
+ * 页面状态构建选项
+ */
+export type SessionEntryStateBuildOptions = {
+  stageCode: StageCode
+  roundId: number | null
+  defaultCrossBinRoleCode: RoleCode
+  defaultCrossBinRoleName: string
+  microEnabled: boolean
+  managerName: string
+}
+
+/**
+ * Session 数据构建选项
+ */
+export type SessionDataBuildOptions = {
+  stageCode: StageCode
+  stageName: string
+  roundId: number | null
+  coefSetId: number
+  coefSnapshot: UTSJSONObject | null
+  managerName: string
+}
+
+// ============================================
+// 解析辅助函数（Storage -> SessionData）
+// ============================================
+
+/**
+ * 解析 bins 数据（snake_case -> snake_case）
+ * 注意：SessionBinData 使用 snake_case 字段名（用于存储）
+ */
+function parseBins(binsRaw: UTSJSONObject[] | null): SessionBinData[] {
+  if (binsRaw == null) {
+    return []
+  }
+
+  const result: SessionBinData[] = []
+  for (let i = 0; i < binsRaw.length; i++) {
+    const binObj = binsRaw[i]
+
+    // 解析工人数据（snake_case）
+    const workersRaw = binObj['workers'] as UTSJSONObject[] | null
+    const workers: SessionBinStorageWorkerData[] = []
+    if (workersRaw != null) {
+      for (let j = 0; j < workersRaw.length; j++) {
+        const w = workersRaw[j]
+        workers.push({
+          person_id: w['person_id'] != null ? (w['person_id'] as number) : null,
+          person_name: w['person_name'] != null ? (w['person_name'] as string) : '',
+          points_units: w['points_units'] != null ? (w['points_units'] as number) : 0,
+          position_index: w['position_index'] != null ? (w['position_index'] as number) : j + 1,
+          deducted_units: w['deducted_units'] != null ? (w['deducted_units'] as number) : 0,
+          penalty_reason: w['penalty_reason'] != null ? (w['penalty_reason'] as string) : '',
+          penalty_id: w['penalty_id'] != null ? (w['penalty_id'] as number) : null
+        } as SessionBinStorageWorkerData)
+      }
+    }
+
+    result.push({
+      bin_id: binObj['bin_id'] != null ? (binObj['bin_id'] as number) : i + 1,
+      stage_bin_id: binObj['stage_bin_id'] != null ? (binObj['stage_bin_id'] as number) : i + 1,
+      koji_count: binObj['koji_count'] != null ? (binObj['koji_count'] as number) : 0,
+      bin_code: binObj['bin_code'] != null ? (binObj['bin_code'] as string) : '',
+      class_no: binObj['class_no'] != null ? (binObj['class_no'] as number) : 0,
+      floor_no: binObj['floor_no'] != null ? (binObj['floor_no'] as number) : 0,
+      seq_no: binObj['seq_no'] != null ? (binObj['seq_no'] as number) : 0,
+      total_points_units: binObj['total_points_units'] != null ? (binObj['total_points_units'] as number) : 0,
+      assigned_points_units: binObj['assigned_points_units'] != null ? (binObj['assigned_points_units'] as number) : 0,
+      workers: workers
+    } as SessionBinData)
+  }
+
+  return result
+}
+
+/**
+ * 解析 cross_bin 数据（snake_case -> snake_case）
+ */
+function parseCrossBin(crossBinRaw: UTSJSONObject | null): SessionCrossBinData | null {
+  if (crossBinRaw == null) {
+    return null
+  }
+
+  const enabled = crossBinRaw['enabled'] as boolean | null
+  if (enabled == false) {
+    // 明确禁用则返回 null
+    return null
+  }
+
+  // 解析来源数据
+  const sourcesRaw = crossBinRaw['sources'] as UTSJSONObject[] | null
+  const sources: AssignmentSourceCreateParams[] = []
+  if (sourcesRaw != null) {
+    for (let i = 0; i < sourcesRaw.length; i++) {
+      const s = sourcesRaw[i]
+      sources.push({
+        stage_bin_id: s['stage_bin_id'] != null ? (s['stage_bin_id'] as number) : 0,
+        source_points_units: s['source_points_units'] != null ? (s['source_points_units'] as number) : 0
+      } as AssignmentSourceCreateParams)
+    }
+  }
+
+  return {
+    enabled: enabled != null ? enabled : false,
+    role_code: (crossBinRaw['role_code'] != null ? (crossBinRaw['role_code'] as string) : 'CROSS_BIN_YI_FAN') as RoleCode,
+    person_id: crossBinRaw['person_id'] != null ? (crossBinRaw['person_id'] as number) : null,
+    person_name: crossBinRaw['person_name'] != null ? (crossBinRaw['person_name'] as string) : '',
+    points_units: crossBinRaw['points_units'] != null ? (crossBinRaw['points_units'] as number) : 0,
+    sources: sources
+  } as SessionCrossBinData
+}
+
+/**
+ * 解析 liang_tang 数据（snake_case -> snake_case）
+ */
+function parseLiangTang(liangTangRaw: UTSJSONObject | null): SessionLiangTangData | null {
+  if (liangTangRaw == null) {
+    return null
+  }
+
+  const result: SessionLiangTangData = {
+    WHEAT_MATERIAL: [],
+    MACHINE_GUARD: [],
+    KOJI_UNLOADER: [],
+    MICRO_OPERATOR: []
+  }
+
+  // 解析各个角色的工人数据
+  const roleKeys = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER', 'MICRO_OPERATOR']
+  for (let i = 0; i < roleKeys.length; i++) {
+    const roleKey = roleKeys[i]
+    const workersRaw = liangTangRaw[roleKey] as UTSJSONObject[] | null
+    if (workersRaw != null) {
+      const workers: SessionWorkerData[] = []
+      for (let j = 0; j < workersRaw.length; j++) {
+        const w = workersRaw[j]
+        workers.push({
+          person_id: w['person_id'] != null ? (w['person_id'] as number) : null,
+          person_name: w['person_name'] != null ? (w['person_name'] as string) : '',
+          points_units: w['points_units'] != null ? (w['points_units'] as number) : 0
+        } as SessionWorkerData)
+      }
+      // 使用下标赋值，因为 roleKey 是动态的
+      if (roleKey == 'WHEAT_MATERIAL') {
+        result.WHEAT_MATERIAL = workers
+      } else if (roleKey == 'MACHINE_GUARD') {
+        result.MACHINE_GUARD = workers
+      } else if (roleKey == 'KOJI_UNLOADER') {
+        result.KOJI_UNLOADER = workers
+      } else if (roleKey == 'MICRO_OPERATOR') {
+        result.MICRO_OPERATOR = workers
+      }
+    }
+  }
+
+  return result
+}
+
+/**
+ * 解析 dui_qu 数据（snake_case -> snake_case）
+ */
+function parseDuiQu(duiQuRaw: UTSJSONObject | null): SessionDuiQuData | null {
+  if (duiQuRaw == null) {
+    return null
+  }
+
+  const workersRaw = duiQuRaw['workers'] as UTSJSONObject[] | null
+  const workers: DuiQuWorkerData[] = []
+  if (workersRaw != null) {
+    for (let i = 0; i < workersRaw.length; i++) {
+      const w = workersRaw[i]
+      workers.push({
+        person_id: w['person_id'] != null ? (w['person_id'] as number) : null,
+        person_name: w['person_name'] != null ? (w['person_name'] as string) : '',
+        points_units: w['points_units'] != null ? (w['points_units'] as number) : 0,
+        positionIndex: w['position_index'] != null ? (w['position_index'] as number) : i + 1
+      } as DuiQuWorkerData)
+    }
+  }
+
+  return {
+    total_koji_count: duiQuRaw['total_koji_count'] != null ? (duiQuRaw['total_koji_count'] as number) : 0,
+    total_pool_units: duiQuRaw['total_pool_units'] != null ? (duiQuRaw['total_pool_units'] as number) : 0,
+    workers: workers
+  } as SessionDuiQuData
+}
+
+// ============================================
+// 导出函数：Storage JSON -> SessionData
+// ============================================
+
+/**
+ * 将 Storage JSON 转换为 SessionData
+ * @param raw Storage 中的原始 JSON 数据
+ * @returns 强类型的 SessionData
+ */
+export function storageJsonToSessionData(raw: UTSJSONObject): SessionData {
+  const binsRaw = raw['bins'] as UTSJSONObject[] | null
+  const crossBinRaw = raw['cross_bin'] as UTSJSONObject | null
+  const liangTangRaw = raw['liang_tang'] as UTSJSONObject | null
+  const duiQuRaw = raw['dui_qu'] as UTSJSONObject | null
+
+  const savedSnapshot = raw['coef_snapshot'] as UTSJSONObject | null
+
+  return {
+    session_date: (raw['session_date'] as string | null) ?? '',
+    class_no: (raw['class_no'] as number | null) ?? 0,
+    stage_code: ((raw['stage_code'] as string | null) ?? 'AN_QU') as StageCode,
+    round_id: raw['round_id'] as number | null,
+    coef_set_id: (raw['coef_set_id'] as number | null) ?? DEFAULT_COEF_SET_ID,
+    coef_snapshot: savedSnapshot,
+    bins: parseBins(binsRaw),
+    cross_bin: parseCrossBin(crossBinRaw),
+    liang_tang: parseLiangTang(liangTangRaw),
+    dui_qu: parseDuiQu(duiQuRaw),
+    status: ((raw['status'] as string | null) ?? 'draft') as SessionStatus,
+    remark: (raw['remark'] as string | null) ?? '',
+    session_bonus_units: (raw['session_bonus_units'] as number | null) ?? 0,
+    created_by_manager: (raw['created_by_manager'] as string | null) ?? '',
+    updated_by_manager: (raw['updated_by_manager'] as string | null) ?? ''
+  } as SessionData
+}
+
+// ============================================
+// 导出函数：SessionData -> Storage JSON
+// ============================================
+
+/**
+ * 将 SessionData 转换为 Storage JSON
+ * @param data 强类型的 SessionData
+ * @returns 用于存储的 JSON 对象
+ */
+export function sessionDataToStorageJson(data: SessionData): UTSJSONObject {
+  // TODO: 后续 commit 实现
+  return {} as UTSJSONObject
+}
+
+// ============================================
+// 导出函数：SessionData -> PageState
+// ============================================
+
+/**
+ * 将 SessionData 转换为页面状态
+ * @param data SessionData
+ * @param options 构建选项
+ * @returns 页面状态
+ */
+export function sessionDataToEntryPageState(
+  data: SessionData,
+  options: SessionEntryStateBuildOptions
+): SessionEntryPageState {
+  // TODO: 后续 commit 实现
+  return {} as SessionEntryPageState
+}
+
+// ============================================
+// 导出函数：PageState -> SessionData
+// ============================================
+
+/**
+ * 将页面状态转换为 SessionData
+ * @param state 页面状态
+ * @param options 构建选项
+ * @returns SessionData
+ */
+export function entryPageStateToSessionData(
+  state: SessionEntryPageState,
+  options: SessionDataBuildOptions
+): SessionData {
+  // TODO: 后续 commit 实现
+  return {} as SessionData
+}
