@@ -314,7 +314,14 @@ export type SessionWorkerData = {
   pointsUnits: PointsUnits
 }
 
-export type SessionPenaltyWorkerData = SessionWorkerData & {
+/**
+ * 会话工人数据（带扣罚信息）
+ * 注意：UTS 不支持交叉类型扩展对象字面量，所以直接定义完整类型
+ */
+export type SessionPenaltyWorkerData = {
+  personId: number | null
+  personName: string
+  pointsUnits: PointsUnits
   positionIndex: number
   deductedUnits: PointsUnits
   penaltyReason: string
