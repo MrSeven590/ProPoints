@@ -641,7 +641,9 @@ export function listTransferRoundsForCurrentClass(): TransferRoundOption[] {
     const id = round['id'] as number
     const year = round['year'] as number
     const roundNo = round['round_no'] as number
-    const micro = round['micro'] as number
+    // Null 安全处理：micro 字段可能为 null
+    const microValue = round['micro']
+    const micro = microValue != null ? microValue as number : 0
 
     const label = `${year}年 第${roundNo}轮 (微调${micro})`
     options.push({ id: id, label: label } as TransferRoundOption)

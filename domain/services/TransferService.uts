@@ -101,7 +101,9 @@ export function collectAnQuPayload(
 
   const year = roundInfo['year'] as number
   const roundNo = roundInfo['round_no'] as number
-  const micro = roundInfo['micro'] as number
+  // Null 安全处理：micro 字段可能为 null
+  const microValue = roundInfo['micro']
+  const micro = microValue != null ? microValue as number : 0
 
   // 使用传入的楼层配置
   const floors = convertFloorConfigToPairs(floorConfig)
@@ -154,9 +156,9 @@ export function collectAnQuPayload(
           continue
         }
 
-        const binClassNo = parsed['classNo'] as number
-        const binSeqNo = parsed['seqNo'] as number
-        const binFloorNo = parsed['floorNo'] as number
+        const binClassNo = parsed['class_no'] as number
+        const binSeqNo = parsed['seq_no'] as number
+        const binFloorNo = parsed['floor_no'] as number
 
         // 检查是否跨班
         if (binClassNo != classNo) {
@@ -1303,7 +1305,9 @@ export function resolveRound(payload: AnQuPayload, allRounds: UTSJSONObject[]): 
     const rClassNo = round['class_no'] as number
     const rYear = round['year'] as number
     const rRoundNo = round['round_no'] as number
-    const rMicro = round['micro'] as number
+    // Null 安全处理：micro 字段可能为 null
+    const rMicroValue = round['micro']
+    const rMicro = rMicroValue != null ? rMicroValue as number : 0
     const rId = round['id'] as number
 
     // 精确匹配：(classNo, year, roundNo, micro) 全部相同

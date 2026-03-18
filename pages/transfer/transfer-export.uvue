@@ -11,18 +11,18 @@
       <view class="section">
         <text class="section-title">导出模式</text>
         <radio-group @change="onExportModeChange">
-          <label class="radio-item">
+          <view class="radio-item">
             <radio value="config" :checked="exportMode == 'config'" />
             <text class="radio-label">仅配置（花名册+系数）</text>
-          </label>
-          <label class="radio-item">
+          </view>
+          <view class="radio-item">
             <radio value="anqu" :checked="exportMode == 'anqu'" />
             <text class="radio-label">仅安曲数据</text>
-          </label>
-          <label class="radio-item">
+          </view>
+          <view class="radio-item">
             <radio value="bundle" :checked="exportMode == 'bundle'" />
             <text class="radio-label">安曲+配置</text>
-          </label>
+          </view>
         </radio-group>
       </view>
 
@@ -41,14 +41,14 @@
       <view class="section" v-if="exportMode == 'config' || exportMode == 'bundle'">
         <text class="section-title">数据包含项</text>
         <checkbox-group @change="onCheckboxChange">
-          <label class="checkbox-item">
+          <view class="checkbox-item">
             <checkbox value="persons" :checked="includePersons" />
             <text class="checkbox-label">包含人员数据</text>
-          </label>
-          <label class="checkbox-item">
+          </view>
+          <view class="checkbox-item">
             <checkbox value="coef" :checked="includeCoef" />
             <text class="checkbox-label">包含系数数据</text>
-          </label>
+          </view>
         </checkbox-group>
       </view>
 

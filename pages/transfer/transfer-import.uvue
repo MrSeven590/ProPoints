@@ -42,13 +42,13 @@
       <view class="section" v-if="step == 2 && matchStatus == 'AMBIGUOUS'">
         <text class="section-title">选择轮次</text>
         <radio-group @change="onCandidateChange">
-          <label class="candidate-item" v-for="(candidate, index) in candidates" :key="index">
+          <view class="candidate-item" v-for="(candidate, index) in candidates" :key="index">
             <radio :value="index.toString()" :checked="selectedCandidateIndex == index" />
             <view class="candidate-info">
               <text class="candidate-label">{{ candidate.label }}</text>
               <text class="candidate-detail">班级{{ candidate.classNo }} | 微调{{ candidate.micro }}</text>
             </view>
-          </label>
+          </view>
         </radio-group>
       </view>
 
@@ -1070,7 +1070,6 @@
     font-size: 14px;
     color: #666666;
     margin-bottom: 12px;
-    display: block;
   }
 
   .warning-section {
@@ -1085,7 +1084,6 @@
     font-weight: 600;
     color: #333333;
     margin-bottom: 12px;
-    display: block;
   }
 
   .warning-item {
@@ -1134,14 +1132,12 @@
     font-weight: 600;
     color: #333333;
     margin-bottom: 8px;
-    display: block;
   }
 
   .conflict-summary {
     font-size: 14px;
     color: #666666;
     margin-bottom: 12px;
-    display: block;
   }
 
   .conflict-details {
@@ -1160,12 +1156,10 @@
     font-size: 14px;
     color: #666666;
     margin-bottom: 8px;
-    display: block;
   }
 
   .choice-options {
     flex-direction: row;
-    gap: 12px;
   }
 
   .choice-option {
@@ -1178,6 +1172,11 @@
     align-items: center;
     justify-content: center;
     background-color: #ffffff;
+    margin-right: 12px;
+  }
+
+  .choice-option:last-child {
+    margin-right: 0;
   }
 
   .choice-option.active {
