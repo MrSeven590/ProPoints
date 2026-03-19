@@ -1,0 +1,99 @@
+/**
+ * 默认数据解析器
+ * 负责将存储层的 UTSJSONObject 转换为强类型的业务对象
+ */
+
+import type { SessionWorkerData } from '../models/assignment.uts'
+import type { RoleCode } from '../models/types.uts'
+import type { LiangTangRoleData, DuiQuWorkerData } from '../models/session.uts'
+
+/**
+ * 晾堂岗位数据构建结果
+ */
+export type LiangTangRoleDataBuildResult = {
+  workers: SessionWorkerData[]
+  roleData: LiangTangRoleData
+}
+
+/**
+ * 从 UTSJSONObject 解析 SessionWorkerData
+ * @param raw 原始 JSON 对象
+ * @returns SessionWorkerData 对象
+ */
+export function parseWorkerData(raw: UTSJSONObject): SessionWorkerData {
+  const personIdTmp = raw['personId']
+  const personNameTmp = raw['personName']
+  return {
+    personId: personIdTmp != null ? personIdTmp as number : null,
+    personName: personNameTmp != null ? personNameTmp as string : '',
+    pointsUnits: 0
+  } as SessionWorkerData
+}
+
+/**
+ * 从 UTSJSONObject 数组解析 SessionWorkerData 数组
+ * @param rawWorkers 原始 JSON 数组
+ * @returns SessionWorkerData 数组
+ */
+export function parseWorkerDataArray(rawWorkers: UTSJSONObject[] | null): SessionWorkerData[] {
+  const workers: SessionWorkerData[] = []
+  if (rawWorkers != null && rawWorkers.length > 0) {
+    for (let i = 0; i < rawWorkers.length; i++) {
+      workers.push(parseWorkerData(rawWorkers[i]))
+    }
+  }
+  return workers
+}
+
+/**
+ * 构建晾堂岗位数据
+ * @param roleCode 岗位代码
+ * @param rawWorkers 原始工人数据数组
+ * @returns 包含 workers 和 roleData 的对象
+ */
+export function buildLiangTangRoleData(
+  roleCode: RoleCode,
+  rawWorkers: UTSJSONObject[] | null
+): LiangTangRoleDataBuildResult {
+  const workers = parseWorkerDataArray(rawWorkers)
+  return {
+    workers,
+    roleData: {
+      roleCode,
+      workers
+    } as LiangTangRoleData
+  }
+}
+
+/**
+ * 从 UTSJSONObject 解析 DuiQuWorkerData
+ * @param raw 原始 JSON 对象
+ * @returns DuiQuWorkerData 对象
+ */
+export function parseDuiQuWorkerData(raw: UTSJSONObject): DuiQuWorkerData {
+  const personIdTmp = raw['personId']
+  const personNameTmp = raw['personName']
+  const pointsUnitsTmp = raw['pointsUnits']
+  const positionIndexTmp = raw['positionIndex']
+  return {
+    personId: personIdTmp != null ? personIdTmp as number : null,
+    personName: personNameTmp != null ? personNameTmp as string : '',
+    pointsUnits: pointsUnitsTmp != null ? pointsUnitsTmp as number : 0,
+    positionIndex: positionIndexTmp != null ? positionIndexTmp as number : 0
+  } as DuiQuWorkerData
+}
+
+/**
+ * 从 UTSJSONObject 数组解析 DuiQuWorkerData 数组
+ * @param rawWorkers 原始 JSON 数组
+ * @returns DuiQuWorkerData 数组
+ */
+export function parseDuiQuWorkerDataArray(rawWorkers: UTSJSONObject[] | null): DuiQuWorkerData[] {
+  const workers: DuiQuWorkerData[] = []
+  if (rawWorkers != null && rawWorkers.length > 0) {
+    for (let i = 0; i < rawWorkers.length; i++) {
+      workers.push(parseDuiQuWorkerData(rawWorkers[i]))
+    }
+  }
+  return workers
+}

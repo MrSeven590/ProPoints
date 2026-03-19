@@ -478,6 +478,14 @@ import {
   sessionDataToStorageJson,
   entryPageStateToSessionData,
 } from "../../domain/services/session-adapter.uts";
+import {
+  parseWorkerData,
+  parseWorkerDataArray,
+  buildLiangTangRoleData,
+  parseDuiQuWorkerData,
+  parseDuiQuWorkerDataArray,
+  type LiangTangRoleDataBuildResult,
+} from "../../domain/services/default-data-parser.uts";
 
 // 系数版本常量
 const DEFAULT_COEF_SET_ID = 260000;
@@ -491,12 +499,6 @@ type LiangTangDefaultsData = {
   machineGuardWorkers: SessionWorkerData[];
   kojiUnloaderWorkers: SessionWorkerData[];
   microOperatorWorkers: SessionWorkerData[];
-};
-
-// Helper type for loadLiangTangDefaults
-type LiangTangRoleDataBuildResult = {
-  workers: SessionWorkerData[];
-  roleData: LiangTangRoleData;
 };
 
 export default {
@@ -920,52 +922,24 @@ export default {
         return;
       }
 
-      // Helper function: 从 UTSJSONObject 转换为 SessionWorkerData
-      const parseWorkerData = (raw: UTSJSONObject): SessionWorkerData => {
-        const personIdTmp = raw['personId'];
-        const personNameTmp = raw['personName'];
-        return {
-          personId: personIdTmp != null ? personIdTmp as number : null,
-          personName: personNameTmp != null ? personNameTmp as string : '',
-          pointsUnits: 0
-        } as SessionWorkerData;
-      };
-
-      // Helper function: 从 UTSJSONObject[] 转换为 SessionWorkerData[] 并构建 LiangTangRoleData
-      const buildRoleData = (roleCode: RoleCode, rawWorkers: UTSJSONObject[] | null): LiangTangRoleDataBuildResult => {
-        const workers: SessionWorkerData[] = [];
-        if (rawWorkers != null && rawWorkers.length > 0) {
-          for (let i = 0; i < rawWorkers.length; i++) {
-            workers.push(parseWorkerData(rawWorkers[i]));
-          }
-        }
-        return {
-          workers,
-          roleData: {
-            roleCode,
-            workers
-          } as LiangTangRoleData
-        };
-      };
-
       // 回填各岗位默认人员（仅人员，不回填工分）
       const wheatMaterial = defaults['WHEAT_MATERIAL'] as UTSJSONObject[] | null;
       if (wheatMaterial != null) {
-        const { workers, roleData } = buildRoleData('WHEAT_MATERIAL', wheatMaterial);
+        const { workers, roleData } = buildLiangTangRoleData('WHEAT_MATERIAL', wheatMaterial);
         this.wheatMaterialWorkers = workers;
         this.liangTangRolesData.set("WHEAT_MATERIAL", roleData);
       }
 
       const machineGuard = defaults['MACHINE_GUARD'] as UTSJSONObject[] | null;
       if (machineGuard != null) {
-        const { workers, roleData } = buildRoleData('MACHINE_GUARD', machineGuard);
+        const { workers, roleData } = buildLiangTangRoleData('MACHINE_GUARD', machineGuard);
         this.machineGuardWorkers = workers;
         this.liangTangRolesData.set("MACHINE_GUARD", roleData);
       }
 
       const kojiUnloader = defaults['KOJI_UNLOADER'] as UTSJSONObject[] | null;
       if (kojiUnloader != null) {
-        const { workers, roleData } = buildRoleData('KOJI_UNLOADER', kojiUnloader);
+        const { workers, roleData } = buildLiangTangRoleData('KOJI_UNLOADER', kojiUnloader);
         this.kojiUnloaderWorkers = workers;
         this.liangTangRolesData.set("KOJI_UNLOADER", roleData);
       }
@@ -979,7 +953,7 @@ export default {
         // 微机启用时才加载微机默认数据
         const microOperator = defaults['MICRO_OPERATOR'] as UTSJSONObject[] | null;
         if (microOperator != null) {
-          const { workers, roleData } = buildRoleData('MICRO_OPERATOR', microOperator);
+          const { workers, roleData } = buildLiangTangRoleData('MICRO_OPERATOR', microOperator);
           this.microOperatorWorkers = workers;
           this.liangTangRolesData.set("MICRO_OPERATOR", roleData);
         }
@@ -1009,17 +983,6 @@ export default {
         return result;
       }
 
-      // Helper function: 从 UTSJSONObject 转换为 SessionWorkerData
-      const parseWorkerData = (raw: UTSJSONObject): SessionWorkerData => {
-        const personIdTmp = raw['personId'];
-        const personNameTmp = raw['personName'];
-        return {
-          personId: personIdTmp != null ? personIdTmp as number : null,
-          personName: personNameTmp != null ? personNameTmp as string : '',
-          pointsUnits: 0
-        } as SessionWorkerData;
-      };
-
       const rolesData = new Map<string, LiangTangRoleData>();
       const wheatMaterialWorkers: SessionWorkerData[] = [];
       const machineGuardWorkers: SessionWorkerData[] = [];
@@ -1031,15 +994,11 @@ export default {
       if (wheatMaterialTmp != null) {
         const wheatMaterial = wheatMaterialTmp as UTSJSONObject[];
         if (wheatMaterial.length > 0) {
-          const roleWorkers: SessionWorkerData[] = [];
-          for (let i = 0; i < wheatMaterial.length; i++) {
-            const worker = parseWorkerData(wheatMaterial[i]);
-            wheatMaterialWorkers.push(worker);
-            roleWorkers.push(worker);
-          }
+          const workers = parseWorkerDataArray(wheatMaterial);
+          wheatMaterialWorkers.push(...workers);
           rolesData.set('WHEAT_MATERIAL', {
             roleCode: 'WHEAT_MATERIAL',
-            workers: roleWorkers
+            workers: workers
           } as LiangTangRoleData);
         }
       }
@@ -1048,15 +1007,11 @@ export default {
       if (machineGuardTmp != null) {
         const machineGuard = machineGuardTmp as UTSJSONObject[];
         if (machineGuard.length > 0) {
-          const roleWorkers: SessionWorkerData[] = [];
-          for (let i = 0; i < machineGuard.length; i++) {
-            const worker = parseWorkerData(machineGuard[i]);
-            machineGuardWorkers.push(worker);
-            roleWorkers.push(worker);
-          }
+          const workers = parseWorkerDataArray(machineGuard);
+          machineGuardWorkers.push(...workers);
           rolesData.set('MACHINE_GUARD', {
             roleCode: 'MACHINE_GUARD',
-            workers: roleWorkers
+            workers: workers
           } as LiangTangRoleData);
         }
       }
@@ -1065,15 +1020,11 @@ export default {
       if (kojiUnloaderTmp != null) {
         const kojiUnloader = kojiUnloaderTmp as UTSJSONObject[];
         if (kojiUnloader.length > 0) {
-          const roleWorkers: SessionWorkerData[] = [];
-          for (let i = 0; i < kojiUnloader.length; i++) {
-            const worker = parseWorkerData(kojiUnloader[i]);
-            kojiUnloaderWorkers.push(worker);
-            roleWorkers.push(worker);
-          }
+          const workers = parseWorkerDataArray(kojiUnloader);
+          kojiUnloaderWorkers.push(...workers);
           rolesData.set('KOJI_UNLOADER', {
             roleCode: 'KOJI_UNLOADER',
-            workers: roleWorkers
+            workers: workers
           } as LiangTangRoleData);
         }
       }
@@ -1082,15 +1033,11 @@ export default {
       if (microOperatorTmp != null) {
         const microOperator = microOperatorTmp as UTSJSONObject[];
         if (microOperator.length > 0) {
-          const roleWorkers: SessionWorkerData[] = [];
-          for (let i = 0; i < microOperator.length; i++) {
-            const worker = parseWorkerData(microOperator[i]);
-            microOperatorWorkers.push(worker);
-            roleWorkers.push(worker);
-          }
+          const workers = parseWorkerDataArray(microOperator);
+          microOperatorWorkers.push(...workers);
           rolesData.set('MICRO_OPERATOR', {
             roleCode: 'MICRO_OPERATOR',
-            workers: roleWorkers
+            workers: workers
           } as LiangTangRoleData);
         }
       }
@@ -1264,16 +1211,16 @@ export default {
     onDuiQuRoleChange(data: UTSJSONObject) {
       const workersRaw = data["workers"] as UTSJSONObject[] | null;
       if (workersRaw != null) {
-        // 解析为强类型 DuiQuWorkerData[]
+        // 使用统一 helper 解析为强类型 DuiQuWorkerData[]
         const workers: DuiQuWorkerData[] = [];
         for (let i = 0; i < workersRaw.length; i++) {
           const w = workersRaw[i];
-          workers.push({
-            personId: w["personId"] != null ? (w["personId"] as number) : null,
-            personName: w["personName"] != null ? (w["personName"] as string) : "",
-            pointsUnits: w["pointsUnits"] != null ? (w["pointsUnits"] as number) : 0,
-            positionIndex: w["positionIndex"] != null ? (w["positionIndex"] as number) : i + 1
-          } as DuiQuWorkerData);
+          const parsed = parseDuiQuWorkerData(w);
+          // 如果 positionIndex 未设置，使用索引+1
+          if (parsed.positionIndex == 0) {
+            parsed.positionIndex = i + 1;
+          }
+          workers.push(parsed);
         }
         this.duiQuWorkers = workers;
         const source = data["source"] as string | null;
@@ -1307,18 +1254,8 @@ export default {
       const workersRaw = payload["workers"] as UTSJSONObject[];
       const source = payload["source"] as string | null;
 
-      // 解析工人数据 - 收敛到 typed helper
-      const workerList: SessionWorkerData[] = [];
-      for (let i = 0; i < workersRaw.length; i++) {
-        const w = workersRaw[i];
-        workerList.push({
-          personId: w["personId"] != null ? (w["personId"] as number) : null,
-          personName:
-            w["personName"] != null ? (w["personName"] as string) : "",
-          pointsUnits:
-            w["pointsUnits"] != null ? (w["pointsUnits"] as number) : 0,
-        } as SessionWorkerData);
-      }
+      // 解析工人数据 - 使用统一 helper
+      const workerList = parseWorkerDataArray(workersRaw);
 
       // 更新晾堂岗位数据
       this.liangTangRolesData.set(roleCode, {
@@ -2492,145 +2429,6 @@ export default {
       });
     },
 
-    /**
-     * 构建发酵仓数据（存储层 DTO）
-     */
-    buildSessionBins(): SessionBinData[] {
-      const binsData: SessionBinData[] = [];
-      for (let i = 0; i < this.stageBinInfos.length; i++) {
-        const info = this.stageBinInfos[i];
-        const cardData = this.binCardsData.get(info.stage_bin_id);
-
-        // 构建工人数据（存储层 snake_case）
-        const workersData: SessionBinStorageWorkerData[] = [];
-        if (cardData != null) {
-          for (let j = 0; j < cardData.workers.length; j++) {
-            const w = cardData.workers[j];
-            workersData.push({
-              person_id: w.personId,
-              person_name: w.personName,
-              points_units: w.pointsUnits,
-              position_index: w.positionIndex,
-              deducted_units: w.deductedUnits,
-              penalty_reason: w.penaltyReason,
-              penalty_id: w.penaltyId,
-            } as SessionBinStorageWorkerData);
-          }
-        }
-
-        // 从 selectedBins 获取原始 BinCode
-        let classNo = 0;
-        let floorNo = 0;
-        let seqNo = 0;
-        if (i < this.selectedBins.length) {
-          classNo = this.selectedBins[i].class_no;
-          floorNo = this.selectedBins[i].floor_no;
-          seqNo = this.selectedBins[i].seq_no;
-        }
-
-        binsData.push({
-          bin_id: info.bin_id,
-          stage_bin_id: info.stage_bin_id,
-          koji_count: info.koji_count,
-          bin_code: info.bin_code,
-          class_no: classNo,
-          floor_no: floorNo,
-          seq_no: seqNo,
-          total_points_units: cardData != null ? cardData.totalPointsUnits : 0,
-          assigned_points_units: cardData != null ? cardData.assignedUnits : 0,
-          workers: workersData,
-        } as SessionBinData);
-      }
-      return binsData;
-    },
-
-    /**
-     * 构建跨仓岗位数据（存储层 DTO）
-     */
-    buildCrossBinData(): SessionCrossBinData | null {
-      // 转换 crossBinSources 为存储层格式
-      const sourcesData: AssignmentSourceCreateParams[] = [];
-      for (let i = 0; i < this.crossBinSources.length; i++) {
-        const source = this.crossBinSources[i];
-        sourcesData.push({
-          assignment_id: source.assignment_id ?? 0,
-          stage_bin_id: source.stage_bin_id,
-          source_points_units: source.source_points_units
-        } as AssignmentSourceCreateParams);
-      }
-
-      return {
-        enabled: this.showCrossBinSection,
-        role_code: this.crossBinRoleCode,
-        role_name: this.crossBinRoleName,
-        person_id: this.crossBinPersonId,
-        person_name: this.crossBinPersonName,
-        points_units: this.crossBinPointsUnits,
-        sources: sourcesData,
-      } as SessionCrossBinData;
-    },
-
-    /**
-     * 构建晾堂岗位数据（存储层 DTO）
-     */
-    buildLiangTangData(): SessionLiangTangData | null {
-      if (this.showLiangTangSection != true) {
-        return null;
-      }
-
-      // 序列化单个晾堂角色
-      const serializeLiangTangRole = (roleCode: string): SessionWorkerStorageData[] => {
-        const roleData = this.liangTangRolesData.get(roleCode);
-        if (roleData == null) {
-          return [];
-        }
-        const workersData: SessionWorkerStorageData[] = [];
-        for (let j = 0; j < roleData.workers.length; j++) {
-          const w = roleData.workers[j];
-          workersData.push({
-            person_id: w.personId,
-            person_name: w.personName,
-            points_units: w.pointsUnits,
-          } as SessionWorkerStorageData);
-        }
-        return workersData;
-      };
-
-      // 固定键构造，确保所有角色都覆盖
-      return {
-        WHEAT_MATERIAL: serializeLiangTangRole("WHEAT_MATERIAL"),
-        MACHINE_GUARD: serializeLiangTangRole("MACHINE_GUARD"),
-        KOJI_UNLOADER: serializeLiangTangRole("KOJI_UNLOADER"),
-        MICRO_OPERATOR: serializeLiangTangRole("MICRO_OPERATOR"),
-      } as SessionLiangTangData;
-    },
-
-    /**
-     * 构建堆曲数据（存储层 DTO）
-     */
-    buildDuiQuData(): SessionDuiQuData | null {
-      if (this.showDuiQuSection != true) {
-        return null;
-      }
-
-      // 直接使用强类型字段访问
-      const workersData: DuiQuStorageWorkerData[] = this.duiQuWorkers.map((w) => ({
-        person_id: w.personId,
-        person_name: w.personName,
-        points_units: w.pointsUnits,
-        position_index: w.positionIndex,
-      })) as DuiQuStorageWorkerData[];
-
-      return {
-        total_koji_count: this.duiQuTotalKojiCount,
-        total_pool_units: this.duiQuTotalPoolUnits,
-        workers: workersData,
-      } as SessionDuiQuData;
-    },
-
-    /**
-     * 保存草稿
-     */
     /**
      * 提交确认
      */
