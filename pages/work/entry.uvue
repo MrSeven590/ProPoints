@@ -1082,6 +1082,17 @@ export default {
         return result;
       }
 
+      // Helper function: 从 UTSJSONObject 转换为 SessionWorkerData
+      const parseWorkerData = (raw: UTSJSONObject): SessionWorkerData => {
+        const personIdTmp = raw['personId'];
+        const personNameTmp = raw['personName'];
+        return {
+          personId: personIdTmp != null ? personIdTmp as number : null,
+          personName: personNameTmp != null ? personNameTmp as string : '',
+          pointsUnits: 0
+        } as SessionWorkerData;
+      };
+
       const rolesData = new Map<string, LiangTangRoleData>();
       const wheatMaterialWorkers: SessionWorkerData[] = [];
       const machineGuardWorkers: SessionWorkerData[] = [];
@@ -1089,80 +1100,72 @@ export default {
       const microOperatorWorkers: SessionWorkerData[] = [];
 
       // 回填各岗位默认人员（仅人员，不回填工分）
-      const wheatMaterial = defaults["WHEAT_MATERIAL"] as UTSJSONObject[] | null;
-      if (wheatMaterial != null && wheatMaterial.length > 0) {
-        const roleWorkers: LiangTangWorkerData[] = [];
-        for (let i = 0; i < wheatMaterial.length; i++) {
-          const w = wheatMaterial[i];
-          const worker: SessionWorkerData = {
-            personId: w["personId"] as number | null,
-            personName: w["personName"] as string,
-            pointsUnits: 0
-          };
-          wheatMaterialWorkers.push(worker);
-          roleWorkers.push(worker as LiangTangWorkerData);
+      const wheatMaterialTmp = defaults['WHEAT_MATERIAL'];
+      if (wheatMaterialTmp != null) {
+        const wheatMaterial = wheatMaterialTmp as UTSJSONObject[];
+        if (wheatMaterial.length > 0) {
+          const roleWorkers: LiangTangWorkerData[] = [];
+          for (let i = 0; i < wheatMaterial.length; i++) {
+            const worker = parseWorkerData(wheatMaterial[i]);
+            wheatMaterialWorkers.push(worker);
+            roleWorkers.push(worker as LiangTangWorkerData);
+          }
+          rolesData.set('WHEAT_MATERIAL', {
+            roleCode: 'WHEAT_MATERIAL',
+            workers: roleWorkers
+          } as LiangTangRoleData);
         }
-        rolesData.set("WHEAT_MATERIAL", {
-          roleCode: "WHEAT_MATERIAL",
-          workers: roleWorkers
-        } as LiangTangRoleData);
       }
 
-      const machineGuard = defaults["MACHINE_GUARD"] as UTSJSONObject[] | null;
-      if (machineGuard != null && machineGuard.length > 0) {
-        const roleWorkers: LiangTangWorkerData[] = [];
-        for (let i = 0; i < machineGuard.length; i++) {
-          const w = machineGuard[i];
-          const worker: SessionWorkerData = {
-            personId: w["personId"] as number | null,
-            personName: w["personName"] as string,
-            pointsUnits: 0
-          };
-          machineGuardWorkers.push(worker);
-          roleWorkers.push(worker as LiangTangWorkerData);
+      const machineGuardTmp = defaults['MACHINE_GUARD'];
+      if (machineGuardTmp != null) {
+        const machineGuard = machineGuardTmp as UTSJSONObject[];
+        if (machineGuard.length > 0) {
+          const roleWorkers: LiangTangWorkerData[] = [];
+          for (let i = 0; i < machineGuard.length; i++) {
+            const worker = parseWorkerData(machineGuard[i]);
+            machineGuardWorkers.push(worker);
+            roleWorkers.push(worker as LiangTangWorkerData);
+          }
+          rolesData.set('MACHINE_GUARD', {
+            roleCode: 'MACHINE_GUARD',
+            workers: roleWorkers
+          } as LiangTangRoleData);
         }
-        rolesData.set("MACHINE_GUARD", {
-          roleCode: "MACHINE_GUARD",
-          workers: roleWorkers
-        } as LiangTangRoleData);
       }
 
-      const kojiUnloader = defaults["KOJI_UNLOADER"] as UTSJSONObject[] | null;
-      if (kojiUnloader != null && kojiUnloader.length > 0) {
-        const roleWorkers: LiangTangWorkerData[] = [];
-        for (let i = 0; i < kojiUnloader.length; i++) {
-          const w = kojiUnloader[i];
-          const worker: SessionWorkerData = {
-            personId: w["personId"] as number | null,
-            personName: w["personName"] as string,
-            pointsUnits: 0
-          };
-          kojiUnloaderWorkers.push(worker);
-          roleWorkers.push(worker as LiangTangWorkerData);
+      const kojiUnloaderTmp = defaults['KOJI_UNLOADER'];
+      if (kojiUnloaderTmp != null) {
+        const kojiUnloader = kojiUnloaderTmp as UTSJSONObject[];
+        if (kojiUnloader.length > 0) {
+          const roleWorkers: LiangTangWorkerData[] = [];
+          for (let i = 0; i < kojiUnloader.length; i++) {
+            const worker = parseWorkerData(kojiUnloader[i]);
+            kojiUnloaderWorkers.push(worker);
+            roleWorkers.push(worker as LiangTangWorkerData);
+          }
+          rolesData.set('KOJI_UNLOADER', {
+            roleCode: 'KOJI_UNLOADER',
+            workers: roleWorkers
+          } as LiangTangRoleData);
         }
-        rolesData.set("KOJI_UNLOADER", {
-          roleCode: "KOJI_UNLOADER",
-          workers: roleWorkers
-        } as LiangTangRoleData);
       }
 
-      const microOperator = defaults["MICRO_OPERATOR"] as UTSJSONObject[] | null;
-      if (microOperator != null && microOperator.length > 0) {
-        const roleWorkers: LiangTangWorkerData[] = [];
-        for (let i = 0; i < microOperator.length; i++) {
-          const w = microOperator[i];
-          const worker: SessionWorkerData = {
-            personId: w["personId"] as number | null,
-            personName: w["personName"] as string,
-            pointsUnits: 0
-          };
-          microOperatorWorkers.push(worker);
-          roleWorkers.push(worker as LiangTangWorkerData);
+      const microOperatorTmp = defaults['MICRO_OPERATOR'];
+      if (microOperatorTmp != null) {
+        const microOperator = microOperatorTmp as UTSJSONObject[];
+        if (microOperator.length > 0) {
+          const roleWorkers: LiangTangWorkerData[] = [];
+          for (let i = 0; i < microOperator.length; i++) {
+            const worker = parseWorkerData(microOperator[i]);
+            microOperatorWorkers.push(worker);
+            roleWorkers.push(worker as LiangTangWorkerData);
+          }
+          rolesData.set('MICRO_OPERATOR', {
+            roleCode: 'MICRO_OPERATOR',
+            workers: roleWorkers
+          } as LiangTangRoleData);
         }
-        rolesData.set("MICRO_OPERATOR", {
-          roleCode: "MICRO_OPERATOR",
-          workers: roleWorkers
-        } as LiangTangRoleData);
       }
 
       return {
@@ -1277,17 +1280,25 @@ export default {
           { personId: null, personName: '', pointsUnits: 0, positionIndex: 3 } as DuiQuWorkerData
         ];
       }
+
+      // Helper function: 从 UTSJSONObject 转换为 DuiQuWorkerData
+      const parseDuiQuWorkerData = (raw: UTSJSONObject, defaultIndex: number): DuiQuWorkerData => {
+        const personIdTmp = raw['personId'];
+        const personNameTmp = raw['personName'];
+        const positionIndexTmp = raw['positionIndex'];
+        return {
+          personId: personIdTmp != null ? personIdTmp as number : null,
+          personName: personNameTmp != null ? personNameTmp as string : '',
+          pointsUnits: 0,
+          positionIndex: positionIndexTmp != null ? positionIndexTmp as number : defaultIndex
+        } as DuiQuWorkerData;
+      };
+
       // 回填默认人员（仅人员，不回填工分）
       const workers: DuiQuWorkerData[] = [];
       const defaultsArray = defaults as UTSJSONObject[];
       for (let i = 0; i < defaultsArray.length; i++) {
-        const w = defaultsArray[i];
-        workers.push({
-          personId: w['personId'] as number | null,
-          personName: w['personName'] as string,
-          pointsUnits: 0,
-          positionIndex: (w['positionIndex'] as number | null) != null ? w['positionIndex'] as number : i + 1
-        } as DuiQuWorkerData);
+        workers.push(parseDuiQuWorkerData(defaultsArray[i], i + 1));
       }
       return workers;
     },
