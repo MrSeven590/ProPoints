@@ -1307,7 +1307,7 @@ export default {
       const source = payload["source"] as string | null;
 
       // 解析工人数据 - 收敛到 typed helper
-      const workerList: LiangTangWorkerData[] = [];
+      const workerList: SessionWorkerData[] = [];
       for (let i = 0; i < workersRaw.length; i++) {
         const w = workersRaw[i];
         workerList.push({
@@ -1316,7 +1316,7 @@ export default {
             w["personName"] != null ? (w["personName"] as string) : "",
           pointsUnits:
             w["pointsUnits"] != null ? (w["pointsUnits"] as number) : 0,
-        } as LiangTangWorkerData);
+        } as SessionWorkerData);
       }
 
       // 更新晾堂岗位数据
@@ -2552,8 +2552,9 @@ export default {
       for (let i = 0; i < this.crossBinSources.length; i++) {
         const source = this.crossBinSources[i];
         sourcesData.push({
+          assignment_id: source.assignment_id ?? 0,
           stage_bin_id: source.stage_bin_id,
-          source_points_units: source.source_points_units,
+          source_points_units: source.source_points_units
         } as AssignmentSourceCreateParams);
       }
 

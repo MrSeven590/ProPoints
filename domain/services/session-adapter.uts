@@ -159,6 +159,7 @@ function parseCrossBin(crossBinRaw: UTSJSONObject | null): SessionCrossBinData |
   return {
     enabled: enabled != null ? enabled : false,
     role_code: (crossBinRaw['role_code'] != null ? (crossBinRaw['role_code'] as string) : (crossBinRaw['roleCode'] != null ? (crossBinRaw['roleCode'] as string) : 'CROSS_BIN_YI_FAN')) as RoleCode,
+    role_name: crossBinRaw['role_name'] != null ? (crossBinRaw['role_name'] as string) : (crossBinRaw['roleName'] != null ? (crossBinRaw['roleName'] as string) : ''),
     person_id: crossBinRaw['person_id'] != null ? (crossBinRaw['person_id'] as number) : (crossBinRaw['personId'] != null ? (crossBinRaw['personId'] as number) : null),
     person_name: crossBinRaw['person_name'] != null ? (crossBinRaw['person_name'] as string) : (crossBinRaw['personName'] != null ? (crossBinRaw['personName'] as string) : ''),
     points_units: crossBinRaw['points_units'] != null ? (crossBinRaw['points_units'] as number) : (crossBinRaw['pointsUnits'] != null ? (crossBinRaw['pointsUnits'] as number) : 0),
@@ -262,6 +263,7 @@ export function storageJsonToSessionData(raw: UTSJSONObject): SessionData {
     session_date: (raw['session_date'] as string | null) ?? '',
     class_no: (raw['class_no'] as number | null) ?? 0,
     stage_code: ((raw['stage_code'] as string | null) ?? 'AN_QU') as StageCode,
+    stage_name: (raw['stage_name'] as string | null) ?? (raw['stageName'] as string | null) ?? '',
     round_id: raw['round_id'] as number | null,
     coef_set_id: (raw['coef_set_id'] as number | null) ?? DEFAULT_COEF_SET_ID,
     coef_snapshot: savedSnapshot,
@@ -273,7 +275,8 @@ export function storageJsonToSessionData(raw: UTSJSONObject): SessionData {
     remark: (raw['remark'] as string | null) ?? '',
     session_bonus_units: (raw['session_bonus_units'] as number | null) ?? 0,
     created_by_manager: (raw['created_by_manager'] as string | null) ?? '',
-    updated_by_manager: (raw['updated_by_manager'] as string | null) ?? ''
+    updated_by_manager: (raw['updated_by_manager'] as string | null) ?? '',
+    timestamp: (raw['timestamp'] as number | null) ?? 0
   } as SessionData
 }
 
