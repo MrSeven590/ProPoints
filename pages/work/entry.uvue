@@ -1335,8 +1335,19 @@ export default {
      * 堆曲岗位变化处理
      */
     onDuiQuRoleChange(data: UTSJSONObject) {
-      const workers = data["workers"] as UTSJSONObject[] | null;
-      if (workers != null) {
+      const workersRaw = data["workers"] as UTSJSONObject[] | null;
+      if (workersRaw != null) {
+        // 解析为强类型 DuiQuWorkerData[]
+        const workers: DuiQuWorkerData[] = [];
+        for (let i = 0; i < workersRaw.length; i++) {
+          const w = workersRaw[i];
+          workers.push({
+            personId: w["personId"] != null ? (w["personId"] as number) : null,
+            personName: w["personName"] != null ? (w["personName"] as string) : "",
+            pointsUnits: w["pointsUnits"] != null ? (w["pointsUnits"] as number) : 0,
+            positionIndex: w["positionIndex"] != null ? (w["positionIndex"] as number) : i + 1
+          } as DuiQuWorkerData);
+        }
         this.duiQuWorkers = workers;
         const source = data["source"] as string | null;
         if (source != "system") {
@@ -1366,13 +1377,13 @@ export default {
         return;
       }
       const roleCode = payload["roleCode"] as string;
-      const workers = payload["workers"] as UTSJSONObject[];
+      const workersRaw = payload["workers"] as UTSJSONObject[];
       const source = payload["source"] as string | null;
 
-      // 解析工人数据
+      // 解析工人数据 - 收敛到 typed helper
       const workerList: LiangTangWorkerData[] = [];
-      for (let i = 0; i < workers.length; i++) {
-        const w = workers[i];
+      for (let i = 0; i < workersRaw.length; i++) {
+        const w = workersRaw[i];
         workerList.push({
           personId: w["personId"] != null ? (w["personId"] as number) : null,
           personName:
@@ -1744,18 +1755,18 @@ export default {
       const kojiCount = payload["kojiCount"] as number;
       const totalPointsUnits = payload["totalPointsUnits"] as number;
       const assignedUnits = payload["assignedUnits"] as number;
-      const workersData = payload["workers"] as UTSJSONObject[];
+      const workersRaw = payload["workers"] as UTSJSONObject[];
 
-      // 解析工人数据
+      // 解析工人数据 - 收敛到 typed helper
       const workers: SessionPenaltyWorkerData[] = [];
-      for (let i = 0; i < workersData.length; i++) {
-        const w = workersData[i];
+      for (let i = 0; i < workersRaw.length; i++) {
+        const w = workersRaw[i];
         workers.push({
           personId: w["personId"] != null ? (w["personId"] as number) : null,
           personName:
             w["personName"] != null ? (w["personName"] as string) : "",
           pointsUnits:
-            w["pointsUnits"] != null ? (w["pointsUnits"] as number) : 0,
+            w["pointsUnits"] != null ? (w["pointsUnits"] as number) : 1,
           positionIndex:
             w["positionIndex"] != null ? (w["positionIndex"] as number) : i + 1,
           deductedUnits:
@@ -2168,7 +2179,7 @@ export default {
 
         // 修复：重新计算 microEnabled（基于 roundId）
         if (this.showLiangTangSection == true && this.roundId != null) {
-          this.microEnabled = isMicroEnabledByRoundId(this.roundId as number);
+          this.microEnabled = isMicroEnabledByRoundId(this.roundId);
         }
 
         // 重新计算派生数据
@@ -2786,12 +2797,12 @@ export default {
       // 只保存有人员的槽位
       for (let i = 0; i < this.duiQuWorkers.length; i++) {
         const w = this.duiQuWorkers[i];
-        const personId = w['personId'] as number | null;
-        if (personId != null) {
+        // w 已经是 DuiQuWorkerData 类型，使用强类型访问
+        if (w.personId != null) {
           defaults.push({
-            personId: personId,
-            personName: w['personName'],
-            positionIndex: w['positionIndex']
+            personId: w.personId,
+            personName: w.personName,
+            positionIndex: w.positionIndex
           } as UTSJSONObject);
         }
       }
