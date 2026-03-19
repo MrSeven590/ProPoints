@@ -842,12 +842,12 @@ export default {
         return;
       }
 
-      const sessionData = loadSessionForEdit(
+      const rawData = loadSessionForEdit(
         this.sessionDate,
         this.stageCode,
         roundId,
       );
-      if (sessionData == null) {
+      if (rawData == null) {
         uni.showToast({
           title: "无法加载会话数据",
           icon: "none",
@@ -855,27 +855,28 @@ export default {
         return;
       }
 
+      // 通过 adapter 反序列化
+      const sessionData = storageJsonToSessionData(rawData);
+
       // 修改状态为 draft
-      sessionData["status"] = "draft";
+      sessionData.status = "draft";
 
       // 审计字段：进入编辑时更新 updated_by_manager，并在缺失时补齐 created_by_manager
       const managerName = getManagerName().trim();
       if (managerName != "") {
-        const createdByManager = sessionData["created_by_manager"] as
-          | string
-          | null;
-        if (createdByManager == null || createdByManager == "") {
-          sessionData["created_by_manager"] = managerName;
+        if (sessionData.created_by_manager == null || sessionData.created_by_manager == "") {
+          sessionData.created_by_manager = managerName;
         }
-        sessionData["updated_by_manager"] = managerName;
+        sessionData.updated_by_manager = managerName;
       }
 
-      // 保存为草稿
+      // 通过 adapter 序列化后保存
+      const raw = sessionDataToStorageJson(sessionData);
       saveDraftSession(
         this.sessionDate,
         this.stageCode,
         roundId,
-        sessionData,
+        raw,
       );
 
       // 切换到编辑模式
