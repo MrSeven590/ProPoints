@@ -475,25 +475,9 @@ import {
 import {
   storageJsonToSessionData,
   sessionDataToEntryPageState,
+  sessionDataToStorageJson,
+  entryPageStateToSessionData,
 } from "../../domain/services/session-adapter.uts";
-import type {
-  SessionEntryPageState,
-  EntryBinCardState,
-  SessionData,
-  SessionBinData,
-  SessionCrossBinData,
-  SessionLiangTangData,
-  SessionDuiQuData,
-  SessionBinStorageWorkerData,
-  SessionWorkerStorageData,
-  DuiQuStorageWorkerData,
-  LiangTangRoleData,
-} from "../../domain/models/session.uts";
-import type {
-  SessionWorkerData,
-  DuiQuWorkerData,
-  SessionPenaltyWorkerData,
-} from "../../domain/models/assignment.uts";
 
 // 系数版本常量
 const DEFAULT_COEF_SET_ID = 260000;
@@ -507,6 +491,12 @@ type LiangTangDefaultsData = {
   machineGuardWorkers: SessionWorkerData[];
   kojiUnloaderWorkers: SessionWorkerData[];
   microOperatorWorkers: SessionWorkerData[];
+};
+
+// Helper type for loadLiangTangDefaults
+type LiangTangRoleDataBuildResult = {
+  workers: SessionWorkerData[];
+  roleData: LiangTangRoleData;
 };
 
 export default {
@@ -941,7 +931,7 @@ export default {
       };
 
       // Helper function: 从 UTSJSONObject[] 转换为 SessionWorkerData[] 并构建 LiangTangRoleData
-      const buildRoleData = (roleCode: RoleCode, rawWorkers: UTSJSONObject[] | null): { workers: SessionWorkerData[], roleData: LiangTangRoleData } => {
+      const buildRoleData = (roleCode: RoleCode, rawWorkers: UTSJSONObject[] | null): LiangTangRoleDataBuildResult => {
         const workers: SessionWorkerData[] = [];
         if (rawWorkers != null && rawWorkers.length > 0) {
           for (let i = 0; i < rawWorkers.length; i++) {
@@ -2149,8 +2139,9 @@ export default {
       if (this.sessionStatus == 'draft' && this.isSubmitting == false) {
         uni.hideKeyboard();
         try {
-          const sessionData = this.buildSessionData('draft');
-          saveDraftSession(fromDate, this.stageCode, this.roundId, sessionData);
+          const session = this.buildSessionData('draft');
+          const raw = sessionDataToStorageJson(session);
+          saveDraftSession(fromDate, this.stageCode, this.roundId, raw);
           this.savedRevision = this.draftRevision;
         } catch (e) {
           console.error('保存草稿失败:', e);
@@ -2409,8 +2400,9 @@ export default {
       if (this.sessionStatus == 'draft' && this.isSubmitting == false && roundId != null && roundId != 0) {
         uni.hideKeyboard();
         try {
-          const sessionData = this.buildSessionData('draft');
-          saveDraftSession(date, this.stageCode, roundId, sessionData);
+          const session = this.buildSessionData('draft');
+          const raw = sessionDataToStorageJson(session);
+          saveDraftSession(date, this.stageCode, roundId, raw);
           this.savedRevision = this.draftRevision;
         } catch (e) {
           console.error('保存草稿失败:', e);
@@ -2421,6 +2413,45 @@ export default {
     // ============================================
     // 旧的日期切换方法（已废弃，保留用于兼容）
     // ============================================
+
+    /**
+     * 捕获当前页面状态快照
+     * @param status 会话状态
+     * @returns 页面状态快照
+     */
+    captureCurrentEntryState(status: SessionStatus): SessionEntryPageState {
+      return {
+        hasData: true,
+        sessionDate: this.sessionDate,
+        coefSetId: this.coefSetId ?? DEFAULT_COEF_SET_ID,
+        coefSnapshot: this.coefSnapshot,
+        selectedBins: this.selectedBins,
+        stageBinInfos: this.stageBinInfos,
+        binCardsData: this.binCardsData,
+        showCrossBinSection: this.showCrossBinSection,
+        crossBinRoleCode: this.crossBinRoleCode,
+        crossBinPersonId: this.crossBinPersonId,
+        crossBinPersonName: this.crossBinPersonName,
+        crossBinPointsUnits: this.crossBinPointsUnits,
+        crossBinSources: this.crossBinSources,
+        liangTangRolesData: this.liangTangRolesData,
+        wheatMaterialWorkers: this.wheatMaterialWorkers,
+        machineGuardWorkers: this.machineGuardWorkers,
+        kojiUnloaderWorkers: this.kojiUnloaderWorkers,
+        microOperatorWorkers: this.microOperatorWorkers,
+        duiQuWorkers: this.duiQuWorkers,
+        duiQuTotalKojiCount: this.duiQuTotalKojiCount,
+        duiQuTotalPoolUnits: this.duiQuTotalPoolUnits,
+        sessionStatus: status,
+        viewMode: this.viewMode,
+        sessionRemark: this.sessionRemark,
+        sessionBonusUnits: this.sessionBonusUnits,
+        createdByManager: this.createdByManager,
+        updatedByManager: this.updatedByManager,
+        occupiedIds: this.occupiedIds,
+        missingAnQuBins: this.missingAnQuBins
+      } as SessionEntryPageState
+    },
 
     /**
      * 构建会话数据对象
@@ -2445,28 +2476,19 @@ export default {
         this.updatedByManager = managerName;
       }
 
-      // 构建完整会话数据
-      const sessionData: SessionData = {
-        session_date: this.sessionDate,
-        class_no: getCurrentClassNo(),
-        stage_code: this.stageCode,
-        stage_name: this.stageName,
-        round_id: this.roundId,
-        coef_set_id: this.coefSetId ?? DEFAULT_COEF_SET_ID,
-        coef_snapshot: this.coefSnapshot,
-        bins: this.buildSessionBins(),
-        cross_bin: this.buildCrossBinData(),
-        liang_tang: this.buildLiangTangData(),
-        dui_qu: this.buildDuiQuData(),
-        status: status,
-        remark: this.sessionRemark,
-        session_bonus_units: this.sessionBonusUnits,
-        created_by_manager: this.createdByManager,
-        updated_by_manager: this.updatedByManager,
+      // 通过 adapter 构建 SessionData
+      const state = this.captureCurrentEntryState(status);
+      return entryPageStateToSessionData(state, {
+        classNo: getCurrentClassNo(),
+        stageCode: this.stageCode,
+        stageName: this.stageName,
+        roundId: this.roundId,
+        coefSetId: this.coefSetId ?? DEFAULT_COEF_SET_ID,
+        coefSnapshot: this.coefSnapshot,
+        managerName: managerName,
         timestamp: getCurrentTimestamp(),
-      };
-
-      return sessionData;
+        crossBinRoleName: this.crossBinRoleName
+      });
     },
 
     /**
@@ -2680,11 +2702,12 @@ export default {
      * 确认并提交会话数据
      * @param sessionData 会话数据
      */
-    doSubmit(sessionData: UTSJSONObject) {
+    doSubmit(sessionData: SessionData) {
       this.cancelAutoSave();
       this.isSubmitting = true;
       try {
-        saveSubmittedSession(this.sessionDate, this.stageCode, this.roundId, sessionData);
+        const raw = sessionDataToStorageJson(sessionData);
+        saveSubmittedSession(this.sessionDate, this.stageCode, this.roundId, raw);
         this.saveLiangTangDefaultPersons();
         this.saveDuiQuDefaults();
         this.sessionStatus = "submitted";
@@ -2698,7 +2721,7 @@ export default {
       }
     },
 
-    confirmAndSubmit(sessionData: UTSJSONObject) {
+    confirmAndSubmit(sessionData: SessionData) {
       uni.showModal({
         title: "提示",
         content: "确认提交工分录入？",
@@ -2835,14 +2858,15 @@ export default {
 
       try {
         // 构建会话数据
-        const sessionData = this.buildSessionData("draft");
+        const session = this.buildSessionData("draft");
+        const raw = sessionDataToStorageJson(session);
 
         // 保存到存储
         saveDraftSession(
           this.sessionDate,
           this.stageCode,
           this.roundId,
-          sessionData,
+          raw,
         );
 
         // 更新已保存版本号

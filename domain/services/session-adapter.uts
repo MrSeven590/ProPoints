@@ -65,12 +65,15 @@ export type SessionEntryStateBuildOptions = {
  * Session 数据构建选项
  */
 export type SessionDataBuildOptions = {
+  classNo: number
   stageCode: StageCode
   stageName: string
   roundId: number | null
   coefSetId: number
   coefSnapshot: UTSJSONObject | null
   managerName: string
+  timestamp: number
+  crossBinRoleName: string
 }
 
 // ============================================
@@ -284,8 +287,123 @@ export function storageJsonToSessionData(raw: UTSJSONObject): SessionData {
  * @returns 用于存储的 JSON 对象
  */
 export function sessionDataToStorageJson(data: SessionData): UTSJSONObject {
-  // TODO: 后续 commit 实现
-  return {} as UTSJSONObject
+  const binsRaw: UTSJSONObject[] = []
+  for (let i = 0; i < data.bins.length; i++) {
+    const bin = data.bins[i]
+    const workersRaw: UTSJSONObject[] = []
+
+    for (let j = 0; j < bin.workers.length; j++) {
+      const worker = bin.workers[j]
+      workersRaw.push({
+        person_id: worker.person_id,
+        person_name: worker.person_name,
+        points_units: worker.points_units,
+        position_index: worker.position_index,
+        deducted_units: worker.deducted_units,
+        penalty_reason: worker.penalty_reason,
+        penalty_id: worker.penalty_id
+      } as UTSJSONObject)
+    }
+
+    binsRaw.push({
+      bin_id: bin.bin_id,
+      stage_bin_id: bin.stage_bin_id,
+      koji_count: bin.koji_count,
+      bin_code: bin.bin_code,
+      class_no: bin.class_no,
+      floor_no: bin.floor_no,
+      seq_no: bin.seq_no,
+      total_points_units: bin.total_points_units,
+      assigned_points_units: bin.assigned_points_units,
+      workers: workersRaw
+    } as UTSJSONObject)
+  }
+
+  let crossBinRaw: UTSJSONObject | null = null
+  if (data.cross_bin != null) {
+    const sourcesRaw: UTSJSONObject[] = []
+    for (let i = 0; i < data.cross_bin.sources.length; i++) {
+      const source = data.cross_bin.sources[i]
+      sourcesRaw.push({
+        assignment_id: source.assignment_id,
+        stage_bin_id: source.stage_bin_id,
+        source_points_units: source.source_points_units
+      } as UTSJSONObject)
+    }
+
+    crossBinRaw = {
+      enabled: data.cross_bin.enabled,
+      role_code: data.cross_bin.role_code,
+      role_name: data.cross_bin.role_name,
+      person_id: data.cross_bin.person_id,
+      person_name: data.cross_bin.person_name,
+      points_units: data.cross_bin.points_units,
+      sources: sourcesRaw
+    } as UTSJSONObject
+  }
+
+  let liangTangRaw: UTSJSONObject | null = null
+  if (data.liang_tang != null) {
+    const serializeWorkers = (workers: SessionWorkerStorageData[]): UTSJSONObject[] => {
+      const result: UTSJSONObject[] = []
+      for (let i = 0; i < workers.length; i++) {
+        const worker = workers[i]
+        result.push({
+          person_id: worker.person_id,
+          person_name: worker.person_name,
+          points_units: worker.points_units
+        } as UTSJSONObject)
+      }
+      return result
+    }
+
+    liangTangRaw = {
+      WHEAT_MATERIAL: serializeWorkers(data.liang_tang.WHEAT_MATERIAL),
+      MACHINE_GUARD: serializeWorkers(data.liang_tang.MACHINE_GUARD),
+      KOJI_UNLOADER: serializeWorkers(data.liang_tang.KOJI_UNLOADER),
+      MICRO_OPERATOR: serializeWorkers(data.liang_tang.MICRO_OPERATOR)
+    } as UTSJSONObject
+  }
+
+  let duiQuRaw: UTSJSONObject | null = null
+  if (data.dui_qu != null) {
+    const workersRaw: UTSJSONObject[] = []
+    for (let i = 0; i < data.dui_qu.workers.length; i++) {
+      const worker = data.dui_qu.workers[i]
+      workersRaw.push({
+        person_id: worker.person_id,
+        person_name: worker.person_name,
+        points_units: worker.points_units,
+        position_index: worker.position_index
+      } as UTSJSONObject)
+    }
+
+    duiQuRaw = {
+      total_koji_count: data.dui_qu.total_koji_count,
+      total_pool_units: data.dui_qu.total_pool_units,
+      workers: workersRaw
+    } as UTSJSONObject
+  }
+
+  return {
+    session_date: data.session_date,
+    class_no: data.class_no,
+    stage_code: data.stage_code,
+    stage_name: data.stage_name,
+    round_id: data.round_id,
+    coef_set_id: data.coef_set_id,
+    coef_snapshot: data.coef_snapshot,
+    bins: binsRaw,
+    cross_bin: crossBinRaw,
+    liang_tang: liangTangRaw,
+    dui_qu: duiQuRaw,
+    status: data.status,
+    remark: data.remark,
+    session_bonus_units: data.session_bonus_units,
+    created_by_manager: data.created_by_manager,
+    updated_by_manager: data.updated_by_manager,
+    timestamp: data.timestamp
+  } as UTSJSONObject
 }
 
 // ============================================
@@ -533,6 +651,159 @@ export function entryPageStateToSessionData(
   state: SessionEntryPageState,
   options: SessionDataBuildOptions
 ): SessionData {
-  // TODO: 后续 commit 实现
-  return {} as SessionData
+  const bins: SessionBinData[] = []
+
+  for (let i = 0; i < state.stageBinInfos.length; i++) {
+    const info = state.stageBinInfos[i]
+    const cardData = state.binCardsData.get(info.stage_bin_id)
+
+    const workers: SessionBinStorageWorkerData[] = []
+    if (cardData != null) {
+      for (let j = 0; j < cardData.workers.length; j++) {
+        const worker = cardData.workers[j]
+        workers.push({
+          person_id: worker.personId,
+          person_name: worker.personName,
+          points_units: worker.pointsUnits,
+          position_index: worker.positionIndex,
+          deducted_units: worker.deductedUnits,
+          penalty_reason: worker.penaltyReason,
+          penalty_id: worker.penaltyId
+        } as SessionBinStorageWorkerData)
+      }
+    }
+
+    let classNo = 0
+    let floorNo = 0
+    let seqNo = 0
+    if (i < state.selectedBins.length) {
+      classNo = state.selectedBins[i].class_no
+      floorNo = state.selectedBins[i].floor_no
+      seqNo = state.selectedBins[i].seq_no
+    }
+
+    bins.push({
+      bin_id: info.bin_id,
+      stage_bin_id: info.stage_bin_id,
+      koji_count: info.koji_count,
+      bin_code: info.bin_code,
+      class_no: classNo,
+      floor_no: floorNo,
+      seq_no: seqNo,
+      total_points_units: cardData != null ? cardData.totalPointsUnits : 0,
+      assigned_points_units: cardData != null ? cardData.assignedUnits : 0,
+      workers: workers
+    } as SessionBinData)
+  }
+
+  let crossBin: SessionCrossBinData | null = null
+  if (state.showCrossBinSection == true) {
+    const sources: AssignmentSourceCreateParams[] = []
+    for (let i = 0; i < state.crossBinSources.length; i++) {
+      const source = state.crossBinSources[i]
+      sources.push({
+        assignment_id: source.assignment_id,
+        stage_bin_id: source.stage_bin_id,
+        source_points_units: source.source_points_units
+      } as AssignmentSourceCreateParams)
+    }
+
+    crossBin = {
+      enabled: true,
+      role_code: state.crossBinRoleCode,
+      role_name: options.crossBinRoleName,
+      person_id: state.crossBinPersonId,
+      person_name: state.crossBinPersonName,
+      points_units: state.crossBinPointsUnits,
+      sources: sources
+    } as SessionCrossBinData
+  } else {
+    crossBin = {
+      enabled: false,
+      role_code: state.crossBinRoleCode,
+      role_name: options.crossBinRoleName,
+      person_id: null,
+      person_name: '',
+      points_units: 0,
+      sources: []
+    } as SessionCrossBinData
+  }
+
+  let liangTang: SessionLiangTangData | null = null
+  const hasLiangTangData = state.liangTangRolesData.size > 0 ||
+    state.wheatMaterialWorkers.length > 0 ||
+    state.machineGuardWorkers.length > 0 ||
+    state.kojiUnloaderWorkers.length > 0 ||
+    state.microOperatorWorkers.length > 0
+
+  if (hasLiangTangData) {
+    const serializeRole = (roleCode: string): SessionWorkerStorageData[] => {
+      const roleData = state.liangTangRolesData.get(roleCode)
+      if (roleData == null) {
+        return []
+      }
+
+      const workers: SessionWorkerStorageData[] = []
+      for (let i = 0; i < roleData.workers.length; i++) {
+        const worker = roleData.workers[i]
+        workers.push({
+          person_id: worker.personId,
+          person_name: worker.personName,
+          points_units: worker.pointsUnits
+        } as SessionWorkerStorageData)
+      }
+      return workers
+    }
+
+    liangTang = {
+      WHEAT_MATERIAL: serializeRole('WHEAT_MATERIAL'),
+      MACHINE_GUARD: serializeRole('MACHINE_GUARD'),
+      KOJI_UNLOADER: serializeRole('KOJI_UNLOADER'),
+      MICRO_OPERATOR: serializeRole('MICRO_OPERATOR')
+    } as SessionLiangTangData
+  }
+
+  let duiQu: SessionDuiQuData | null = null
+  if (state.duiQuWorkers.length > 0 || state.duiQuTotalKojiCount > 0 || state.duiQuTotalPoolUnits > 0) {
+    const workers: DuiQuStorageWorkerData[] = []
+    for (let i = 0; i < state.duiQuWorkers.length; i++) {
+      const worker = state.duiQuWorkers[i]
+      workers.push({
+        person_id: worker.personId,
+        person_name: worker.personName,
+        points_units: worker.pointsUnits,
+        position_index: worker.positionIndex
+      } as DuiQuStorageWorkerData)
+    }
+
+    duiQu = {
+      total_koji_count: state.duiQuTotalKojiCount,
+      total_pool_units: state.duiQuTotalPoolUnits,
+      workers: workers
+    } as SessionDuiQuData
+  }
+
+  const managerName = options.managerName.trim()
+  const createdByManager = state.createdByManager != '' ? state.createdByManager : managerName
+  const updatedByManager = managerName != '' ? managerName : state.updatedByManager
+
+  return {
+    session_date: state.sessionDate,
+    class_no: options.classNo,
+    stage_code: options.stageCode,
+    stage_name: options.stageName,
+    round_id: options.roundId,
+    coef_set_id: options.coefSetId,
+    coef_snapshot: options.coefSnapshot,
+    bins: bins,
+    cross_bin: crossBin,
+    liang_tang: liangTang,
+    dui_qu: duiQu,
+    status: state.sessionStatus,
+    remark: state.sessionRemark,
+    session_bonus_units: state.sessionBonusUnits,
+    created_by_manager: createdByManager,
+    updated_by_manager: updatedByManager,
+    timestamp: options.timestamp
+  } as SessionData
 }
