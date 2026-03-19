@@ -12,6 +12,12 @@
 
 import { PointsUnits, formatPointsUnits, StageCode, RoleCode } from '../models/types.uts'
 import { calcLiangTangPoolUnits } from './ScoreCalculator.uts'
+import {
+  SessionData,
+  SessionWorkerStorageData,
+  DuiQuStorageWorkerData
+} from '../models/session.uts'
+import { storageJsonToSessionData } from './session-adapter.uts'
 
 // 晾堂岗位角色列表常量（修复 M1：统一定义必需岗位）
 const LIANG_TANG_REQUIRED_ROLES: RoleCode[] = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER']
@@ -301,7 +307,7 @@ type NormalizedWorker = {
 }
 
 /**
- * 标准化后的发酵仓数据
+ * 标准化后的仓位数据
  */
 type NormalizedBin = {
   bin_id: number
@@ -313,7 +319,7 @@ type NormalizedBin = {
 }
 
 /**
- * 标准化后的跨仓来源数据
+ * 标准化后的跨仓来源
  */
 type NormalizedCrossBinSource = {
   stage_bin_id: number
@@ -372,6 +378,7 @@ type NormalizedDuiQu = {
 
 /**
  * 标准化后的会话数据
+ * 统一的字段命名规范：snake_case（存储态）
  */
 type NormalizedSessionData = {
   status: string
@@ -391,65 +398,43 @@ type NormalizedSessionData = {
 }
 
 /**
- * 标准化会话数据
- * 将原始 UTSJSONObject 转换为类型安全的标准化数据结构
- * @param raw 原始会话数据
+ * 标准化强类型 SessionData（Phase 2 C6 新增）
+ * 直接从强类型 SessionData 转换为 NormalizedSessionData
+ * 规则层只认 DTO 字段：person_id/points_units/deducted_units/position_index
+ *
+ * @param data 强类型的 SessionData
  * @returns 标准化后的会话数据
  */
-function normalizeSessionData(raw: UTSJSONObject): NormalizedSessionData {
-  // 解析基础字段
-  const status = raw['status'] as string | null
-  const sessionDate = raw['session_date'] as string | null
-  const stageCode = raw['stage_code'] as string | null
-  const stageName = raw['stage_name'] as string | null
-  const roundId = raw['round_id'] as number | null
-  const coefSetId = raw['coef_set_id'] as number | null
-  const createdByManager = raw['created_by_manager'] as string | null
-  const updatedByManager = raw['updated_by_manager'] as string | null
-  const remark = raw['remark'] as string | null
-
+function normalizeTypedSessionData(data: SessionData): NormalizedSessionData {
   // 解析发酵仓数据
-  const binsRaw = raw['bins'] as UTSJSONObject[] | null
   const bins: NormalizedBin[] = []
-  if (binsRaw != null) {
-    for (let i = 0; i < binsRaw.length; i++) {
-      const binRaw = binsRaw[i]
-      const binId = binRaw['bin_id'] as number | null
-      const stageBinId = binRaw['stage_bin_id'] as number | null
-      const binCode = binRaw['bin_code'] as string | null
-      const kojiCount = binRaw['koji_count'] as number | null
-      const totalPointsUnits = binRaw['total_points_units'] as number | null
-
-      const workersRaw = binRaw['workers'] as UTSJSONObject[] | null
-      const workers: NormalizedWorker[] = []
-      if (workersRaw != null) {
-        for (let j = 0; j < workersRaw.length; j++) {
-          const workerRaw = workersRaw[j]
-          workers.push({
-            person_id: workerRaw['personId'] as number | null,
-            person_name: (workerRaw['personName'] as string | null) != null ? (workerRaw['personName'] as string) : '',
-            points_units: (workerRaw['pointsUnits'] as number | null) != null ? (workerRaw['pointsUnits'] as number) : 0,
-            deducted_units: (workerRaw['deductedUnits'] as number | null) != null ? (workerRaw['deductedUnits'] as number) : 0,
-            penalty_reason: (workerRaw['penaltyReason'] as string | null) != null ? (workerRaw['penaltyReason'] as string) : '',
-            penalty_id: workerRaw['penaltyId'] as number | null,
-            position_index: (workerRaw['positionIndex'] as number | null) != null ? (workerRaw['positionIndex'] as number) : j + 1
-          } as NormalizedWorker)
-        }
-      }
-
-      bins.push({
-        bin_id: binId != null ? binId : 0,
-        stage_bin_id: stageBinId != null ? stageBinId : 0,
-        bin_code: binCode != null ? binCode : '',
-        koji_count: kojiCount != null ? kojiCount : 0,
-        total_points_units: totalPointsUnits != null ? totalPointsUnits : 0,
-        workers: workers
-      } as NormalizedBin)
+  for (let i = 0; i < data.bins.length; i++) {
+    const bin = data.bins[i]
+    const workers: NormalizedWorker[] = []
+    for (let j = 0; j < bin.workers.length; j++) {
+      const worker = bin.workers[j]
+      workers.push({
+        person_id: worker.person_id,
+        person_name: worker.person_name,
+        points_units: worker.points_units,
+        deducted_units: worker.deducted_units,
+        penalty_reason: worker.penalty_reason,
+        penalty_id: worker.penalty_id,
+        position_index: worker.position_index
+      } as NormalizedWorker)
     }
+
+    bins.push({
+      bin_id: bin.bin_id,
+      stage_bin_id: bin.stage_bin_id,
+      bin_code: bin.bin_code,
+      koji_count: bin.koji_count,
+      total_points_units: bin.total_points_units,
+      workers: workers
+    } as NormalizedBin)
   }
 
   // 解析跨仓岗位数据
-  const crossBinRaw = raw['cross_bin'] as UTSJSONObject | null
   let crossBin: NormalizedCrossBin = {
     enabled: false,
     role_code: 'CART_PULLER' as RoleCode,
@@ -460,53 +445,48 @@ function normalizeSessionData(raw: UTSJSONObject): NormalizedSessionData {
     sources: []
   } as NormalizedCrossBin
 
-  if (crossBinRaw != null) {
-    const enabled = crossBinRaw['enabled'] as boolean | null
-    const roleCode = crossBinRaw['role_code'] as string | null
-    const roleName = crossBinRaw['role_name'] as string | null
-    const personId = crossBinRaw['person_id'] as number | null
-    const personName = crossBinRaw['person_name'] as string | null
-    const pointsUnits = crossBinRaw['points_units'] as number | null
-
-    const sourcesRaw = crossBinRaw['sources'] as UTSJSONObject[] | null
+  if (data.cross_bin != null) {
+    const crossBinData = data.cross_bin!!
     const sources: NormalizedCrossBinSource[] = []
-    if (sourcesRaw != null) {
-      for (let i = 0; i < sourcesRaw.length; i++) {
-        const sourceRaw = sourcesRaw[i]
+    const crossBinSources = crossBinData.sources
+    if (crossBinSources != null) {
+      for (let i = 0; i < crossBinSources.length; i++) {
+        const source = crossBinSources[i]
         sources.push({
-          stage_bin_id: (sourceRaw['stage_bin_id'] as number | null) != null ? (sourceRaw['stage_bin_id'] as number) : 0,
-          source_points_units: (sourceRaw['source_points_units'] as number | null) != null ? (sourceRaw['source_points_units'] as number) : 0
+          stage_bin_id: source.stage_bin_id,
+          source_points_units: source.source_points_units
         } as NormalizedCrossBinSource)
       }
     }
 
+    const crossBinEnabled = crossBinData.enabled
     crossBin = {
-      enabled: enabled != null ? enabled : false,
-      role_code: (roleCode as RoleCode | null) != null ? (roleCode as RoleCode) : ('CART_PULLER' as RoleCode),
-      role_name: roleName != null ? roleName : '拉车',
-      person_id: personId,
-      person_name: personName != null ? personName : '',
-      points_units: pointsUnits != null ? pointsUnits : 0,
+      enabled: crossBinEnabled != null ? crossBinEnabled : false,
+      role_code: crossBinData.role_code,
+      role_name: crossBinData.role_name,
+      person_id: crossBinData.person_id,
+      person_name: crossBinData.person_name,
+      points_units: crossBinData.points_units,
       sources: sources
     } as NormalizedCrossBin
   }
 
   // 解析晾堂岗位数据
-  const liangTangRaw = raw['liang_tang'] as UTSJSONObject | null
   const liangTang = new Map<string, NormalizedLiangTangRole>()
-  if (liangTangRaw != null) {
-    const roleKeys = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER', 'MICRO_OPERATOR']
+  if (data.liang_tang != null) {
+    const liangTangData = data.liang_tang
+    const roleKeys: string[] = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER', 'MICRO_OPERATOR']
     for (let i = 0; i < roleKeys.length; i++) {
       const roleKey = roleKeys[i]
-      const roleWorkersRaw = liangTangRaw[roleKey] as UTSJSONObject[] | null
-      if (roleWorkersRaw != null) {
+      const roleWorkers = liangTangData[roleKey] as SessionWorkerStorageData[] | null
+      if (roleWorkers != null) {
         const workers: NormalizedLiangTangWorker[] = []
-        for (let j = 0; j < roleWorkersRaw.length; j++) {
-          const workerRaw = roleWorkersRaw[j]
+        for (let j = 0; j < roleWorkers.length; j++) {
+          const worker = roleWorkers[j]
           workers.push({
-            person_id: workerRaw['personId'] as number | null,
-            person_name: (workerRaw['personName'] as string | null) != null ? (workerRaw['personName'] as string) : '',
-            points_units: (workerRaw['pointsUnits'] as number | null) != null ? (workerRaw['pointsUnits'] as number) : 0
+            person_id: worker.person_id,
+            person_name: worker.person_name,
+            points_units: worker.points_units
           } as NormalizedLiangTangWorker)
         }
 
@@ -531,54 +511,60 @@ function normalizeSessionData(raw: UTSJSONObject): NormalizedSessionData {
   }
 
   // 解析堆曲数据（仅拆曲环节）
-  const duiQuRaw = raw['dui_qu'] as UTSJSONObject | null
   let duiQu: NormalizedDuiQu | null = null
-
-  if (duiQuRaw != null) {
-    const totalKojiCount = duiQuRaw['total_koji_count'] as number | null
-    const totalPoolUnits = duiQuRaw['total_pool_units'] as number | null
-    const workersRaw = duiQuRaw['workers'] as UTSJSONObject[] | null
-
+  if (data.dui_qu != null) {
+    const duiQuData = data.dui_qu
     const workers: NormalizedDuiQuWorker[] = []
-    if (workersRaw != null) {
-      for (let i = 0; i < workersRaw.length; i++) {
-        const workerRaw = workersRaw[i]
+    const duiQuWorkers = duiQuData.workers as DuiQuStorageWorkerData[] | null
+    if (duiQuWorkers != null) {
+      for (let i = 0; i < duiQuWorkers.length; i++) {
+        const worker = duiQuWorkers[i]
         workers.push({
-          person_id: workerRaw['personId'] as number | null,
-          person_name: (workerRaw['personName'] as string | null) != null ? (workerRaw['personName'] as string) : '',
-          points_units: (workerRaw['pointsUnits'] as number | null) != null ? (workerRaw['pointsUnits'] as number) : 0,
-          position_index: (workerRaw['positionIndex'] as number | null) != null ? (workerRaw['positionIndex'] as number) : i + 1
+          person_id: worker.person_id,
+          person_name: worker.person_name,
+          points_units: worker.points_units,
+          position_index: worker.position_index
         } as NormalizedDuiQuWorker)
       }
     }
 
     duiQu = {
-      total_koji_count: totalKojiCount != null ? totalKojiCount : 0,
-      total_pool_units: totalPoolUnits != null ? totalPoolUnits : 0,
+      total_koji_count: duiQuData.total_koji_count,
+      total_pool_units: duiQuData.total_pool_units,
       workers: workers
     } as NormalizedDuiQu
   }
 
-  // 解析会话级班组加分
-  const sessionBonusUnitsRaw = raw['session_bonus_units'] as number | null
-  const sessionBonusUnits: PointsUnits = sessionBonusUnitsRaw != null ? sessionBonusUnitsRaw : 0
-
   return {
-    status: status != null ? status : 'draft',
-    session_date: sessionDate != null ? sessionDate : '',
-    stage_code: (stageCode as StageCode | null) != null ? (stageCode as StageCode) : ('AN_QU' as StageCode),
-    stage_name: stageName != null ? stageName : '',
-    round_id: roundId,
-    coef_set_id: coefSetId,
-    created_by_manager: createdByManager != null ? createdByManager : '',
-    updated_by_manager: updatedByManager != null ? updatedByManager : '',
-    remark: remark != null ? remark : '',
+    status: data.status,
+    session_date: data.session_date,
+    stage_code: data.stage_code,
+    stage_name: data.stage_name != null ? data.stage_name : '',
+    round_id: data.round_id,
+    coef_set_id: data.coef_set_id,
+    created_by_manager: data.created_by_manager,
+    updated_by_manager: data.updated_by_manager,
+    remark: data.remark,
     bins: bins,
     cross_bin: crossBin,
     liang_tang: liangTang,
     dui_qu: duiQu,
-    session_bonus_units: sessionBonusUnits
+    session_bonus_units: data.session_bonus_units
   } as NormalizedSessionData
+}
+
+/**
+ * 标准化 UTSJSONObject（兼容旧入口）
+ * 保留此函数以兼容现有调用方，内部转换为强类型后复用 normalizeTypedSessionData
+ *
+ * @param raw UTSJSONObject 格式的会话数据
+ * @returns 标准化后的会话数据
+ */
+function normalizeSessionData(raw: UTSJSONObject): NormalizedSessionData {
+  // 转换为强类型 SessionData
+  const sessionData = storageJsonToSessionData(raw)
+  // 复用 typed 版本的标准化逻辑
+  return normalizeTypedSessionData(sessionData)
 }
 
 /**
@@ -1050,10 +1036,10 @@ registerRule({
     const errors: ValidationError[] = []
 
     // 遍历 person_locations，找出重复分配的人员
-    runtime.person_locations.forEach((locations: string[], personId: number) => {
+    runtime.person_locations.forEach((locations: string[], person_id: number) => {
       if (locations.length > 1) {
         const location = createEmptyLocation(ctx.stage_code)
-        location.person_id = personId
+        location.person_id = person_id
 
         // 获取人员姓名（从第一个位置获取）
         let personName = ''
@@ -1061,7 +1047,7 @@ registerRule({
         for (let i = 0; i < data.bins.length; i++) {
           const bin = data.bins[i]
           for (let j = 0; j < bin.workers.length; j++) {
-            if (bin.workers[j].person_id == personId) {
+            if (bin.workers[j].person_id == person_id) {
               personName = bin.workers[j].person_name
               break
             }
@@ -1071,7 +1057,7 @@ registerRule({
           }
         }
         // 从跨仓岗位查找
-        if (personName == '' && data.cross_bin.person_id == personId) {
+        if (personName == '' && data.cross_bin.person_id == person_id) {
           personName = data.cross_bin.person_name
         }
         // 从晾堂岗位查找（修复 M1：遍历所有可能的岗位）
@@ -1081,7 +1067,7 @@ registerRule({
             const role = data.liang_tang.get(allLiangTangRoles[r])
             if (role != null) {
               for (let i = 0; i < role.workers.length; i++) {
-                if (role.workers[i].person_id == personId) {
+                if (role.workers[i].person_id == person_id) {
                   personName = role.workers[i].person_name
                   break
                 }
@@ -1105,7 +1091,7 @@ registerRule({
             where_a: locations[0],
             where_b: locations[1]
           } as UTSJSONObject,
-          `person_id=${personId}`,
+          `person_id=${person_id}`,
           location,
           ctx.locale
         ))
@@ -1740,15 +1726,27 @@ registerRule({
  * @param ctx 校验上下文
  * @returns 校验结果
  */
-export function validateSessionData(
-  raw: UTSJSONObject,
+// ============================================
+// 公共 API
+// ============================================
+
+/**
+ * 校验强类型 SessionData（Phase 2 C6 新增）
+ * 主流程入口，接受强类型 SessionData
+ *
+ * @param data 强类型的 SessionData
+ * @param ctx 校验上下文
+ * @returns 校验结果
+ */
+export function validateTypedSessionData(
+  data: SessionData,
   ctx: ValidationContext
 ): ValidationResult {
   // 1. 标准化数据
-  const data = normalizeSessionData(raw)
+  const normalized = normalizeTypedSessionData(data)
 
   // 2. 构建运行时上下文
-  const runtime = buildRuntimeContext(data)
+  const runtime = buildRuntimeContext(normalized)
 
   // 3. 获取适用的规则并排序
   const rules = getRulesForMode(ctx.mode)
@@ -1758,7 +1756,7 @@ export function validateSessionData(
   const allErrors: ValidationError[] = []
   for (let i = 0; i < sortedRules.length; i++) {
     const rule = sortedRules[i]
-    const ruleErrors = rule.fn(data, ctx, runtime)
+    const ruleErrors = rule.fn(normalized, ctx, runtime)
     for (let j = 0; j < ruleErrors.length; j++) {
       allErrors.push(ruleErrors[j])
     }
@@ -1781,6 +1779,24 @@ export function validateSessionData(
     has_warnings: hasWarnings,
     errors: allErrors
   } as ValidationResult
+}
+
+/**
+ * 校验 UTSJSONObject（兼容旧入口）
+ * 保留此函数以兼容现有调用方，内部转换为强类型后复用 validateTypedSessionData
+ *
+ * @param raw UTSJSONObject 格式的会话数据
+ * @param ctx 校验上下文
+ * @returns 校验结果
+ */
+export function validateSessionData(
+  raw: UTSJSONObject,
+  ctx: ValidationContext
+): ValidationResult {
+  // 转换为强类型 SessionData
+  const sessionData = storageJsonToSessionData(raw)
+  // 复用 typed 版本的校验逻辑
+  return validateTypedSessionData(sessionData, ctx)
 }
 
 /**
