@@ -484,7 +484,10 @@ import {
   buildLiangTangRoleData,
   parseDuiQuWorkerData,
   parseDuiQuWorkerDataArray,
+  serializeLiangTangDefaults,
+  serializeDuiQuWorkerDataArray,
   type LiangTangRoleDataBuildResult,
+  type LiangTangDefaultsSerializeResult,
 } from "../../domain/services/default-data-parser.uts";
 
 // 系数版本常量
@@ -1155,24 +1158,16 @@ export default {
         ];
       }
 
-      // Helper function: 从 UTSJSONObject 转换为 DuiQuWorkerData
-      const parseDuiQuWorkerData = (raw: UTSJSONObject, defaultIndex: number): DuiQuWorkerData => {
-        const personIdTmp = raw['personId'];
-        const personNameTmp = raw['personName'];
-        const positionIndexTmp = raw['positionIndex'];
-        return {
-          personId: personIdTmp != null ? personIdTmp as number : null,
-          personName: personNameTmp != null ? personNameTmp as string : '',
-          pointsUnits: 0,
-          positionIndex: positionIndexTmp != null ? positionIndexTmp as number : defaultIndex
-        } as DuiQuWorkerData;
-      };
-
       // 回填默认人员（仅人员，不回填工分）
       const workers: DuiQuWorkerData[] = [];
       const defaultsArray = defaults as UTSJSONObject[];
       for (let i = 0; i < defaultsArray.length; i++) {
-        workers.push(parseDuiQuWorkerData(defaultsArray[i], i + 1));
+        const w = parseDuiQuWorkerData(defaultsArray[i]);
+        // 如果 positionIndex 未设置，使用索引+1
+        if (w.positionIndex == 0) {
+          w.positionIndex = i + 1;
+        }
+        workers.push(w);
       }
       return workers;
     },
@@ -2545,31 +2540,10 @@ export default {
         return;
       }
       const classNo = getCurrentClassNo();
-      const defaults = {} as UTSJSONObject;
-      let validRoleCount = 0;
-      for (let k = 0; k < LIANG_TANG_ROLES.length; k++) {
-        const roleKey = LIANG_TANG_ROLES[k];
-        const roleData = this.liangTangRolesData.get(roleKey);
-        if (roleData != null && roleData.workers.length > 0) {
-          const workersData: UTSJSONObject[] = [];
-          for (let j = 0; j < roleData.workers.length; j++) {
-            const w = roleData.workers[j];
-            if (w.personId != null) {
-              workersData.push({
-                personId: w.personId,
-                personName: w.personName,
-              } as UTSJSONObject);
-            }
-          }
-          if (workersData.length > 0) {
-            defaults[roleKey] = workersData;
-            validRoleCount = validRoleCount + 1;
-          }
-        }
-      }
+      const result = serializeLiangTangDefaults(this.liangTangRolesData);
       // 只有当有有效数据时才保存，避免覆盖已有的默认人员
-      if (validRoleCount > 0) {
-        saveLiangTangDefault(classNo, defaults);
+      if (result.hasData) {
+        saveLiangTangDefault(classNo, result.data);
       }
     },
 
@@ -2581,19 +2555,7 @@ export default {
         return;
       }
       const classNo = getCurrentClassNo();
-      const defaults: UTSJSONObject[] = [];
-      // 只保存有人员的槽位
-      for (let i = 0; i < this.duiQuWorkers.length; i++) {
-        const w = this.duiQuWorkers[i];
-        // w 已经是 DuiQuWorkerData 类型，使用强类型访问
-        if (w.personId != null) {
-          defaults.push({
-            personId: w.personId,
-            personName: w.personName,
-            positionIndex: w.positionIndex
-          } as UTSJSONObject);
-        }
-      }
+      const defaults = serializeDuiQuWorkerDataArray(this.duiQuWorkers);
       // 只有当有有效数据时才保存
       if (defaults.length > 0) {
         saveDuiQuDefault(classNo, defaults);

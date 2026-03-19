@@ -6,6 +6,7 @@
 import type { SessionWorkerData } from '../models/assignment.uts'
 import type { RoleCode } from '../models/types.uts'
 import type { LiangTangRoleData, DuiQuWorkerData } from '../models/session.uts'
+import { LIANG_TANG_ROLES } from '../models/types.uts'
 
 /**
  * 晾堂岗位数据构建结果
@@ -13,6 +14,14 @@ import type { LiangTangRoleData, DuiQuWorkerData } from '../models/session.uts'
 export type LiangTangRoleDataBuildResult = {
   workers: SessionWorkerData[]
   roleData: LiangTangRoleData
+}
+
+/**
+ * 晾堂默认值序列化结果
+ */
+export type LiangTangDefaultsSerializeResult = {
+  data: UTSJSONObject
+  hasData: boolean
 }
 
 /**
@@ -96,4 +105,86 @@ export function parseDuiQuWorkerDataArray(rawWorkers: UTSJSONObject[] | null): D
     }
   }
   return workers
+}
+
+/**
+ * 将 SessionWorkerData 序列化为 UTSJSONObject（用于保存默认值）
+ * @param worker 工人数据
+ * @returns UTSJSONObject
+ */
+export function serializeWorkerData(worker: SessionWorkerData): UTSJSONObject {
+  return {
+    personId: worker.personId,
+    personName: worker.personName
+  } as UTSJSONObject
+}
+
+/**
+ * 将 SessionWorkerData 数组序列化为 UTSJSONObject 数组
+ * @param workers 工人数据数组
+ * @returns UTSJSONObject 数组
+ */
+export function serializeWorkerDataArray(workers: SessionWorkerData[]): UTSJSONObject[] {
+  const result: UTSJSONObject[] = []
+  for (let i = 0; i < workers.length; i++) {
+    const w = workers[i]
+    if (w.personId != null) {
+      result.push(serializeWorkerData(w))
+    }
+  }
+  return result
+}
+
+/**
+ * 将 DuiQuWorkerData 序列化为 UTSJSONObject（用于保存默认值）
+ * @param worker 堆曲工人数据
+ * @returns UTSJSONObject
+ */
+export function serializeDuiQuWorkerData(worker: DuiQuWorkerData): UTSJSONObject {
+  return {
+    personId: worker.personId,
+    personName: worker.personName,
+    positionIndex: worker.positionIndex
+  } as UTSJSONObject
+}
+
+/**
+ * 将 DuiQuWorkerData 数组序列化为 UTSJSONObject 数组
+ * @param workers 堆曲工人数据数组
+ * @returns UTSJSONObject 数组
+ */
+export function serializeDuiQuWorkerDataArray(workers: DuiQuWorkerData[]): UTSJSONObject[] {
+  const result: UTSJSONObject[] = []
+  for (let i = 0; i < workers.length; i++) {
+    const w = workers[i]
+    if (w.personId != null) {
+      result.push(serializeDuiQuWorkerData(w))
+    }
+  }
+  return result
+}
+
+/**
+ * 将晾堂岗位数据序列化为默认值格式
+ * @param rolesData 晾堂岗位数据 Map
+ * @returns 序列化结果，包含数据和是否有有效数据的标志
+ */
+export function serializeLiangTangDefaults(rolesData: Map<string, LiangTangRoleData>): LiangTangDefaultsSerializeResult {
+  const defaults = {} as UTSJSONObject
+  let hasData = false
+  for (let k = 0; k < LIANG_TANG_ROLES.length; k++) {
+    const roleKey = LIANG_TANG_ROLES[k]
+    const roleData = rolesData.get(roleKey)
+    if (roleData != null && roleData.workers.length > 0) {
+      const workersData = serializeWorkerDataArray(roleData.workers)
+      if (workersData.length > 0) {
+        defaults[roleKey] = workersData
+        hasData = true
+      }
+    }
+  }
+  return {
+    data: defaults,
+    hasData: hasData
+  }
 }

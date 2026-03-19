@@ -1,6 +1,8 @@
 .ccb/
 node_modules/
+unpackage/
 .cursor/
 .snow/
 .ace-tool/
 .trellis/
+.hbuilderx/
