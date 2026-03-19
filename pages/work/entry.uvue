@@ -425,6 +425,7 @@ import {
 import type { BinCode, StageBinInfo } from "../../domain/models/ferment.uts";
 import type { AssignmentSourceCreateParams } from "../../domain/models/assignment.uts";
 import { getRoleName as _getRoleName } from "../../domain/models/assignment.uts";
+import type { SessionStatus } from "../../domain/models/types.uts";
 import type { BinInfo } from "../../domain/services/ScoreAllocator.uts";
 import { allocateCrossBinPoints } from "../../domain/services/ScoreAllocator.uts";
 import {
@@ -464,6 +465,14 @@ import {
 import type {
   SessionEntryPageState,
   EntryBinCardState,
+  SessionData,
+  SessionBinData,
+  SessionCrossBinData,
+  SessionLiangTangData,
+  SessionDuiQuData,
+  SessionBinStorageWorkerData,
+  SessionWorkerStorageData,
+  DuiQuStorageWorkerData,
 } from "../../domain/models/session.uts";
 import type {
   SessionWorkerData,
@@ -2491,7 +2500,7 @@ export default {
      * @param status 会话状态
      * @returns 会话数据对象
      */
-    buildSessionData(status: string): UTSJSONObject {
+    buildSessionData(status: SessionStatus): SessionData {
       // 确保 coefSnapshot 非空（防御性编程）
       if (this.coefSnapshot == null && this.coefSetId != null) {
         const setData = loadCoefSet(this.coefSetId as number);
@@ -2509,26 +2518,53 @@ export default {
         this.updatedByManager = managerName;
       }
 
-      // 构建发酵仓数据
-      const binsData: UTSJSONObject[] = [];
+      // 构建完整会话数据
+      const sessionData: SessionData = {
+        session_date: this.sessionDate,
+        class_no: getCurrentClassNo(),
+        stage_code: this.stageCode,
+        stage_name: this.stageName,
+        round_id: this.roundId,
+        coef_set_id: this.coefSetId ?? DEFAULT_COEF_SET_ID,
+        coef_snapshot: this.coefSnapshot,
+        bins: this.buildSessionBins(),
+        cross_bin: this.buildCrossBinData(),
+        liang_tang: this.buildLiangTangData(),
+        dui_qu: this.buildDuiQuData(),
+        status: status,
+        remark: this.sessionRemark,
+        session_bonus_units: this.sessionBonusUnits,
+        created_by_manager: this.createdByManager,
+        updated_by_manager: this.updatedByManager,
+        timestamp: getCurrentTimestamp(),
+      };
+
+      return sessionData;
+    },
+
+    /**
+     * 构建发酵仓数据（存储层 DTO）
+     */
+    buildSessionBins(): SessionBinData[] {
+      const binsData: SessionBinData[] = [];
       for (let i = 0; i < this.stageBinInfos.length; i++) {
         const info = this.stageBinInfos[i];
         const cardData = this.binCardsData.get(info.stage_bin_id);
 
-        // 构建工人数据
-        const workersData: UTSJSONObject[] = [];
+        // 构建工人数据（存储层 snake_case）
+        const workersData: SessionBinStorageWorkerData[] = [];
         if (cardData != null) {
           for (let j = 0; j < cardData.workers.length; j++) {
             const w = cardData.workers[j];
             workersData.push({
-              personId: w.personId,
-              personName: w.personName,
-              pointsUnits: w.pointsUnits,
-              positionIndex: w.positionIndex,
-              deductedUnits: w.deductedUnits,
-              penaltyReason: w.penaltyReason,
-              penaltyId: w.penaltyId,
-            } as UTSJSONObject);
+              person_id: w.personId,
+              person_name: w.personName,
+              points_units: w.pointsUnits,
+              position_index: w.positionIndex,
+              deducted_units: w.deductedUnits,
+              penalty_reason: w.penaltyReason,
+              penalty_id: w.penaltyId,
+            } as SessionBinStorageWorkerData);
           }
         }
 
@@ -2553,21 +2589,26 @@ export default {
           total_points_units: cardData != null ? cardData.totalPointsUnits : 0,
           assigned_points_units: cardData != null ? cardData.assignedUnits : 0,
           workers: workersData,
-        } as UTSJSONObject);
+        } as SessionBinData);
       }
+      return binsData;
+    },
 
-      // 构建跨仓岗位数据
-      // 转换 crossBinSources 为 UTSJSONObject[]
-      const sourcesData: UTSJSONObject[] = [];
+    /**
+     * 构建跨仓岗位数据（存储层 DTO）
+     */
+    buildCrossBinData(): SessionCrossBinData | null {
+      // 转换 crossBinSources 为存储层格式
+      const sourcesData: AssignmentSourceCreateParams[] = [];
       for (let i = 0; i < this.crossBinSources.length; i++) {
         const source = this.crossBinSources[i];
         sourcesData.push({
           stage_bin_id: source.stage_bin_id,
           source_points_units: source.source_points_units,
-        } as UTSJSONObject);
+        } as AssignmentSourceCreateParams);
       }
 
-      const crossBinData = {
+      return {
         enabled: this.showCrossBinSection,
         role_code: this.crossBinRoleCode,
         role_name: this.crossBinRoleName,
@@ -2575,71 +2616,65 @@ export default {
         person_name: this.crossBinPersonName,
         points_units: this.crossBinPointsUnits,
         sources: sourcesData,
-      } as UTSJSONObject;
+      } as SessionCrossBinData;
+    },
 
-      // 构建晾堂岗位数据（仅安曲环节）
-      let liangTangData: UTSJSONObject | null = null;
-      if (this.showLiangTangSection == true) {
-        liangTangData = {} as UTSJSONObject;
-        for (let k = 0; k < LIANG_TANG_ROLES.length; k++) {
-          const roleKey = LIANG_TANG_ROLES[k];
-          const roleData = this.liangTangRolesData.get(roleKey);
-          if (roleData != null) {
-            const workersData: UTSJSONObject[] = [];
-            for (let j = 0; j < roleData.workers.length; j++) {
-              const w = roleData.workers[j];
-              workersData.push({
-                personId: w.personId,
-                personName: w.personName,
-                pointsUnits: w.pointsUnits,
-              } as UTSJSONObject);
-            }
-            liangTangData[roleKey] = workersData;
-          }
-        }
+    /**
+     * 构建晾堂岗位数据（存储层 DTO）
+     */
+    buildLiangTangData(): SessionLiangTangData | null {
+      if (this.showLiangTangSection != true) {
+        return null;
       }
 
-      // 构建堆曲数据（仅拆曲环节）
-      let duiQuData: UTSJSONObject | null = null;
-      if (this.showDuiQuSection == true) {
-        const workersData: UTSJSONObject[] = [];
-        for (let i = 0; i < this.duiQuWorkers.length; i++) {
-          const w = this.duiQuWorkers[i];
+      // 序列化单个晾堂角色
+      const serializeLiangTangRole = (roleCode: string): SessionWorkerStorageData[] => {
+        const roleData = this.liangTangRolesData.get(roleCode);
+        if (roleData == null) {
+          return [];
+        }
+        const workersData: SessionWorkerStorageData[] = [];
+        for (let j = 0; j < roleData.workers.length; j++) {
+          const w = roleData.workers[j];
           workersData.push({
-            personId: w["personId"],
-            personName: w["personName"],
-            pointsUnits: w["pointsUnits"],
-            positionIndex: w["positionIndex"],
-          } as UTSJSONObject);
+            person_id: w.personId,
+            person_name: w.personName,
+            points_units: w.pointsUnits,
+          } as SessionWorkerStorageData);
         }
-        duiQuData = {
-          total_koji_count: this.duiQuTotalKojiCount,
-          total_pool_units: this.duiQuTotalPoolUnits,
-          workers: workersData,
-        } as UTSJSONObject;
+        return workersData;
+      };
+
+      // 固定键构造，确保所有角色都覆盖
+      return {
+        WHEAT_MATERIAL: serializeLiangTangRole("WHEAT_MATERIAL"),
+        MACHINE_GUARD: serializeLiangTangRole("MACHINE_GUARD"),
+        KOJI_UNLOADER: serializeLiangTangRole("KOJI_UNLOADER"),
+        MICRO_OPERATOR: serializeLiangTangRole("MICRO_OPERATOR"),
+      } as SessionLiangTangData;
+    },
+
+    /**
+     * 构建堆曲数据（存储层 DTO）
+     */
+    buildDuiQuData(): SessionDuiQuData | null {
+      if (this.showDuiQuSection != true) {
+        return null;
       }
 
-      // 构建完整会话数据
-      const sessionData = {
-        status: status,
-        created_by_manager: this.createdByManager,
-        updated_by_manager: this.updatedByManager,
-        session_date: this.sessionDate,
-        stage_code: this.stageCode,
-        stage_name: this.stageName,
-        round_id: this.roundId,
-        coef_set_id: this.coefSetId,
-        coef_snapshot: this.coefSnapshot,
-        bins: binsData,
-        cross_bin: crossBinData,
-        liang_tang: liangTangData,
-        dui_qu: duiQuData,
-        session_bonus_units: this.sessionBonusUnits,
-        remark: this.sessionRemark,
-        timestamp: getCurrentTimestamp(),
-      } as UTSJSONObject;
+      // 直接使用强类型字段访问
+      const workersData: DuiQuStorageWorkerData[] = this.duiQuWorkers.map((w) => ({
+        person_id: w.personId,
+        person_name: w.personName,
+        points_units: w.pointsUnits,
+        position_index: w.positionIndex,
+      })) as DuiQuStorageWorkerData[];
 
-      return sessionData;
+      return {
+        total_koji_count: this.duiQuTotalKojiCount,
+        total_pool_units: this.duiQuTotalPoolUnits,
+        workers: workersData,
+      } as SessionDuiQuData;
     },
 
     /**

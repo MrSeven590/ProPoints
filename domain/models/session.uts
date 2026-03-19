@@ -59,6 +59,7 @@ export type SessionBinData = {
 export type SessionCrossBinData = {
   enabled: boolean
   role_code: RoleCode
+  role_name: string
   person_id: number | null
   person_name: string
   points_units: PointsUnits
@@ -159,6 +160,7 @@ export type SessionData = {
   session_date: DateString
   class_no: number
   stage_code: StageCode
+  stage_name: string
   round_id: number | null
   coef_set_id: number
   coef_snapshot: SessionCoefSnapshot | null
@@ -171,6 +173,7 @@ export type SessionData = {
   session_bonus_units: PointsUnits
   created_by_manager: string
   updated_by_manager: string
+  timestamp: number
 }
 
 export type SessionStorageState = SessionData
