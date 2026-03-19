@@ -461,6 +461,15 @@ import {
   storageJsonToSessionData,
   sessionDataToEntryPageState,
 } from "../../domain/services/session-adapter.uts";
+import type {
+  SessionEntryPageState,
+  EntryBinCardState,
+} from "../../domain/models/session.uts";
+import type {
+  SessionWorkerData,
+  DuiQuWorkerData,
+  SessionPenaltyWorkerData,
+} from "../../domain/models/assignment.uts";
 
 // 系数版本常量
 const DEFAULT_COEF_SET_ID = 260000;
@@ -534,7 +543,7 @@ export default {
       // 人员互斥列表
       occupiedIds: [] as number[],
       // 仓卡片数据
-      binCardsData: new Map<number, BinCardData>(),
+      binCardsData: new Map<number, EntryBinCardState>(),
       // 默认仓内工人数
       defaultBinWorkerCount: 4 as number,
       // 缺失安曲记录的仓号列表
@@ -559,10 +568,10 @@ export default {
       // 晾堂岗位数据
       liangTangRolesData: new Map<string, LiangTangRoleData>(),
       // 晾堂岗位初始工人数据（用于组件初始化）
-      wheatMaterialWorkers: [] as UTSJSONObject[],
-      machineGuardWorkers: [] as UTSJSONObject[],
-      kojiUnloaderWorkers: [] as UTSJSONObject[],
-      microOperatorWorkers: [] as UTSJSONObject[],
+      wheatMaterialWorkers: [] as SessionWorkerData[],
+      machineGuardWorkers: [] as SessionWorkerData[],
+      kojiUnloaderWorkers: [] as SessionWorkerData[],
+      microOperatorWorkers: [] as SessionWorkerData[],
       // 晾堂池子总分缓存（避免重复计算）
       dailyKojiCount: 0 as number,
       wheatMaterialPoolUnits: 0 as PointsUnits,
@@ -571,7 +580,7 @@ export default {
       microOperatorPoolUnits: 0 as PointsUnits,
       // 堆曲部分相关状态（仅拆曲环节）
       showDuiQuSection: false as boolean,
-      duiQuWorkers: [] as UTSJSONObject[],
+      duiQuWorkers: [] as DuiQuWorkerData[],
       duiQuTotalKojiCount: 0 as number,
       duiQuTotalPoolUnits: 0 as PointsUnits,
       // 备注弹窗相关状态
@@ -694,7 +703,7 @@ export default {
     },
     totalAllocatedUnits(): PointsUnits {
       let total: PointsUnits = 0
-      this.binCardsData.forEach((card: BinCardData, _key: number) => {
+      this.binCardsData.forEach((card: EntryBinCardState, _key: number) => {
         for (let i = 0; i < card.workers.length; i++) {
           total = total + card.workers[i].pointsUnits
         }
@@ -1524,9 +1533,9 @@ export default {
         }
       }
 
-      // 先构建 binCode -> 旧的 BinCardData 的映射
-      const oldCardsByBinCode = new Map<string, BinCardData>()
-      this.binCardsData.forEach((cardData: BinCardData, key: number) => {
+      // 先构建 binCode -> 旧的 EntryBinCardState 的映射
+      const oldCardsByBinCode = new Map<string, EntryBinCardState>()
+      this.binCardsData.forEach((cardData: EntryBinCardState, key: number) => {
         // cardData.binCode 已经是标准化格式
         oldCardsByBinCode.set(cardData.binCode, cardData)
       })
@@ -1583,7 +1592,7 @@ export default {
             totalPointsUnits: oldCard.totalPointsUnits,
             assignedUnits: oldCard.assignedUnits,
             workers: oldCard.workers
-          } as BinCardData);
+          } as EntryBinCardState);
           // 同步更新 stageBinInfos 中的 koji_count
           infos[i].koji_count = preservedKojiCount
         } else {
@@ -1592,7 +1601,7 @@ export default {
           const totalPointsUnits = kojiCount * stageCoef;
 
           // 创建默认工人数组
-          const workers: BinWorkerData[] = [];
+          const workers: SessionPenaltyWorkerData[] = [];
           for (let j = 0; j < this.defaultBinWorkerCount; j++) {
             workers.push({
               personId: null,
@@ -1602,7 +1611,7 @@ export default {
               deductedUnits: 0,
               penaltyReason: '',
               penaltyId: null
-            } as BinWorkerData);
+            } as SessionPenaltyWorkerData);
           }
 
           this.binCardsData.set(binId, {
@@ -1613,7 +1622,7 @@ export default {
             totalPointsUnits: totalPointsUnits,
             assignedUnits: 0,
             workers: workers
-          } as BinCardData);
+          } as EntryBinCardState);
         }
       }
 
@@ -1728,7 +1737,7 @@ export default {
       const workersData = payload["workers"] as UTSJSONObject[];
 
       // 解析工人数据
-      const workers: BinWorkerData[] = [];
+      const workers: SessionPenaltyWorkerData[] = [];
       for (let i = 0; i < workersData.length; i++) {
         const w = workersData[i];
         workers.push({
@@ -1744,7 +1753,7 @@ export default {
           penaltyReason:
             w["penaltyReason"] != null ? (w["penaltyReason"] as string) : "",
           penaltyId: w["penaltyId"] != null ? (w["penaltyId"] as number) : null,
-        } as BinWorkerData);
+        } as SessionPenaltyWorkerData);
       }
 
       // 更新仓卡片数据
@@ -1756,7 +1765,7 @@ export default {
         totalPointsUnits: totalPointsUnits,
         assignedUnits: assignedUnits,
         workers: workers,
-      } as BinCardData);
+      } as EntryBinCardState);
 
       // 更新人员互斥列表
       this.updateOccupiedIds();
@@ -1816,7 +1825,7 @@ export default {
       }
 
       // 添加所有仓卡片中的人员（UTS Map 使用 forEach 遍历）
-      this.binCardsData.forEach((cardData: BinCardData, _key: number) => {
+      this.binCardsData.forEach((cardData: EntryBinCardState, _key: number) => {
         for (let i = 0; i < cardData.workers.length; i++) {
           const worker = cardData.workers[i];
           if (worker.personId != null) {
@@ -1996,7 +2005,7 @@ export default {
     /**
      * 构建默认的新建页面状态
      */
-    buildDefaultEntryState(date: string): UTSJSONObject {
+    buildDefaultEntryState(date: string): SessionEntryPageState {
       const defaultLiangTangData = this.loadLiangTangDefaultsForNewSession();
       const defaultDuiQuWorkers = this.loadDuiQuDefaultsForNewSession();
       const activeCoefSetId = loadActiveCoefSetId() ?? DEFAULT_COEF_SET_ID;
@@ -2008,36 +2017,36 @@ export default {
         coefSnapshot: loadCoefSet(activeCoefSetId),
         selectedBins: [] as BinCode[],
         stageBinInfos: [] as StageBinInfo[],
-        binCardsData: new Map<number, BinCardData>(),
-        occupiedIds: [] as number[],
+        binCardsData: new Map<number, EntryBinCardState>(),
         showCrossBinSection: stageHasCrossBinRole(this.stageCode),
         crossBinRoleCode: this.crossBinRoleCode,
         crossBinPersonId: null,
         crossBinPersonName: '',
         crossBinPointsUnits: 0,
         crossBinSources: [] as AssignmentSourceCreateParams[],
-        sessionBonusUnits: 0,
-        liangTangRolesData: defaultLiangTangData['rolesData'],
-        wheatMaterialWorkers: defaultLiangTangData['wheatMaterialWorkers'],
-        machineGuardWorkers: defaultLiangTangData['machineGuardWorkers'],
-        kojiUnloaderWorkers: defaultLiangTangData['kojiUnloaderWorkers'],
-        microOperatorWorkers: defaultLiangTangData['microOperatorWorkers'],
-        duiQuWorkers: defaultDuiQuWorkers,
+        liangTangRolesData: defaultLiangTangData['rolesData'] as Map<string, LiangTangRoleData>,
+        wheatMaterialWorkers: defaultLiangTangData['wheatMaterialWorkers'] as SessionWorkerData[],
+        machineGuardWorkers: defaultLiangTangData['machineGuardWorkers'] as SessionWorkerData[],
+        kojiUnloaderWorkers: defaultLiangTangData['kojiUnloaderWorkers'] as SessionWorkerData[],
+        microOperatorWorkers: defaultLiangTangData['microOperatorWorkers'] as SessionWorkerData[],
+        duiQuWorkers: defaultDuiQuWorkers as DuiQuWorkerData[],
         duiQuTotalKojiCount: 0,
         duiQuTotalPoolUnits: 0,
         sessionStatus: 'draft',
         viewMode: 'edit',
         sessionRemark: '',
+        sessionBonusUnits: 0,
         createdByManager: getManagerName().trim(),
         updatedByManager: getManagerName().trim(),
+        occupiedIds: [] as number[],
         missingAnQuBins: [] as string[]
-      } as UTSJSONObject;
+      } as SessionEntryPageState;
     },
 
     /**
      * 构建指定日期的状态对象（无副作用）
      */
-    buildStateForDate(date: string): UTSJSONObject {
+    buildStateForDate(date: string): SessionEntryPageState {
       const roundId = this.roundId;
       if (roundId == null) {
         // 轮次信息缺失，返回默认新建状态
@@ -2091,66 +2100,36 @@ export default {
         state.missingAnQuBins = missingBins;
       }
 
-      // 返回对象字面量（UTS 允许对象字面量包含 Map）
-      return {
-        hasData: state.hasData,
-        sessionDate: state.sessionDate,
-        coefSetId: state.coefSetId,
-        coefSnapshot: state.coefSnapshot,
-        selectedBins: state.selectedBins,
-        stageBinInfos: state.stageBinInfos,
-        binCardsData: state.binCardsData,
-        showCrossBinSection: state.showCrossBinSection,
-        crossBinRoleCode: state.crossBinRoleCode,
-        crossBinPersonId: state.crossBinPersonId,
-        crossBinPersonName: state.crossBinPersonName,
-        crossBinPointsUnits: state.crossBinPointsUnits,
-        crossBinSources: state.crossBinSources,
-        liangTangRolesData: state.liangTangRolesData,
-        wheatMaterialWorkers: state.wheatMaterialWorkers,
-        machineGuardWorkers: state.machineGuardWorkers,
-        kojiUnloaderWorkers: state.kojiUnloaderWorkers,
-        microOperatorWorkers: state.microOperatorWorkers,
-        duiQuWorkers: state.duiQuWorkers,
-        duiQuTotalKojiCount: state.duiQuTotalKojiCount,
-        duiQuTotalPoolUnits: state.duiQuTotalPoolUnits,
-        sessionStatus: state.sessionStatus,
-        viewMode: state.viewMode,
-        sessionRemark: state.sessionRemark,
-        sessionBonusUnits: state.sessionBonusUnits,
-        createdByManager: state.createdByManager,
-        updatedByManager: state.updatedByManager,
-        occupiedIds: state.occupiedIds,
-        missingAnQuBins: state.missingAnQuBins
-      } as UTSJSONObject;
+      return state;
     },
 
     /**
      * 应用状态对象到组件（原子性替换）
      */
-    applyState(nextState: UTSJSONObject) {
+    applyState(nextState: SessionEntryPageState) {
       try {
         this.isRestoring = true;
 
-        // 应用所有状态字段
-        this.sessionDate = nextState['sessionDate'] as string;
+        // 应用所有状态字段（强类型访问）
+        this.sessionDate = nextState.sessionDate;
         this.tempDate = this.sessionDate;
-        this.coefSetId = nextState['coefSetId'] as number | null;
-        this.coefSnapshot = nextState['coefSnapshot'] as UTSJSONObject | null;
-        this.selectedBins = nextState['selectedBins'] as BinCode[];
-        this.stageBinInfos = nextState['stageBinInfos'] as StageBinInfo[];
-        this.binCardsData = nextState['binCardsData'] as Map<number, BinCardData>;
-        this.missingAnQuBins = nextState['missingAnQuBins'] as string[];
-        this.showCrossBinSection = nextState['showCrossBinSection'] as boolean;
-        this.crossBinPersonId = nextState['crossBinPersonId'] as number | null;
-        this.crossBinPersonName = nextState['crossBinPersonName'] as string;
-        this.crossBinPointsUnits = nextState['crossBinPointsUnits'] as number;
-        this.crossBinSources = nextState['crossBinSources'] as AssignmentSourceCreateParams[];
+        this.coefSetId = nextState.coefSetId;
+        this.coefSnapshot = nextState.coefSnapshot;
+        this.selectedBins = nextState.selectedBins;
+        this.stageBinInfos = nextState.stageBinInfos;
+        this.binCardsData = nextState.binCardsData;
+        this.missingAnQuBins = nextState.missingAnQuBins;
+
+        this.showCrossBinSection = nextState.showCrossBinSection;
+        this.crossBinRoleCode = nextState.crossBinRoleCode;
+        this.crossBinPersonId = nextState.crossBinPersonId;
+        this.crossBinPersonName = nextState.crossBinPersonName;
+        this.crossBinPointsUnits = nextState.crossBinPointsUnits;
+        this.crossBinSources = nextState.crossBinSources;
 
         // 跨仓岗位配置
-        const crossBinRoleCode = nextState['crossBinRoleCode'] as string | null;
-        if (crossBinRoleCode != null) {
-          this.crossBinRoleCode = crossBinRoleCode as RoleCode;
+        if (nextState.crossBinRoleCode != null) {
+          const crossBinRoleCode = nextState.crossBinRoleCode;
           if (crossBinRoleCode == 'CART_PULLER') {
             this.crossBinRoleName = '拉车';
           } else if (crossBinRoleCode == 'HELPER') {
@@ -2160,20 +2139,22 @@ export default {
           this.initCrossBinRole();
         }
 
-        this.liangTangRolesData = nextState['liangTangRolesData'] as Map<string, LiangTangRoleData>;
-        this.wheatMaterialWorkers = nextState['wheatMaterialWorkers'] as UTSJSONObject[];
-        this.machineGuardWorkers = nextState['machineGuardWorkers'] as UTSJSONObject[];
-        this.kojiUnloaderWorkers = nextState['kojiUnloaderWorkers'] as UTSJSONObject[];
-        this.microOperatorWorkers = nextState['microOperatorWorkers'] as UTSJSONObject[];
-        this.duiQuWorkers = nextState['duiQuWorkers'] as UTSJSONObject[];
-        this.duiQuTotalKojiCount = nextState['duiQuTotalKojiCount'] as number;
-        this.duiQuTotalPoolUnits = nextState['duiQuTotalPoolUnits'] as number;
-        this.sessionStatus = nextState['sessionStatus'] as string;
-        this.viewMode = nextState['viewMode'] as 'edit' | 'view';
-        this.sessionRemark = nextState['sessionRemark'] as string;
-        this.sessionBonusUnits = nextState['sessionBonusUnits'] as number;
-        this.createdByManager = nextState['createdByManager'] as string;
-        this.updatedByManager = nextState['updatedByManager'] as string;
+        this.liangTangRolesData = nextState.liangTangRolesData;
+        this.wheatMaterialWorkers = nextState.wheatMaterialWorkers;
+        this.machineGuardWorkers = nextState.machineGuardWorkers;
+        this.kojiUnloaderWorkers = nextState.kojiUnloaderWorkers;
+        this.microOperatorWorkers = nextState.microOperatorWorkers;
+
+        this.duiQuWorkers = nextState.duiQuWorkers;
+        this.duiQuTotalKojiCount = nextState.duiQuTotalKojiCount;
+        this.duiQuTotalPoolUnits = nextState.duiQuTotalPoolUnits;
+
+        this.sessionStatus = nextState.sessionStatus;
+        this.viewMode = nextState.viewMode;
+        this.sessionRemark = nextState.sessionRemark;
+        this.sessionBonusUnits = nextState.sessionBonusUnits;
+        this.createdByManager = nextState.createdByManager;
+        this.updatedByManager = nextState.updatedByManager;
 
         // 修复：重新计算 microEnabled（基于 roundId）
         if (this.showLiangTangSection == true && this.roundId != null) {
