@@ -2638,7 +2638,10 @@ export default {
         // 1. 构建提交数据
         const sessionData = this.buildSessionData("submitted");
 
-        // 2. 构建校验上下文
+        // 2. 序列化为 storage JSON（校验器需要 UTSJSONObject）
+        const raw = sessionDataToStorageJson(sessionData);
+
+        // 3. 构建校验上下文
         const ctx = {
           mode: "submit",
           locale: "zh-CN" as "zh-CN",
@@ -2648,8 +2651,8 @@ export default {
           manager_name: getManagerName().trim()
         } as ValidationContext;
 
-        // 3. 调用校验引擎
-        const result = validateSessionData(sessionData, ctx);
+        // 4. 调用校验引擎
+        const result = validateSessionData(raw, ctx);
 
         // 4. 处理校验结果
         if (result.is_valid == false) {
