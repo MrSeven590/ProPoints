@@ -90,20 +90,20 @@ function parseBins(binsRaw: UTSJSONObject[] | null): SessionBinData[] {
   for (let i = 0; i < binsRaw.length; i++) {
     const binObj = binsRaw[i]
 
-    // 解析工人数据（snake_case）
+    // 解析工人数据（兼容 snake_case 和 camelCase）
     const workersRaw = binObj['workers'] as UTSJSONObject[] | null
     const workers: SessionBinStorageWorkerData[] = []
     if (workersRaw != null) {
       for (let j = 0; j < workersRaw.length; j++) {
         const w = workersRaw[j]
         workers.push({
-          person_id: w['person_id'] != null ? (w['person_id'] as number) : null,
-          person_name: w['person_name'] != null ? (w['person_name'] as string) : '',
-          points_units: w['points_units'] != null ? (w['points_units'] as number) : 0,
-          position_index: w['position_index'] != null ? (w['position_index'] as number) : j + 1,
-          deducted_units: w['deducted_units'] != null ? (w['deducted_units'] as number) : 0,
-          penalty_reason: w['penalty_reason'] != null ? (w['penalty_reason'] as string) : '',
-          penalty_id: w['penalty_id'] != null ? (w['penalty_id'] as number) : null
+          person_id: w['person_id'] != null ? (w['person_id'] as number) : (w['personId'] != null ? (w['personId'] as number) : null),
+          person_name: w['person_name'] != null ? (w['person_name'] as string) : (w['personName'] != null ? (w['personName'] as string) : ''),
+          points_units: w['points_units'] != null ? (w['points_units'] as number) : (w['pointsUnits'] != null ? (w['pointsUnits'] as number) : 0),
+          position_index: w['position_index'] != null ? (w['position_index'] as number) : (w['positionIndex'] != null ? (w['positionIndex'] as number) : j + 1),
+          deducted_units: w['deducted_units'] != null ? (w['deducted_units'] as number) : (w['deductedUnits'] != null ? (w['deductedUnits'] as number) : 0),
+          penalty_reason: w['penalty_reason'] != null ? (w['penalty_reason'] as string) : (w['penaltyReason'] != null ? (w['penaltyReason'] as string) : ''),
+          penalty_id: w['penalty_id'] != null ? (w['penalty_id'] as number) : (w['penaltyId'] != null ? (w['penaltyId'] as number) : null)
         } as SessionBinStorageWorkerData)
       }
     }
@@ -139,26 +139,26 @@ function parseCrossBin(crossBinRaw: UTSJSONObject | null): SessionCrossBinData |
     return null
   }
 
-  // 解析来源数据
+  // 解析来源数据（兼容 snake_case 和 camelCase）
   const sourcesRaw = crossBinRaw['sources'] as UTSJSONObject[] | null
   const sources: AssignmentSourceCreateParams[] = []
   if (sourcesRaw != null) {
     for (let i = 0; i < sourcesRaw.length; i++) {
       const s = sourcesRaw[i]
       sources.push({
-        assignment_id: s['assignment_id'] != null ? (s['assignment_id'] as number) : 0,
-        stage_bin_id: s['stage_bin_id'] != null ? (s['stage_bin_id'] as number) : 0,
-        source_points_units: s['source_points_units'] != null ? (s['source_points_units'] as number) : 0
+        assignment_id: s['assignment_id'] != null ? (s['assignment_id'] as number) : (s['assignmentId'] != null ? (s['assignmentId'] as number) : 0),
+        stage_bin_id: s['stage_bin_id'] != null ? (s['stage_bin_id'] as number) : (s['stageBinId'] != null ? (s['stageBinId'] as number) : 0),
+        source_points_units: s['source_points_units'] != null ? (s['source_points_units'] as number) : (s['sourcePointsUnits'] != null ? (s['sourcePointsUnits'] as number) : 0)
       } as AssignmentSourceCreateParams)
     }
   }
 
   return {
     enabled: enabled != null ? enabled : false,
-    role_code: (crossBinRaw['role_code'] != null ? (crossBinRaw['role_code'] as string) : 'CROSS_BIN_YI_FAN') as RoleCode,
-    person_id: crossBinRaw['person_id'] != null ? (crossBinRaw['person_id'] as number) : null,
-    person_name: crossBinRaw['person_name'] != null ? (crossBinRaw['person_name'] as string) : '',
-    points_units: crossBinRaw['points_units'] != null ? (crossBinRaw['points_units'] as number) : 0,
+    role_code: (crossBinRaw['role_code'] != null ? (crossBinRaw['role_code'] as string) : (crossBinRaw['roleCode'] != null ? (crossBinRaw['roleCode'] as string) : 'CROSS_BIN_YI_FAN')) as RoleCode,
+    person_id: crossBinRaw['person_id'] != null ? (crossBinRaw['person_id'] as number) : (crossBinRaw['personId'] != null ? (crossBinRaw['personId'] as number) : null),
+    person_name: crossBinRaw['person_name'] != null ? (crossBinRaw['person_name'] as string) : (crossBinRaw['personName'] != null ? (crossBinRaw['personName'] as string) : ''),
+    points_units: crossBinRaw['points_units'] != null ? (crossBinRaw['points_units'] as number) : (crossBinRaw['pointsUnits'] != null ? (crossBinRaw['pointsUnits'] as number) : 0),
     sources: sources
   } as SessionCrossBinData
 }
@@ -188,9 +188,9 @@ function parseLiangTang(liangTangRaw: UTSJSONObject | null): SessionLiangTangDat
       for (let j = 0; j < workersRaw.length; j++) {
         const w = workersRaw[j]
         workers.push({
-          person_id: w['person_id'] != null ? (w['person_id'] as number) : null,
-          person_name: w['person_name'] != null ? (w['person_name'] as string) : '',
-          points_units: w['points_units'] != null ? (w['points_units'] as number) : 0
+          person_id: w['person_id'] != null ? (w['person_id'] as number) : (w['personId'] != null ? (w['personId'] as number) : null),
+          person_name: w['person_name'] != null ? (w['person_name'] as string) : (w['personName'] != null ? (w['personName'] as string) : ''),
+          points_units: w['points_units'] != null ? (w['points_units'] as number) : (w['pointsUnits'] != null ? (w['pointsUnits'] as number) : 0)
         } as SessionWorkerStorageData)
       }
       // 使用下标赋值，因为 roleKey 是动态的
@@ -223,17 +223,17 @@ function parseDuiQu(duiQuRaw: UTSJSONObject | null): SessionDuiQuData | null {
     for (let i = 0; i < workersRaw.length; i++) {
       const w = workersRaw[i]
       workers.push({
-        person_id: w['person_id'] != null ? (w['person_id'] as number) : null,
-        person_name: w['person_name'] != null ? (w['person_name'] as string) : '',
-        points_units: w['points_units'] != null ? (w['points_units'] as number) : 0,
-        position_index: w['position_index'] != null ? (w['position_index'] as number) : i + 1
+        person_id: w['person_id'] != null ? (w['person_id'] as number) : (w['personId'] != null ? (w['personId'] as number) : null),
+        person_name: w['person_name'] != null ? (w['person_name'] as string) : (w['personName'] != null ? (w['personName'] as string) : ''),
+        points_units: w['points_units'] != null ? (w['points_units'] as number) : (w['pointsUnits'] != null ? (w['pointsUnits'] as number) : 0),
+        position_index: w['position_index'] != null ? (w['position_index'] as number) : (w['positionIndex'] != null ? (w['positionIndex'] as number) : i + 1)
       } as DuiQuStorageWorkerData)
     }
   }
 
   return {
-    total_koji_count: duiQuRaw['total_koji_count'] != null ? (duiQuRaw['total_koji_count'] as number) : 0,
-    total_pool_units: duiQuRaw['total_pool_units'] != null ? (duiQuRaw['total_pool_units'] as number) : 0,
+    total_koji_count: duiQuRaw['total_koji_count'] != null ? (duiQuRaw['total_koji_count'] as number) : (duiQuRaw['totalKojiCount'] != null ? (duiQuRaw['totalKojiCount'] as number) : 0),
+    total_pool_units: duiQuRaw['total_pool_units'] != null ? (duiQuRaw['total_pool_units'] as number) : (duiQuRaw['totalPoolUnits'] != null ? (duiQuRaw['totalPoolUnits'] as number) : 0),
     workers: workers
   } as SessionDuiQuData
 }

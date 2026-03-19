@@ -2091,7 +2091,38 @@ export default {
         state.missingAnQuBins = missingBins;
       }
 
-      return state as unknown as UTSJSONObject;
+      // 返回对象字面量（UTS 允许对象字面量包含 Map）
+      return {
+        hasData: state.hasData,
+        sessionDate: state.sessionDate,
+        coefSetId: state.coefSetId,
+        coefSnapshot: state.coefSnapshot,
+        selectedBins: state.selectedBins,
+        stageBinInfos: state.stageBinInfos,
+        binCardsData: state.binCardsData,
+        showCrossBinSection: state.showCrossBinSection,
+        crossBinRoleCode: state.crossBinRoleCode,
+        crossBinPersonId: state.crossBinPersonId,
+        crossBinPersonName: state.crossBinPersonName,
+        crossBinPointsUnits: state.crossBinPointsUnits,
+        crossBinSources: state.crossBinSources,
+        liangTangRolesData: state.liangTangRolesData,
+        wheatMaterialWorkers: state.wheatMaterialWorkers,
+        machineGuardWorkers: state.machineGuardWorkers,
+        kojiUnloaderWorkers: state.kojiUnloaderWorkers,
+        microOperatorWorkers: state.microOperatorWorkers,
+        duiQuWorkers: state.duiQuWorkers,
+        duiQuTotalKojiCount: state.duiQuTotalKojiCount,
+        duiQuTotalPoolUnits: state.duiQuTotalPoolUnits,
+        sessionStatus: state.sessionStatus,
+        viewMode: state.viewMode,
+        sessionRemark: state.sessionRemark,
+        sessionBonusUnits: state.sessionBonusUnits,
+        createdByManager: state.createdByManager,
+        updatedByManager: state.updatedByManager,
+        occupiedIds: state.occupiedIds,
+        missingAnQuBins: state.missingAnQuBins
+      } as UTSJSONObject;
     },
 
     /**
