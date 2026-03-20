@@ -81,15 +81,7 @@
 <script lang="uts">
   import { formatPointsUnits } from '../../domain/models/types.uts'
   import type { PointsUnits, RoleCode } from '../../domain/models/types.uts'
-
-  /**
-   * 岗位工人数据类型
-   */
-  type SessionWorkerData = {
-    personId: number | null
-    personName: string
-    pointsUnits: PointsUnits
-  }
+  import type { SessionWorkerData, SessionRoleCardChangePayload, PersonSelectPayload } from '../../domain/models/assignment.uts'
 
   export default {
     props: {
@@ -121,8 +113,8 @@
       },
       initialWorkers: {
         type: Array,
-        default: (): UTSJSONObject[] => {
-          return [] as UTSJSONObject[]
+        default: (): SessionWorkerData[] => {
+          return [] as SessionWorkerData[]
         }
       },
       simpleMode: {
@@ -215,7 +207,7 @@
     },
     watch: {
       initialWorkers: {
-        handler(newVal: UTSJSONObject[]) {
+        handler(newVal: SessionWorkerData[]) {
           this.initWorkersFromProps(newVal)
         },
         immediate: true
@@ -242,7 +234,7 @@
       }
     },
     methods: {
-      initWorkersFromProps(data: UTSJSONObject[]) {
+      initWorkersFromProps(data: SessionWorkerData[]) {
         if (data.length == 0) {
           // 无初始数据，添加默认1人
           this.addDefaultWorker()
@@ -252,9 +244,9 @@
         for (let i = 0; i < data.length; i++) {
           const w = data[i]
           list.push({
-            personId: w['personId'] != null ? w['personId'] as number : null,
-            personName: w['personName'] != null ? w['personName'] as string : '',
-            pointsUnits: w['pointsUnits'] != null ? w['pointsUnits'] as number : 0
+            personId: w.personId,
+            personName: w.personName,
+            pointsUnits: w.pointsUnits
           } as SessionWorkerData)
         }
         this.workers = list
@@ -284,12 +276,10 @@
         this.currentEditingIndex = -1
       },
 
-      onPersonSelect(payload: UTSJSONObject) {
-        const id = payload['id']
-        const name = payload['name']
-        if (id != null && name != null && this.currentEditingIndex >= 0) {
-          this.workers[this.currentEditingIndex].personId = id as number
-          this.workers[this.currentEditingIndex].personName = name as string
+      onPersonSelect(payload: PersonSelectPayload) {
+        if (this.currentEditingIndex >= 0) {
+          this.workers[this.currentEditingIndex].personId = payload.personId
+          this.workers[this.currentEditingIndex].personName = payload.personName
           this.showPersonPicker = false
           this.currentEditingIndex = -1
           this.emitChange('user')
@@ -354,22 +344,21 @@
         }
       },
 
-      emitChange(source: string = 'user') {
-        const workersData: UTSJSONObject[] = []
+      emitChange(source: 'user' | 'system' = 'user') {
+        const workersData: SessionWorkerData[] = []
         for (let i = 0; i < this.workers.length; i++) {
           const w = this.workers[i]
           workersData.push({
             personId: w.personId,
             personName: w.personName,
             pointsUnits: w.pointsUnits
-          } as UTSJSONObject)
+          } as SessionWorkerData)
         }
-        const payload = {
-          roleCode: this.roleCode,
+        const payload: SessionRoleCardChangePayload = {
+          roleCode: this.roleCode as RoleCode,
           workers: workersData,
-          totalAssignedUnits: this.totalAssignedUnits,
           source: source
-        } as UTSJSONObject
+        }
         this.$emit('change', payload)
       },
 

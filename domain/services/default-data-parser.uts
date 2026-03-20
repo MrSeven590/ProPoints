@@ -3,8 +3,8 @@
  * 负责将存储层的 UTSJSONObject 转换为强类型的业务对象
  */
 
-import type { SessionWorkerData } from '../models/assignment.uts'
-import type { RoleCode } from '../models/types.uts'
+import type { SessionWorkerData, SessionPenaltyWorkerData, AssignmentSourceCreateParams } from '../models/assignment.uts'
+import type { RoleCode, PointsUnits } from '../models/types.uts'
 import type { LiangTangRoleData, DuiQuWorkerData } from '../models/session.uts'
 import { LIANG_TANG_ROLES } from '../models/types.uts'
 
@@ -22,6 +22,37 @@ export type LiangTangRoleDataBuildResult = {
 export type LiangTangDefaultsSerializeResult = {
   data: UTSJSONObject
   hasData: boolean
+}
+
+/**
+ * 晾堂默认人员数据（结构化返回类型）
+ */
+export type LiangTangDefaultsData = {
+  rolesData: Map<string, LiangTangRoleData>
+}
+
+/**
+ * 晾堂岗位变更 Payload 解析结果
+ */
+export type LiangTangRoleChangePayloadResult = {
+  roleCode: RoleCode
+  workers: SessionWorkerData[]
+  source: string
+}
+
+/**
+ * 堆曲岗位变更 Payload 解析结果
+ */
+export type DuiQuRoleChangePayloadResult = {
+  workers: DuiQuWorkerData[]
+  source: string
+}
+
+/**
+ * 发酵仓选择变更元信息解析结果
+ */
+export type BinsChangeMetaPayloadResult = {
+  source: string
 }
 
 /**
@@ -75,6 +106,42 @@ export function buildLiangTangRoleData(
 }
 
 /**
+ * 从默认值对象解析晾堂默认人员数据
+ */
+export function parseLiangTangDefaults(
+  raw: UTSJSONObject,
+  microEnabled: boolean
+): LiangTangDefaultsData {
+  const result: LiangTangDefaultsData = {
+    rolesData: new Map<string, LiangTangRoleData>()
+  }
+
+  const wheatMaterial = buildLiangTangRoleData('WHEAT_MATERIAL', raw['WHEAT_MATERIAL'] as UTSJSONObject[] | null)
+  if (wheatMaterial.workers.length > 0) {
+    result.rolesData.set('WHEAT_MATERIAL', wheatMaterial.roleData)
+  }
+
+  const machineGuard = buildLiangTangRoleData('MACHINE_GUARD', raw['MACHINE_GUARD'] as UTSJSONObject[] | null)
+  if (machineGuard.workers.length > 0) {
+    result.rolesData.set('MACHINE_GUARD', machineGuard.roleData)
+  }
+
+  const kojiUnloader = buildLiangTangRoleData('KOJI_UNLOADER', raw['KOJI_UNLOADER'] as UTSJSONObject[] | null)
+  if (kojiUnloader.workers.length > 0) {
+    result.rolesData.set('KOJI_UNLOADER', kojiUnloader.roleData)
+  }
+
+  if (microEnabled == true) {
+    const microOperator = buildLiangTangRoleData('MICRO_OPERATOR', raw['MICRO_OPERATOR'] as UTSJSONObject[] | null)
+    if (microOperator.workers.length > 0) {
+      result.rolesData.set('MICRO_OPERATOR', microOperator.roleData)
+    }
+  }
+
+  return result
+}
+
+/**
  * 从 UTSJSONObject 解析 DuiQuWorkerData
  * @param raw 原始 JSON 对象
  * @returns DuiQuWorkerData 对象
@@ -102,6 +169,27 @@ export function parseDuiQuWorkerDataArray(rawWorkers: UTSJSONObject[] | null): D
   if (rawWorkers != null && rawWorkers.length > 0) {
     for (let i = 0; i < rawWorkers.length; i++) {
       workers.push(parseDuiQuWorkerData(rawWorkers[i]))
+    }
+  }
+  return workers
+}
+
+/**
+ * 解析堆曲默认人员数据
+ */
+export function parseDuiQuDefaults(raw: UTSJSONObject[] | null): DuiQuWorkerData[] {
+  if (raw == null) {
+    return [
+      { personId: null, personName: '', pointsUnits: 0, positionIndex: 1 } as DuiQuWorkerData,
+      { personId: null, personName: '', pointsUnits: 0, positionIndex: 2 } as DuiQuWorkerData,
+      { personId: null, personName: '', pointsUnits: 0, positionIndex: 3 } as DuiQuWorkerData
+    ]
+  }
+
+  const workers = parseDuiQuWorkerDataArray(raw)
+  for (let i = 0; i < workers.length; i++) {
+    if (workers[i].positionIndex == 0) {
+      workers[i].positionIndex = i + 1
     }
   }
   return workers
@@ -187,4 +275,131 @@ export function serializeLiangTangDefaults(rolesData: Map<string, LiangTangRoleD
     data: defaults,
     hasData: hasData
   }
+}
+
+/**
+ * 从 UTSJSONObject 解析 SessionPenaltyWorkerData
+ * @param raw 原始 JSON 对象
+ * @param defaultIndex 默认索引（用于 positionIndex 未设置时）
+ * @returns SessionPenaltyWorkerData 对象
+ */
+export function parsePenaltyWorkerData(raw: UTSJSONObject, defaultIndex: number): SessionPenaltyWorkerData {
+  const personIdTmp = raw['personId']
+  const personNameTmp = raw['personName']
+  const pointsUnitsTmp = raw['pointsUnits']
+  const positionIndexTmp = raw['positionIndex']
+  const deductedUnitsTmp = raw['deductedUnits']
+  const penaltyReasonTmp = raw['penaltyReason']
+  const penaltyIdTmp = raw['penaltyId']
+  return {
+    personId: personIdTmp != null ? personIdTmp as number : null,
+    personName: personNameTmp != null ? personNameTmp as string : '',
+    pointsUnits: pointsUnitsTmp != null ? pointsUnitsTmp as number : 1,
+    positionIndex: positionIndexTmp != null ? positionIndexTmp as number : defaultIndex,
+    deductedUnits: deductedUnitsTmp != null ? deductedUnitsTmp as number : 0,
+    penaltyReason: penaltyReasonTmp != null ? penaltyReasonTmp as string : '',
+    penaltyId: penaltyIdTmp != null ? penaltyIdTmp as number : null
+  } as SessionPenaltyWorkerData
+}
+
+/**
+ * 从 UTSJSONObject 数组解析 SessionPenaltyWorkerData 数组
+ * @param rawWorkers 原始 JSON 数组
+ * @returns SessionPenaltyWorkerData 数组
+ */
+export function parsePenaltyWorkerDataArray(rawWorkers: UTSJSONObject[] | null): SessionPenaltyWorkerData[] {
+  const workers: SessionPenaltyWorkerData[] = []
+  if (rawWorkers != null && rawWorkers.length > 0) {
+    for (let i = 0; i < rawWorkers.length; i++) {
+      workers.push(parsePenaltyWorkerData(rawWorkers[i], i + 1))
+    }
+  }
+  return workers
+}
+
+/**
+ * 跨仓岗位变更 Payload 解析结果
+ */
+export type CrossBinChangePayloadResult = {
+  personId: number | null
+  personName: string
+  pointsUnits: PointsUnits
+  sources: AssignmentSourceCreateParams[]
+}
+
+/**
+ * 仓卡片变更 Payload 解析结果
+ */
+export type BinCardChangePayloadResult = {
+  stageBinId: number
+  binId: number
+  binCode: string
+  kojiCount: number
+  totalPointsUnits: PointsUnits
+  assignedUnits: PointsUnits
+  workers: SessionPenaltyWorkerData[]
+}
+
+/**
+ * 从 UTSJSONObject 解析跨仓岗位变更 Payload
+ * @param payload 原始 payload 对象
+ * @returns 解析后的对象
+ */
+export function parseCrossBinChangePayload(payload: UTSJSONObject): CrossBinChangePayloadResult {
+  const personIdTmp = payload['person_id']
+  const personNameTmp = payload['person_name']
+  const pointsUnitsTmp = payload['points_units']
+  const sourcesTmp = payload['sources']
+
+  return {
+    personId: personIdTmp != null ? personIdTmp as number : null,
+    personName: personNameTmp != null ? personNameTmp as string : '',
+    pointsUnits: pointsUnitsTmp != null ? pointsUnitsTmp as number : 0,
+    sources: sourcesTmp != null ? sourcesTmp as AssignmentSourceCreateParams[] : [] as AssignmentSourceCreateParams[]
+  } as CrossBinChangePayloadResult
+}
+
+/**
+ * 解析晾堂岗位变更 payload
+ */
+export function parseLiangTangRoleChangePayload(payload: UTSJSONObject): LiangTangRoleChangePayloadResult {
+  return {
+    roleCode: payload['roleCode'] as RoleCode,
+    workers: parseWorkerDataArray(payload['workers'] as UTSJSONObject[] | null),
+    source: (payload['source'] as string | null) ?? ''
+  } as LiangTangRoleChangePayloadResult
+}
+
+/**
+ * 解析堆曲岗位变更 payload
+ */
+export function parseDuiQuRoleChangePayload(payload: UTSJSONObject): DuiQuRoleChangePayloadResult {
+  return {
+    workers: parseDuiQuDefaults(payload['workers'] as UTSJSONObject[] | null),
+    source: (payload['source'] as string | null) ?? ''
+  } as DuiQuRoleChangePayloadResult
+}
+
+/**
+ * 解析发酵仓选择变更元信息 payload
+ */
+export function parseBinsChangeMetaPayload(payload: UTSJSONObject): BinsChangeMetaPayloadResult {
+  return {
+    source: (payload['source'] as string | null) ?? ''
+  } as BinsChangeMetaPayloadResult
+}
+
+/**
+ * 解析仓卡片变更 payload
+ */
+export function parseBinCardChangePayload(payload: UTSJSONObject): BinCardChangePayloadResult {
+  return {
+    stageBinId: payload['stageBinId'] as number,
+    binId: payload['binId'] as number,
+    binCode: payload['binCode'] as string,
+    kojiCount: payload['kojiCount'] as number,
+    totalPointsUnits: payload['totalPointsUnits'] as number,
+    assignedUnits: payload['assignedUnits'] as number,
+    workers: parsePenaltyWorkerDataArray(payload['workers'] as UTSJSONObject[] | null)
+  } as BinCardChangePayloadResult
 }

@@ -200,6 +200,7 @@
 	  import type { StageCode } from '../../domain/models/types.uts'
 	  import { calcBinTotalPointsUnits } from '../../domain/services/ScoreCalculator.uts'
 	  import { calcFinalPoints, getPositionLabel as getPositionLabelUtil } from '../../domain/models/assignment.uts'
+	  import type { SessionPenaltyWorkerData, BinCardChangePayload, BinKojiChangePayload, PersonSelectPayload, BinPenaltyChangePayload } from '../../domain/models/assignment.uts'
 
   /**
    * 仓内工人分配项类型（含扣分信息）
@@ -249,9 +250,9 @@
         default: 1200
       },
       initialWorkers: {
-        type: Array,
-        default: (): UTSJSONObject[] => {
-          return [] as UTSJSONObject[]
+        type: Array as unknown as (() => SessionPenaltyWorkerData[]),
+        default: (): SessionPenaltyWorkerData[] => {
+          return [] as SessionPenaltyWorkerData[]
         }
       },
       occupiedPersonIds: {
@@ -424,7 +425,7 @@
         immediate: true
       },
       initialWorkers: {
-        handler(newVal: UTSJSONObject[]) {
+        handler(newVal: SessionPenaltyWorkerData[]) {
           this.initWorkerList(newVal)
         },
         immediate: true
@@ -455,7 +456,7 @@
         return calcFinalPoints(originalUnits, deductedUnits)
       },
 
-      initWorkerList(workers: UTSJSONObject[]) {
+      initWorkerList(workers: SessionPenaltyWorkerData[]) {
         if (workers.length == 0) {
           this.createDefaultWorkers()
           return
@@ -463,24 +464,17 @@
         const list: BinWorkerItem[] = []
         for (let i = 0; i < workers.length; i++) {
           const w = workers[i]
-          const personId = w['personId']
-          const personName = w['personName']
-          const pointsUnits = w['pointsUnits']
-          const deductedUnits = w['deductedUnits']
-          const penaltyReason = w['penaltyReason']
-          const penaltyId = w['penaltyId']
-          const units = pointsUnits != null ? pointsUnits as number : 0
-          const deducted = deductedUnits != null ? deductedUnits as number : 0
-          const reason = penaltyReason != null ? penaltyReason as string : ''
-          const pId = penaltyId != null ? penaltyId as number : null
+          const units = w.pointsUnits != null ? w.pointsUnits as number : 0
+          const deducted = w.deductedUnits != null ? w.deductedUnits as number : 0
+          const reason = w.penaltyReason != null ? w.penaltyReason as string : ''
           list.push({
-            personId: personId != null ? personId as number : null,
-            personName: personName != null ? personName as string : '',
+            personId: w.personId,
+            personName: w.personName != null ? w.personName as string : '',
             pointsUnits: units,
             displayPoints: units == 0 ? '' : formatPointsUnits(units),
             deductedUnits: deducted,
             penaltyReason: reason,
-            penaltyId: pId
+            penaltyId: w.penaltyId
           } as BinWorkerItem)
         }
         this.workerList = list
@@ -584,13 +578,11 @@
         this.currentWorkerIndex = -1
       },
 
-      onWorkerSelect(payload: UTSJSONObject) {
-        const id = payload['id']
-        const name = payload['name']
-        if (id != null && name != null && this.currentWorkerIndex >= 0) {
+      onWorkerSelect(payload: PersonSelectPayload) {
+        if (this.currentWorkerIndex >= 0) {
           const worker = this.workerList[this.currentWorkerIndex]
-          worker.personId = id as number
-          worker.personName = name as string
+          worker.personId = payload.personId
+          worker.personName = payload.personName
           this.showWorkerPicker = false
           this.currentWorkerIndex = -1
           this.emitChange()
@@ -912,7 +904,7 @@
             action = 'create'
           }
 
-          const payload = {
+          const payload: BinPenaltyChangePayload = {
             // 会话信息
             sessionKey: this.sessionKey,
             stageSessionId: this.stageSessionId,
@@ -934,7 +926,7 @@
             penaltyId: worker.penaltyId,
             // 操作类型
             action: action
-          } as UTSJSONObject
+          }
           this.$emit('penaltyChange', payload)
         }
       },
@@ -956,7 +948,7 @@
       // ============================================
 
       emitChange() {
-        const workers: UTSJSONObject[] = []
+        const workers: SessionPenaltyWorkerData[] = []
         for (let i = 0; i < this.workerList.length; i++) {
           const w = this.workerList[i]
           workers.push({
@@ -967,9 +959,9 @@
             deductedUnits: w.deductedUnits,
             penaltyReason: w.penaltyReason,
             penaltyId: w.penaltyId
-          } as UTSJSONObject)
+          } as SessionPenaltyWorkerData)
         }
-        const payload = {
+        const payload: BinCardChangePayload = {
           stageBinId: this.stageBinId,
           binId: this.binId,
           binCode: this.binCode,
@@ -977,18 +969,18 @@
           totalPointsUnits: this.totalPointsUnits,
           assignedUnits: this.assignedUnits,
           workers: workers
-        } as UTSJSONObject
+        }
         this.$emit('change', payload)
       },
 
       emitKojiChange() {
-        const payload = {
+        const payload: BinKojiChangePayload = {
           stageBinId: this.stageBinId,
           binId: this.binId,
           binCode: this.binCode,
           kojiCount: this.kojiCount,
           totalPointsUnits: this.totalPointsUnits
-        } as UTSJSONObject
+        }
         this.$emit('kojiChange', payload)
       },
 

@@ -147,6 +147,7 @@
             :stageCoef="getStageCoefForBin()"
             @change="onBinCardChange"
             @kojiChange="onBinKojiChange"
+            @penaltyChange="onBinPenaltyChange"
           />
         </view>
       </view>
@@ -170,7 +171,7 @@
           :strictSingle="true"
           :simpleMode="true"
           :occupiedPersonIds="occupiedIds"
-          :initialWorkers="wheatMaterialWorkers"
+          :initialWorkers="getLiangTangInitialWorkers('WHEAT_MATERIAL')"
           :readonly="viewMode == 'view' || isRestoring == true"
           @change="onLiangTangRoleChange"
         />
@@ -183,7 +184,7 @@
           :strictSingle="true"
           :simpleMode="true"
           :occupiedPersonIds="occupiedIds"
-          :initialWorkers="machineGuardWorkers"
+          :initialWorkers="getLiangTangInitialWorkers('MACHINE_GUARD')"
           :readonly="viewMode == 'view' || isRestoring == true"
           @change="onLiangTangRoleChange"
         />
@@ -196,7 +197,7 @@
           :strictSingle="false"
           :simpleMode="isKojiUnloaderSimpleMode()"
           :occupiedPersonIds="occupiedIds"
-          :initialWorkers="kojiUnloaderWorkers"
+          :initialWorkers="getLiangTangInitialWorkers('KOJI_UNLOADER')"
           :readonly="viewMode == 'view' || isRestoring == true"
           @change="onLiangTangRoleChange"
         />
@@ -210,7 +211,7 @@
           :strictSingle="true"
           :simpleMode="true"
           :occupiedPersonIds="occupiedIds"
-          :initialWorkers="microOperatorWorkers"
+          :initialWorkers="getLiangTangInitialWorkers('MICRO_OPERATOR')"
           :readonly="viewMode == 'view' || isRestoring == true"
           @change="onLiangTangRoleChange"
         />
@@ -423,18 +424,21 @@ import {
   getDuiQuCoef,
 } from "../../domain/services/StageCoefService.uts";
 import type { BinCode, StageBinInfo } from "../../domain/models/ferment.uts";
-import type { AssignmentSourceCreateParams, SessionWorkerData, SessionPenaltyWorkerData } from "../../domain/models/assignment.uts";
+import type {
+  AssignmentSourceCreateParams,
+  CrossBinChangePayload,
+  SessionPenaltyWorkerData,
+  SessionWorkerData,
+  SessionRoleCardChangePayload,
+  BinCardChangePayload,
+  BinKojiChangePayload,
+  BinPenaltyChangePayload,
+  BinsChangeMetaPayload
+} from "../../domain/models/assignment.uts";
 import type {
   SessionEntryPageState,
   EntryBinCardState,
   SessionData,
-  SessionBinData,
-  SessionCrossBinData,
-  SessionLiangTangData,
-  SessionDuiQuData,
-  SessionBinStorageWorkerData,
-  SessionWorkerStorageData,
-  DuiQuStorageWorkerData,
   LiangTangRoleData,
   DuiQuWorkerData
 } from "../../domain/models/session.uts";
@@ -457,7 +461,7 @@ import {
   loadRounds,
 } from "../../domain/stores/AppStore.uts";
 import {
-  validateSessionData,
+  validateTypedSessionData,
   formatErrorsForModal,
 } from "../../domain/services/Validator.uts";
 import type { ValidationContext } from "../../domain/services/Validator.uts";
@@ -479,30 +483,18 @@ import {
   entryPageStateToSessionData,
 } from "../../domain/services/session-adapter.uts";
 import {
-  parseWorkerData,
-  parseWorkerDataArray,
-  buildLiangTangRoleData,
-  parseDuiQuWorkerData,
-  parseDuiQuWorkerDataArray,
+  parseLiangTangDefaults,
+  parseDuiQuDefaults,
+  parseDuiQuRoleChangePayload,
+  parseBinsChangeMetaPayload,
   serializeLiangTangDefaults,
   serializeDuiQuWorkerDataArray,
-  type LiangTangRoleDataBuildResult,
+  type LiangTangDefaultsData,
   type LiangTangDefaultsSerializeResult,
 } from "../../domain/services/default-data-parser.uts";
 
 // 系数版本常量
 const DEFAULT_COEF_SET_ID = 260000;
-
-/**
- * 晾堂默认人员数据（结构化返回类型）
- */
-type LiangTangDefaultsData = {
-  rolesData: Map<string, LiangTangRoleData>;
-  wheatMaterialWorkers: SessionWorkerData[];
-  machineGuardWorkers: SessionWorkerData[];
-  kojiUnloaderWorkers: SessionWorkerData[];
-  microOperatorWorkers: SessionWorkerData[];
-};
 
 export default {
   data() {
@@ -554,11 +546,6 @@ export default {
       microEnabled: false as boolean,
       // 晾堂岗位数据
       liangTangRolesData: new Map<string, LiangTangRoleData>(),
-      // 晾堂岗位初始工人数据（用于组件初始化）
-      wheatMaterialWorkers: [] as SessionWorkerData[],
-      machineGuardWorkers: [] as SessionWorkerData[],
-      kojiUnloaderWorkers: [] as SessionWorkerData[],
-      microOperatorWorkers: [] as SessionWorkerData[],
       // 晾堂池子总分缓存（避免重复计算）
       dailyKojiCount: 0 as number,
       wheatMaterialPoolUnits: 0 as PointsUnits,
@@ -917,7 +904,8 @@ export default {
     /**
      * 加载晾堂默认人员（从上次安曲会话回填）
      * 修复：微机禁用时不加载微机默认数据
-     * C4修复：直接使用强类型，     */
+     * C4修复：使用强类型解析，避免直接操作 UTSJSONObject
+     */
     loadLiangTangDefaults() {
       const classNo = getCurrentClassNo();
       const defaults = loadLiangTangDefault(classNo);
@@ -925,42 +913,8 @@ export default {
         return;
       }
 
-      // 回填各岗位默认人员（仅人员，不回填工分）
-      const wheatMaterial = defaults['WHEAT_MATERIAL'] as UTSJSONObject[] | null;
-      if (wheatMaterial != null) {
-        const { workers, roleData } = buildLiangTangRoleData('WHEAT_MATERIAL', wheatMaterial);
-        this.wheatMaterialWorkers = workers;
-        this.liangTangRolesData.set("WHEAT_MATERIAL", roleData);
-      }
-
-      const machineGuard = defaults['MACHINE_GUARD'] as UTSJSONObject[] | null;
-      if (machineGuard != null) {
-        const { workers, roleData } = buildLiangTangRoleData('MACHINE_GUARD', machineGuard);
-        this.machineGuardWorkers = workers;
-        this.liangTangRolesData.set("MACHINE_GUARD", roleData);
-      }
-
-      const kojiUnloader = defaults['KOJI_UNLOADER'] as UTSJSONObject[] | null;
-      if (kojiUnloader != null) {
-        const { workers, roleData } = buildLiangTangRoleData('KOJI_UNLOADER', kojiUnloader);
-        this.kojiUnloaderWorkers = workers;
-        this.liangTangRolesData.set("KOJI_UNLOADER", roleData);
-      }
-
-      // 修复：微机禁用时不加载微机默认数据
-      if (this.microEnabled == false) {
-        // 清除微机数据
-        this.microOperatorWorkers = [] as SessionWorkerData[];
-        this.liangTangRolesData.delete('MICRO_OPERATOR');
-      } else {
-        // 微机启用时才加载微机默认数据
-        const microOperator = defaults['MICRO_OPERATOR'] as UTSJSONObject[] | null;
-        if (microOperator != null) {
-          const { workers, roleData } = buildLiangTangRoleData('MICRO_OPERATOR', microOperator);
-          this.microOperatorWorkers = workers;
-          this.liangTangRolesData.set("MICRO_OPERATOR", roleData);
-        }
-      }
+      const parsedDefaults = parseLiangTangDefaults(defaults, this.microEnabled);
+      this.liangTangRolesData = parsedDefaults.rolesData;
     },
 
     /**
@@ -969,11 +923,7 @@ export default {
      */
     loadLiangTangDefaultsForNewSession(): LiangTangDefaultsData {
       const result: LiangTangDefaultsData = {
-        rolesData: new Map<string, LiangTangRoleData>(),
-        wheatMaterialWorkers: [] as SessionWorkerData[],
-        machineGuardWorkers: [] as SessionWorkerData[],
-        kojiUnloaderWorkers: [] as SessionWorkerData[],
-        microOperatorWorkers: [] as SessionWorkerData[]
+        rolesData: new Map<string, LiangTangRoleData>()
       };
 
       if (this.showLiangTangSection == false) {
@@ -986,72 +936,7 @@ export default {
         return result;
       }
 
-      const rolesData = new Map<string, LiangTangRoleData>();
-      const wheatMaterialWorkers: SessionWorkerData[] = [];
-      const machineGuardWorkers: SessionWorkerData[] = [];
-      const kojiUnloaderWorkers: SessionWorkerData[] = [];
-      const microOperatorWorkers: SessionWorkerData[] = [];
-
-      // 回填各岗位默认人员（仅人员，不回填工分）
-      const wheatMaterialTmp = defaults['WHEAT_MATERIAL'];
-      if (wheatMaterialTmp != null) {
-        const wheatMaterial = wheatMaterialTmp as UTSJSONObject[];
-        if (wheatMaterial.length > 0) {
-          const workers = parseWorkerDataArray(wheatMaterial);
-          wheatMaterialWorkers.push(...workers);
-          rolesData.set('WHEAT_MATERIAL', {
-            roleCode: 'WHEAT_MATERIAL',
-            workers: workers
-          } as LiangTangRoleData);
-        }
-      }
-
-      const machineGuardTmp = defaults['MACHINE_GUARD'];
-      if (machineGuardTmp != null) {
-        const machineGuard = machineGuardTmp as UTSJSONObject[];
-        if (machineGuard.length > 0) {
-          const workers = parseWorkerDataArray(machineGuard);
-          machineGuardWorkers.push(...workers);
-          rolesData.set('MACHINE_GUARD', {
-            roleCode: 'MACHINE_GUARD',
-            workers: workers
-          } as LiangTangRoleData);
-        }
-      }
-
-      const kojiUnloaderTmp = defaults['KOJI_UNLOADER'];
-      if (kojiUnloaderTmp != null) {
-        const kojiUnloader = kojiUnloaderTmp as UTSJSONObject[];
-        if (kojiUnloader.length > 0) {
-          const workers = parseWorkerDataArray(kojiUnloader);
-          kojiUnloaderWorkers.push(...workers);
-          rolesData.set('KOJI_UNLOADER', {
-            roleCode: 'KOJI_UNLOADER',
-            workers: workers
-          } as LiangTangRoleData);
-        }
-      }
-
-      const microOperatorTmp = defaults['MICRO_OPERATOR'];
-      if (microOperatorTmp != null) {
-        const microOperator = microOperatorTmp as UTSJSONObject[];
-        if (microOperator.length > 0) {
-          const workers = parseWorkerDataArray(microOperator);
-          microOperatorWorkers.push(...workers);
-          rolesData.set('MICRO_OPERATOR', {
-            roleCode: 'MICRO_OPERATOR',
-            workers: workers
-          } as LiangTangRoleData);
-        }
-      }
-
-      return {
-        rolesData: rolesData,
-        wheatMaterialWorkers: wheatMaterialWorkers,
-        machineGuardWorkers: machineGuardWorkers,
-        kojiUnloaderWorkers: kojiUnloaderWorkers,
-        microOperatorWorkers: microOperatorWorkers
-      } as LiangTangDefaultsData;
+      return parseLiangTangDefaults(defaults, this.microEnabled);
     },
 
     /**
@@ -1059,6 +944,24 @@ export default {
      */
     calcDailyAnQuKojiCount(): number {
       return this.dailyKojiCount;
+    },
+
+    getLiangTangInitialWorkers(roleCode: RoleCode): SessionWorkerData[] {
+      const roleData = this.liangTangRolesData.get(roleCode);
+      if (roleData == null) {
+        return [] as SessionWorkerData[];
+      }
+
+      const workers: SessionWorkerData[] = [];
+      for (let i = 0; i < roleData.workers.length; i++) {
+        const worker = roleData.workers[i];
+        workers.push({
+          personId: worker.personId,
+          personName: worker.personName,
+          pointsUnits: worker.pointsUnits,
+        } as SessionWorkerData);
+      }
+      return workers;
     },
 
     /**
@@ -1141,6 +1044,7 @@ export default {
     /**
      * 加载堆曲默认人员（继承上次录入）
      * 用于新建会话时的状态初始化
+     * C4修复：使用 parseDuiQuDefaults 统一解析
      */
     loadDuiQuDefaultsForNewSession(): DuiQuWorkerData[] {
       // 仅拆曲环节加载堆曲默认人员
@@ -1149,27 +1053,7 @@ export default {
       }
       const classNo = getCurrentClassNo();
       const defaults = loadDuiQuDefault(classNo);
-      if (defaults == null) {
-        // 没有默认值，初始化3个空白槽位
-        return [
-          { personId: null, personName: '', pointsUnits: 0, positionIndex: 1 } as DuiQuWorkerData,
-          { personId: null, personName: '', pointsUnits: 0, positionIndex: 2 } as DuiQuWorkerData,
-          { personId: null, personName: '', pointsUnits: 0, positionIndex: 3 } as DuiQuWorkerData
-        ];
-      }
-
-      // 回填默认人员（仅人员，不回填工分）
-      const workers: DuiQuWorkerData[] = [];
-      const defaultsArray = defaults as UTSJSONObject[];
-      for (let i = 0; i < defaultsArray.length; i++) {
-        const w = parseDuiQuWorkerData(defaultsArray[i]);
-        // 如果 positionIndex 未设置，使用索引+1
-        if (w.positionIndex == 0) {
-          w.positionIndex = i + 1;
-        }
-        workers.push(w);
-      }
-      return workers;
+      return parseDuiQuDefaults(defaults);
     },
 
     /**
@@ -1203,23 +1087,22 @@ export default {
     /**
      * 堆曲岗位变化处理
      */
-    onDuiQuRoleChange(data: UTSJSONObject) {
-      const workersRaw = data["workers"] as UTSJSONObject[] | null;
-      if (workersRaw != null) {
-        // 使用统一 helper 解析为强类型 DuiQuWorkerData[]
-        const workers: DuiQuWorkerData[] = [];
-        for (let i = 0; i < workersRaw.length; i++) {
-          const w = workersRaw[i];
-          const parsed = parseDuiQuWorkerData(w);
-          // 如果 positionIndex 未设置，使用索引+1
-          if (parsed.positionIndex == 0) {
-            parsed.positionIndex = i + 1;
-          }
-          workers.push(parsed);
-        }
+    onDuiQuRoleChange(payload: SessionRoleCardChangePayload) {
+      // 将 SessionWorkerData[] 转换为 DuiQuWorkerData[]（添加 positionIndex）
+      const workers: DuiQuWorkerData[] = []
+      for (let i = 0; i < payload.workers.length; i++) {
+        const w = payload.workers[i]
+        workers.push({
+          personId: w.personId,
+          personName: w.personName,
+          pointsUnits: w.pointsUnits,
+          positionIndex: i + 1
+        } as DuiQuWorkerData)
+      }
+
+      if (workers.length > 0) {
         this.duiQuWorkers = workers;
-        const source = data["source"] as string | null;
-        if (source != "system") {
+        if (payload.source != "system") {
           this.scheduleAutoSave();
         }
       }
@@ -1232,8 +1115,7 @@ export default {
     isKojiUnloaderSimpleMode(): boolean {
       const roleData = this.liangTangRolesData.get("KOJI_UNLOADER");
       if (roleData == null) {
-        // 没有数据时，检查初始工人数
-        return this.kojiUnloaderWorkers.length <= 1;
+        return true;
       }
       return roleData.workers.length <= 1;
     },
@@ -1241,27 +1123,21 @@ export default {
     /**
      * 晾堂岗位数据变更
      */
-    onLiangTangRoleChange(payload: UTSJSONObject) {
+    onLiangTangRoleChange(payload: SessionRoleCardChangePayload) {
       if (this.isRestoring == true || this.viewMode != "edit") {
         return;
       }
-      const roleCode = payload["roleCode"] as string;
-      const workersRaw = payload["workers"] as UTSJSONObject[];
-      const source = payload["source"] as string | null;
-
-      // 解析工人数据 - 使用统一 helper
-      const workerList = parseWorkerDataArray(workersRaw);
 
       // 更新晾堂岗位数据
-      this.liangTangRolesData.set(roleCode, {
-        roleCode: roleCode as RoleCode,
-        workers: workerList,
+      this.liangTangRolesData.set(payload.roleCode, {
+        roleCode: payload.roleCode,
+        workers: payload.workers,
       } as LiangTangRoleData);
 
       // 更新人员互斥列表
       this.updateOccupiedIds();
       // 触发自动保存
-      if (source != "system") {
+      if (payload.source != "system") {
         this.scheduleAutoSave();
       }
     },
@@ -1337,9 +1213,8 @@ export default {
     /**
      * 发酵仓选择变更
      */
-    onBinsChangeMeta(payload: UTSJSONObject) {
-      const source = payload["source"] as string | null;
-      this.lastBinsChangeSource = source != null ? source : "";
+    onBinsChangeMeta(payload: BinsChangeMetaPayload) {
+      this.lastBinsChangeSource = payload.source;
     },
 
     onBinsChange(bins: BinCode[]) {
@@ -1513,14 +1388,10 @@ export default {
     /**
      * 跨仓岗位分配变更
      */
-    onCrossBinChange(payload: UTSJSONObject) {
+    onCrossBinChange(payload: CrossBinChangePayload) {
       if (this.isRestoring == true || this.viewMode != "edit") {
         return;
       }
-      const personId = payload["person_id"];
-      const personName = payload["person_name"];
-      const pointsUnits = payload["points_units"];
-      const sources = payload["sources"];
 
       // 更新人员互斥列表
       if (this.crossBinPersonId != null) {
@@ -1533,9 +1404,9 @@ export default {
         }
       }
 
-      if (personId != null) {
-        this.crossBinPersonId = personId as number;
-        this.crossBinPersonName = personName as string;
+      if (payload.personId != null) {
+        this.crossBinPersonId = payload.personId;
+        this.crossBinPersonName = payload.personName;
         // 添加新人员到互斥列表
         if (this.occupiedIds.indexOf(this.crossBinPersonId as number) == -1) {
           this.occupiedIds.push(this.crossBinPersonId as number);
@@ -1545,13 +1416,8 @@ export default {
         this.crossBinPersonName = "";
       }
 
-      if (pointsUnits != null) {
-        this.crossBinPointsUnits = pointsUnits as number;
-      }
-
-      if (sources != null) {
-        this.crossBinSources = sources as AssignmentSourceCreateParams[];
-      }
+      this.crossBinPointsUnits = payload.pointsUnits;
+      this.crossBinSources = payload.sources;
       // 跨仓工分变更后重新计算分配
       this.recalculateCrossBinSources();
       // 触发自动保存
@@ -1580,71 +1446,33 @@ export default {
 
     /**
      * 获取指定仓的工人分配数据（用于初始化仓卡片）
+     * 返回强类型数组
      */
-    getBinWorkers(stageBinId: number): UTSJSONObject[] {
+    getBinWorkers(stageBinId: number): SessionPenaltyWorkerData[] {
       const cardData = this.binCardsData.get(stageBinId);
       if (cardData != null) {
-        const workers: UTSJSONObject[] = [];
-        for (let i = 0; i < cardData.workers.length; i++) {
-          const w = cardData.workers[i];
-          workers.push({
-            personId: w.personId,
-            personName: w.personName,
-            pointsUnits: w.pointsUnits,
-            deductedUnits: w.deductedUnits,
-            penaltyReason: w.penaltyReason,
-            penaltyId: w.penaltyId,
-          } as UTSJSONObject);
-        }
-        return workers;
+        return cardData.workers;
       }
-      return [] as UTSJSONObject[];
+      return [] as SessionPenaltyWorkerData[];
     },
 
     /**
      * 仓卡片数据变更
      */
-    onBinCardChange(payload: UTSJSONObject) {
+    onBinCardChange(payload: BinCardChangePayload) {
       if (this.isRestoring == true || this.viewMode != "edit") {
         return;
       }
-      const stageBinId = payload["stageBinId"] as number;
-      const binId = payload["binId"] as number;
-      const binCode = payload["binCode"] as string;
-      const kojiCount = payload["kojiCount"] as number;
-      const totalPointsUnits = payload["totalPointsUnits"] as number;
-      const assignedUnits = payload["assignedUnits"] as number;
-      const workersRaw = payload["workers"] as UTSJSONObject[];
-
-      // 解析工人数据 - 收敛到 typed helper
-      const workers: SessionPenaltyWorkerData[] = [];
-      for (let i = 0; i < workersRaw.length; i++) {
-        const w = workersRaw[i];
-        workers.push({
-          personId: w["personId"] != null ? (w["personId"] as number) : null,
-          personName:
-            w["personName"] != null ? (w["personName"] as string) : "",
-          pointsUnits:
-            w["pointsUnits"] != null ? (w["pointsUnits"] as number) : 1,
-          positionIndex:
-            w["positionIndex"] != null ? (w["positionIndex"] as number) : i + 1,
-          deductedUnits:
-            w["deductedUnits"] != null ? (w["deductedUnits"] as number) : 0,
-          penaltyReason:
-            w["penaltyReason"] != null ? (w["penaltyReason"] as string) : "",
-          penaltyId: w["penaltyId"] != null ? (w["penaltyId"] as number) : null,
-        } as SessionPenaltyWorkerData);
-      }
 
       // 更新仓卡片数据
-      this.binCardsData.set(stageBinId, {
-        stageBinId: stageBinId,
-        binId: binId,
-        binCode: binCode,
-        kojiCount: kojiCount,
-        totalPointsUnits: totalPointsUnits,
-        assignedUnits: assignedUnits,
-        workers: workers,
+      this.binCardsData.set(payload.stageBinId, {
+        stageBinId: payload.stageBinId,
+        binId: payload.binId,
+        binCode: payload.binCode,
+        kojiCount: payload.kojiCount,
+        totalPointsUnits: payload.totalPointsUnits,
+        assignedUnits: payload.assignedUnits,
+        workers: payload.workers,
       } as EntryBinCardState);
 
       // 更新人员互斥列表
@@ -1658,10 +1486,10 @@ export default {
      * 注意：biz-bin-card 会同时触发 change 和 kojiChange 事件
      * 自动保存已在 onBinCardChange 中调度，此处不重复调度
      */
-    onBinKojiChange(payload: UTSJSONObject) {
-      const stageBinId = payload["stageBinId"] as number;
-      const kojiCount = payload["kojiCount"] as number;
-      const totalPointsUnits = payload["totalPointsUnits"] as number;
+    onBinKojiChange(payload: BinKojiChangePayload) {
+      const stageBinId = payload.stageBinId;
+      const kojiCount = payload.kojiCount;
+      const totalPointsUnits = payload.totalPointsUnits;
 
       // 更新 stageBinInfos 中的曲坯数
       for (let i = 0; i < this.stageBinInfos.length; i++) {
@@ -1688,6 +1516,34 @@ export default {
       }
 
       // 曲坯数变更后重新计算跨仓工分分配
+      this.recalculateCrossBinSources();
+      // 不在此处调用 scheduleAutoSave()，避免重复调度
+      // biz-bin-card 会同时触发 change 事件，已在 onBinCardChange 中调度
+    },
+
+    /**
+     * 仓扣分变更（用于更新人员扣分工分）
+     * 注意：biz-bin-card 会同时触发 change 和 penaltyChange 事件
+     * change 事件已包含完整 workers 数据，此处仅处理特定扣分逻辑
+     * 自动保存已在 onBinCardChange 中调度，此处不重复调度
+     */
+    onBinPenaltyChange(payload: BinPenaltyChangePayload) {
+      const stageBinId = payload.stageBinId;
+      const workerIndex = payload.workerIndex;
+
+      // 更新仓卡片数据中对应人员的扣分信息
+      // 注意：pointsUnits 保持原始工分不变，只更新扣分相关字段
+      const cardData = this.binCardsData.get(stageBinId);
+      if (cardData != null && cardData.workers.length > workerIndex) {
+        const worker = cardData.workers[workerIndex];
+        worker.deductedUnits = payload.deductedUnits;
+        worker.penaltyReason = payload.penaltyReason;
+        worker.penaltyId = payload.penaltyId;
+        // 不修改 worker.pointsUnits，它应保持原始工分语义
+        // finalUnits = pointsUnits - deductedUnits，由调用方计算即可
+      }
+
+      // 扣分变更后重新计算跨仓工分分配（因为扣分会影响池子总分）
       this.recalculateCrossBinSources();
       // 不在此处调用 scheduleAutoSave()，避免重复调度
       // biz-bin-card 会同时触发 change 事件，已在 onBinCardChange 中调度
@@ -1905,10 +1761,6 @@ export default {
         crossBinPointsUnits: 0,
         crossBinSources: [] as AssignmentSourceCreateParams[],
         liangTangRolesData: defaultLiangTangData.rolesData,
-        wheatMaterialWorkers: defaultLiangTangData.wheatMaterialWorkers,
-        machineGuardWorkers: defaultLiangTangData.machineGuardWorkers,
-        kojiUnloaderWorkers: defaultLiangTangData.kojiUnloaderWorkers,
-        microOperatorWorkers: defaultLiangTangData.microOperatorWorkers,
         duiQuWorkers: defaultDuiQuWorkers,
         duiQuTotalKojiCount: 0,
         duiQuTotalPoolUnits: 0,
@@ -2020,10 +1872,6 @@ export default {
         }
 
         this.liangTangRolesData = nextState.liangTangRolesData;
-        this.wheatMaterialWorkers = nextState.wheatMaterialWorkers;
-        this.machineGuardWorkers = nextState.machineGuardWorkers;
-        this.kojiUnloaderWorkers = nextState.kojiUnloaderWorkers;
-        this.microOperatorWorkers = nextState.microOperatorWorkers;
 
         this.duiQuWorkers = nextState.duiQuWorkers;
         this.duiQuTotalKojiCount = nextState.duiQuTotalKojiCount;
@@ -2072,7 +1920,7 @@ export default {
       if (this.sessionStatus == 'draft' && this.isSubmitting == false) {
         uni.hideKeyboard();
         try {
-          const session = this.buildSessionData('draft');
+          const session = this.buildSessionDataFromState('draft');
           const raw = sessionDataToStorageJson(session);
           saveDraftSession(fromDate, this.stageCode, this.roundId, raw);
           this.savedRevision = this.draftRevision;
@@ -2333,7 +2181,7 @@ export default {
       if (this.sessionStatus == 'draft' && this.isSubmitting == false && roundId != null && roundId != 0) {
         uni.hideKeyboard();
         try {
-          const session = this.buildSessionData('draft');
+          const session = this.buildSessionDataFromState('draft');
           const raw = sessionDataToStorageJson(session);
           saveDraftSession(date, this.stageCode, roundId, raw);
           this.savedRevision = this.draftRevision;
@@ -2368,10 +2216,6 @@ export default {
         crossBinPointsUnits: this.crossBinPointsUnits,
         crossBinSources: this.crossBinSources,
         liangTangRolesData: this.liangTangRolesData,
-        wheatMaterialWorkers: this.wheatMaterialWorkers,
-        machineGuardWorkers: this.machineGuardWorkers,
-        kojiUnloaderWorkers: this.kojiUnloaderWorkers,
-        microOperatorWorkers: this.microOperatorWorkers,
         duiQuWorkers: this.duiQuWorkers,
         duiQuTotalKojiCount: this.duiQuTotalKojiCount,
         duiQuTotalPoolUnits: this.duiQuTotalPoolUnits,
@@ -2391,7 +2235,7 @@ export default {
      * @param status 会话状态
      * @returns 会话数据对象
      */
-    buildSessionData(status: SessionStatus): SessionData {
+    buildSessionDataFromState(status: SessionStatus): SessionData {
       // 确保 coefSnapshot 非空（防御性编程）
       if (this.coefSnapshot == null && this.coefSetId != null) {
         const setData = loadCoefSet(this.coefSetId as number);
@@ -2430,12 +2274,9 @@ export default {
     submit() {
       try {
         // 1. 构建提交数据
-        const sessionData = this.buildSessionData("submitted");
+        const sessionData = this.buildSessionDataFromState("submitted");
 
-        // 2. 序列化为 storage JSON（校验器需要 UTSJSONObject）
-        const raw = sessionDataToStorageJson(sessionData);
-
-        // 3. 构建校验上下文
+        // 2. 构建校验上下文
         const ctx = {
           mode: "submit",
           locale: "zh-CN" as "zh-CN",
@@ -2445,8 +2286,8 @@ export default {
           manager_name: getManagerName().trim()
         } as ValidationContext;
 
-        // 4. 调用校验引擎
-        const result = validateSessionData(raw, ctx);
+        // 3. 调用校验引擎（直接使用 typed 入口）
+        const result = validateTypedSessionData(sessionData, ctx);
 
         // 4. 处理校验结果
         if (result.is_valid == false) {
@@ -2458,7 +2299,7 @@ export default {
           return;
         }
 
-        // 4.5 有警告时，合并进确认弹窗（单次弹窗，避免 toast + confirm 双弹）
+        // 5. 有警告时，合并进确认弹窗（单次弹窗，避免 toast + confirm 双弹）
         if (result.has_warnings == true) {
           let warningMsg = ''
           for (let i = 0; i < result.errors.length; i++) {
@@ -2623,7 +2464,7 @@ export default {
 
       try {
         // 构建会话数据
-        const session = this.buildSessionData("draft");
+        const session = this.buildSessionDataFromState("draft");
         const raw = sessionDataToStorageJson(session);
 
         // 保存到存储

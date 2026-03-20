@@ -476,10 +476,6 @@ export function sessionDataToEntryPageState(
 
   // 构建 liangTangRolesData Map
   const liangTangRolesData = new Map<string, LiangTangRoleData>()
-  const wheatMaterialWorkers: SessionWorkerData[] = []
-  const machineGuardWorkers: SessionWorkerData[] = []
-  const kojiUnloaderWorkers: SessionWorkerData[] = []
-  const microOperatorWorkers: SessionWorkerData[] = []
 
   if (data.liang_tang != null) {
     // WHEAT_MATERIAL
@@ -493,7 +489,6 @@ export function sessionDataToEntryPageState(
           pointsUnits: w.points_units
         } as SessionWorkerData
         workers.push(worker)
-        wheatMaterialWorkers.push(worker)
       }
       liangTangRolesData.set('WHEAT_MATERIAL', {
         roleCode: 'WHEAT_MATERIAL',
@@ -512,7 +507,6 @@ export function sessionDataToEntryPageState(
           pointsUnits: w.points_units
         } as SessionWorkerData
         workers.push(worker)
-        machineGuardWorkers.push(worker)
       }
       liangTangRolesData.set('MACHINE_GUARD', {
         roleCode: 'MACHINE_GUARD',
@@ -531,7 +525,6 @@ export function sessionDataToEntryPageState(
           pointsUnits: w.points_units
         } as SessionWorkerData
         workers.push(worker)
-        kojiUnloaderWorkers.push(worker)
       }
       liangTangRolesData.set('KOJI_UNLOADER', {
         roleCode: 'KOJI_UNLOADER',
@@ -550,7 +543,6 @@ export function sessionDataToEntryPageState(
           pointsUnits: w.points_units
         } as SessionWorkerData
         workers.push(worker)
-        microOperatorWorkers.push(worker)
       }
       liangTangRolesData.set('MICRO_OPERATOR', {
         roleCode: 'MICRO_OPERATOR',
@@ -622,10 +614,6 @@ export function sessionDataToEntryPageState(
     crossBinPointsUnits: crossBinPointsUnits,
     crossBinSources: crossBinSources,
     liangTangRolesData: liangTangRolesData,
-    wheatMaterialWorkers: wheatMaterialWorkers,
-    machineGuardWorkers: machineGuardWorkers,
-    kojiUnloaderWorkers: kojiUnloaderWorkers,
-    microOperatorWorkers: microOperatorWorkers,
     duiQuWorkers: duiQuWorkers,
     duiQuTotalKojiCount: duiQuTotalKojiCount,
     duiQuTotalPoolUnits: duiQuTotalPoolUnits,
@@ -733,11 +721,7 @@ export function entryPageStateToSessionData(
   }
 
   let liangTang: SessionLiangTangData | null = null
-  const hasLiangTangData = state.liangTangRolesData.size > 0 ||
-    state.wheatMaterialWorkers.length > 0 ||
-    state.machineGuardWorkers.length > 0 ||
-    state.kojiUnloaderWorkers.length > 0 ||
-    state.microOperatorWorkers.length > 0
+  const hasLiangTangData = state.liangTangRolesData.size > 0
 
   if (hasLiangTangData) {
     const serializeRole = (roleCode: string): SessionWorkerStorageData[] => {

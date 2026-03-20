@@ -80,6 +80,7 @@
     getNonEmptyGroupKeys
   } from '../../domain/services/PersonSearchService.uts'
   import type { SearchablePerson } from '../../domain/services/PersonSearchService.uts'
+  import type { PersonSelectPayload } from '../../domain/models/assignment.uts'
 
   export default {
     props: {
@@ -277,11 +278,11 @@
           return
         }
 
-        // 使用 UTSJSONObject 发送，确保跨组件类型兼容
-        const payload = {
-          id: person.id,
-          name: person.name
-        } as UTSJSONObject
+        // 使用强类型 PersonSelectPayload 发送
+        const payload: PersonSelectPayload = {
+          personId: person.id,
+          personName: person.name
+        }
         this.$emit('select', payload)
       },
 

@@ -333,6 +333,11 @@ export type SessionPenaltyWorkerData = {
  */
 export type BinCardChangePayload = {
   stageBinId: number
+  binId: number
+  binCode: string
+  kojiCount: number
+  totalPointsUnits: PointsUnits
+  assignedUnits: PointsUnits
   workers: SessionPenaltyWorkerData[]
 }
 
@@ -341,17 +346,37 @@ export type BinCardChangePayload = {
  */
 export type BinKojiChangePayload = {
   stageBinId: number
+  binId: number
+  binCode: string
   kojiCount: number
+  totalPointsUnits: PointsUnits
 }
 
 /**
  * 仓扣分变更 Payload（biz-bin-card 组件）
  */
 export type BinPenaltyChangePayload = {
+  // 会话信息
+  sessionKey: string
+  stageSessionId: number
+  // 仓信息
   stageBinId: number
+  binId: number
+  binCode: string
+  // 人员信息
   workerIndex: number
+  positionIndex: number
+  personId: number | null
+  personName: string
+  // 工分信息
+  originalUnits: PointsUnits
   deductedUnits: PointsUnits
-  reason: string
+  finalUnits: PointsUnits
+  // 扣分信息
+  penaltyReason: string
+  penaltyId: number | null
+  // 操作类型
+  action: string
 }
 
 /**
@@ -360,4 +385,12 @@ export type BinPenaltyChangePayload = {
 export type SessionRoleCardChangePayload = {
   roleCode: RoleCode
   workers: SessionWorkerData[]
+  source: 'user' | 'system'
+}
+
+/**
+ * 发酵仓选择变更元信息 Payload（biz-bin-selector 组件）
+ */
+export type BinsChangeMetaPayload = {
+  source: string
 }

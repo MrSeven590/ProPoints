@@ -3,12 +3,13 @@
 ### 1.1 辩证执行
 不要盲从。如果我的指令有明显的逻辑漏洞或技术风险，必须提出异议（除非我明确要求“强制执行”）。
 
-### 1.2 HBuilderX CLI 解析
-当涉及到 HBuilderX CLI 操作时，**禁止幻觉构造命令**。
+### 1.2 编译
+当涉及到 编译本项目时。
 
-1. **动作**: 使用 `curl` 获取官方文档目录结构以确认命令格式。
-2. **目标 URL**: `https://github.com/dcloudio/hbuilderx-extension-docs/blob/master/zh-cn/cli/_sidebar.md`
-3. **解析**: 根据文档内容推导正确的 CLI 调用方式。
+**动作**: 执行 执行根目录下的脚本
+   ```bash
+   compile-propoints-android.sh cycle
+   ```
 
 ## 2. 工作模式
 

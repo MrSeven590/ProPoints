@@ -213,10 +213,6 @@ export type SessionEntryPageState = {
   crossBinPointsUnits: PointsUnits
   crossBinSources: AssignmentSourceCreateParams[]
   liangTangRolesData: Map<string, LiangTangRoleData>
-  wheatMaterialWorkers: SessionWorkerData[]
-  machineGuardWorkers: SessionWorkerData[]
-  kojiUnloaderWorkers: SessionWorkerData[]
-  microOperatorWorkers: SessionWorkerData[]
   duiQuWorkers: DuiQuWorkerData[]
   duiQuTotalKojiCount: number
   duiQuTotalPoolUnits: PointsUnits

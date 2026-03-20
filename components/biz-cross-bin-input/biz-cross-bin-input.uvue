@@ -81,7 +81,7 @@
 
 <script lang="uts">
 	  import { PointsUnits, formatPointsUnits, pointsToUnits } from '../../domain/models/types.uts'
-	  import { AssignmentSourceCreateParams } from '../../domain/models/assignment.uts'
+	  import type { AssignmentSourceCreateParams, CrossBinChangePayload, PersonSelectPayload } from '../../domain/models/assignment.uts'
 	  import { StageBinInfo } from '../../domain/models/ferment.uts'
 
   /**
@@ -215,15 +215,11 @@
         this.showPersonPicker = false
       },
 
-      onPersonSelect(payload: UTSJSONObject) {
-        const id = payload['id']
-        const name = payload['name']
-        if (id != null && name != null) {
-          this.selectedPersonId = id as number
-          this.selectedPersonName = name as string
-          this.showPersonPicker = false
-          this.emitChange()
-        }
+      onPersonSelect(payload: PersonSelectPayload) {
+        this.selectedPersonId = payload.personId
+        this.selectedPersonName = payload.personName
+        this.showPersonPicker = false
+        this.emitChange()
       },
 
       onPersonClear() {
@@ -312,13 +308,12 @@
       },
 
       emitChange() {
-        // 使用 UTSJSONObject 发送，确保跨组件类型兼容
-        const payload = {
-          person_id: this.selectedPersonId,
-          person_name: this.selectedPersonName,
-          points_units: this.pointsUnits,
+        const payload: CrossBinChangePayload = {
+          personId: this.selectedPersonId,
+          personName: this.selectedPersonName,
+          pointsUnits: this.pointsUnits,
           sources: this.sources
-        } as UTSJSONObject
+        }
         this.$emit('change', payload)
       }
     }
