@@ -62,7 +62,8 @@
 
 <script lang="uts">
   import { getTodayDateString, addDaysToDate, formatPointsUnits, LIANG_TANG_ROLES } from '../../domain/models/types.uts'
-  import type { PointsUnits, RoleCode } from '../../domain/models/types.uts'
+  import type { PointsUnits } from '../../domain/models/types.uts'
+  import type { SessionWorkerStorageData } from '../../domain/models/session.uts'
   import { calcFinalPoints, getRoleName } from '../../domain/models/assignment.uts'
   import { getSessionsByDate } from '../../domain/stores/AppStore.uts'
 
@@ -79,12 +80,16 @@
 
   export default {
     data() {
+      const displayList: DisplayItem[] = []
+      const totalOriginal: PointsUnits = 0
+      const totalDeducted: PointsUnits = 0
+      const totalFinal: PointsUnits = 0
       return {
         selectedDate: '',
-        displayList: [] as DisplayItem[],
-        totalOriginal: 0 as PointsUnits,
-        totalDeducted: 0 as PointsUnits,
-        totalFinal: 0 as PointsUnits
+        displayList: displayList,
+        totalOriginal: totalOriginal,
+        totalDeducted: totalDeducted,
+        totalFinal: totalFinal
       }
     },
     onLoad() {
@@ -109,124 +114,118 @@
 
         for (let i = 0; i < sessions.length; i++) {
           const session = sessions[i]
-          const status = session['status'] as string | null
-          if (status == 'draft') {
+          if (session.status == 'draft') {
             continue
           }
 
-          const binsData = session['bins'] as UTSJSONObject[] | null
-          if (binsData != null) {
-            for (let j = 0; j < binsData.length; j++) {
-              const bin = binsData[j]
-              const binCode = bin['bin_code'] as string | null
-              const workers = bin['workers'] as UTSJSONObject[] | null
+          for (let j = 0; j < session.bins.length; j++) {
+            const bin = session.bins[j]
+            for (let k = 0; k < bin.workers.length; k++) {
+              const worker = bin.workers[k]
+              const personId = worker.person_id
+              const personName = worker.person_name
+              const pointsUnits = worker.points_units
+              const deductedUnits = worker.deducted_units
+              const positionIndex = worker.position_index
+              const penaltyReason = worker.penalty_reason
 
-              if (workers != null && binCode != null) {
-                for (let k = 0; k < workers.length; k++) {
-                  const worker = workers[k]
-                  const personId = worker['personId'] as number | null
-                  const personName = worker['personName'] as string | null
-                  const pointsUnits = worker['pointsUnits'] as number | null
-                  const deductedUnits = worker['deductedUnits'] as number | null
-                  const positionIndex = worker['positionIndex'] as number | null
-                  const penaltyReason = worker['penaltyReason'] as string | null
-
-                  if (personId != null && personName != null) {
-                    const original = pointsUnits != null ? pointsUnits : 0
-                    const deducted = deductedUnits != null ? deductedUnits : 0
-                    items.push({
-                      personId: personId,
-                      personName: personName,
-                      binCode: binCode,
-                      positionIndex: positionIndex != null ? positionIndex : 0,
-                      originalUnits: original,
-                      deductedUnits: deducted,
-                      finalUnits: calcFinalPoints(original, deducted),
-                      penaltyReason: penaltyReason != null ? penaltyReason : ''
-                    } as DisplayItem)
-                  }
-                }
-              }
-            }
-          }
-
-          const crossBin = session['cross_bin'] as UTSJSONObject | null
-          if (crossBin != null) {
-            const enabled = crossBin['enabled'] as boolean | null
-            if (enabled == true) {
-              const personId = crossBin['person_id'] as number | null
-              const personName = crossBin['person_name'] as string | null
-              const pointsUnits = crossBin['points_units'] as number | null
-              const roleName = crossBin['role_name'] as string | null
-
-              if (personId != null && personName != null) {
-                items.push({
+              if (personId != null && personName != '') {
+                const original = pointsUnits
+                const deducted = deductedUnits
+                const item: DisplayItem = {
                   personId: personId,
                   personName: personName,
-                  binCode: roleName != null ? roleName : '跨仓',
-                  positionIndex: 0,
-                  originalUnits: pointsUnits != null ? pointsUnits : 0,
-                  deductedUnits: 0,
-                  finalUnits: pointsUnits != null ? pointsUnits : 0,
-                  penaltyReason: ''
-                } as DisplayItem)
+                  binCode: bin.bin_code,
+                  positionIndex: positionIndex,
+                  originalUnits: original,
+                  deductedUnits: deducted,
+                  finalUnits: calcFinalPoints(original, deducted),
+                  penaltyReason: penaltyReason
+                }
+                items.push(item)
               }
             }
           }
 
-          // 解析晾堂岗位
-          const liangTang = session['liang_tang'] as UTSJSONObject | null
+          const crossBin = session.cross_bin
+          if (crossBin != null && crossBin.enabled == true) {
+            const personId = crossBin.person_id
+            const personName = crossBin.person_name
+            const pointsUnits = crossBin.points_units
+            const roleName = crossBin.role_name
+
+            if (personId != null && personName != '') {
+              const item: DisplayItem = {
+                personId: personId,
+                personName: personName,
+                binCode: roleName != '' ? roleName : '跨仓',
+                positionIndex: 0,
+                originalUnits: pointsUnits,
+                deductedUnits: 0,
+                finalUnits: pointsUnits,
+                penaltyReason: ''
+              }
+              items.push(item)
+            }
+          }
+
+          const liangTang = session.liang_tang
           if (liangTang != null) {
             for (let r = 0; r < LIANG_TANG_ROLES.length; r++) {
               const roleCode = LIANG_TANG_ROLES[r]
-              const roleWorkers = liangTang[roleCode] as UTSJSONObject[] | null
+              let roleWorkers: SessionWorkerStorageData[] | null = null
+              if (roleCode == 'WHEAT_MATERIAL') {
+                roleWorkers = liangTang.WHEAT_MATERIAL
+              } else if (roleCode == 'MACHINE_GUARD') {
+                roleWorkers = liangTang.MACHINE_GUARD
+              } else if (roleCode == 'KOJI_UNLOADER') {
+                roleWorkers = liangTang.KOJI_UNLOADER
+              } else if (roleCode == 'MICRO_OPERATOR') {
+                roleWorkers = liangTang.MICRO_OPERATOR
+              }
               if (roleWorkers != null) {
                 for (let k = 0; k < roleWorkers.length; k++) {
                   const worker = roleWorkers[k]
-                  const personId = worker['personId'] as number | null
-                  const personName = worker['personName'] as string | null
-                  const pointsUnits = worker['pointsUnits'] as number | null
-                  if (personId != null && personName != null) {
-                    const original = pointsUnits != null ? pointsUnits : 0
-                    items.push({
+                  const personId = worker.person_id
+                  const personName = worker.person_name
+                  const pointsUnits = worker.points_units
+                  if (personId != null && personName != '') {
+                    const item: DisplayItem = {
                       personId: personId,
                       personName: personName,
                       binCode: getRoleName(roleCode),
                       positionIndex: k + 1,
-                      originalUnits: original,
+                      originalUnits: pointsUnits,
                       deductedUnits: 0,
-                      finalUnits: original,
+                      finalUnits: pointsUnits,
                       penaltyReason: ''
-                    } as DisplayItem)
+                    }
+                    items.push(item)
                   }
                 }
               }
             }
           }
 
-          // 解析堆曲岗位
-          const duiQu = session['dui_qu'] as UTSJSONObject | null
+          const duiQu = session.dui_qu
           if (duiQu != null) {
-            const workers = duiQu['workers'] as UTSJSONObject[] | null
-            if (workers != null) {
-              for (let k = 0; k < workers.length; k++) {
-                const worker = workers[k]
-                const personId = worker['personId'] as number | null
-                const personName = worker['personName'] as string | null
-                const pointsUnits = worker['pointsUnits'] as number | null
-                if (personId != null && personName != null) {
-                  const original = pointsUnits != null ? pointsUnits : 0
-                  items.push({
-                    personId: personId,
-                    personName: personName,
-                    binCode: '堆曲',
-                    positionIndex: k + 1,
-                    originalUnits: original,
-                    deductedUnits: 0,
-                    finalUnits: original,
-                    penaltyReason: ''
-                  } as DisplayItem)
+            for (let k = 0; k < duiQu.workers.length; k++) {
+              const worker = duiQu.workers[k]
+              const personId = worker.person_id
+              const personName = worker.person_name
+              const pointsUnits = worker.points_units
+              if (personId != null && personName != '') {
+                const item: DisplayItem = {
+                  personId: personId,
+                  personName: personName,
+                  binCode: '堆曲',
+                  positionIndex: k + 1,
+                  originalUnits: pointsUnits,
+                  deductedUnits: 0,
+                  finalUnits: pointsUnits,
+                  penaltyReason: ''
                 }
+                items.push(item)
               }
             }
           }
@@ -271,7 +270,8 @@
         if (this.displayList.length == 0) {
           return
         }
-        const el = this.$refs['listContainer'] as UniElement | null
+        const listContainerRef = this.$refs['listContainer']
+        const el: UniElement | null = listContainerRef instanceof UniElement ? listContainerRef : null
         if (el == null) {
           return
         }

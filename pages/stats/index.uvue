@@ -75,10 +75,12 @@
 
 <script lang="uts">
   import { getTodayDateString, addDaysToDate, formatPointsUnits, LIANG_TANG_ROLES } from '../../domain/models/types.uts'
-  import type { PointsUnits, StageCode, RoleCode } from '../../domain/models/types.uts'
-  import { getStageName } from '../../domain/models/stage-session.uts'
+  import type { PointsUnits, StageCode } from '../../domain/models/types.uts'
+  import type { FermentRound } from '../../domain/models/ferment.uts'
+  import type { SessionWorkerStorageData } from '../../domain/models/session.uts'
   import { calcFinalPoints } from '../../domain/models/assignment.uts'
-  import { getSessionsByDate, getAllDraftSessions, loadRounds } from '../../domain/stores/AppStore.uts'
+  import { getStageName } from '../../domain/models/stage-session.uts'
+  import { getSessionsByDate, getAllDraftSessions, loadRoundsData } from '../../domain/stores/AppStore.uts'
 
   type MonthStats = {
     entryCount: number
@@ -103,7 +105,7 @@
           personCount: 0
         } as MonthStats,
         recentSessions: [] as RecentSession[],
-        rounds: [] as UTSJSONObject[]
+        rounds: [] as FermentRound[]
       }
     },
     computed: {
@@ -121,7 +123,7 @@
        * 加载轮次数据
        */
       loadRounds() {
-        this.rounds = loadRounds()
+        this.rounds = loadRoundsData()
       },
 
       /**
@@ -131,8 +133,8 @@
         if (roundId == null) return ''
         for (let i = 0; i < this.rounds.length; i++) {
           const round = this.rounds[i]
-          if ((round['id'] as number) == roundId) {
-            const roundNo = round['round_no'] as number
+          if (round.id == roundId) {
+            const roundNo = round.round_no
             return ` | 轮次${roundNo}`
           }
         }
@@ -164,92 +166,71 @@
           const sessions = getSessionsByDate(currentDate)
           for (let i = 0; i < sessions.length; i++) {
             const session = sessions[i]
-            // 过滤草稿数据
-            const status = session['status'] as string | null
-            if (status == 'draft') {
+            if (session.status == 'draft') {
               continue
             }
 
             entryCount = entryCount + 1
 
-            // 统计工分
-            const binsData = session['bins'] as UTSJSONObject[] | null
-            if (binsData != null) {
-              for (let j = 0; j < binsData.length; j++) {
-                const bin = binsData[j]
-                const workers = bin['workers'] as UTSJSONObject[] | null
-                if (workers != null) {
-                  for (let k = 0; k < workers.length; k++) {
-                    const worker = workers[k]
-                    const personId = worker['personId'] as number | null
-                    const pointsUnits = worker['pointsUnits'] as number | null
-                    const deductedUnits = worker['deductedUnits'] as number | null
-                    if (personId != null) {
-                      personIdSet.set(personId, true)
-                    }
-                    if (pointsUnits != null) {
-                      const original = pointsUnits
-                      const deducted = deductedUnits != null ? deductedUnits : 0
-                      totalPointsUnits = totalPointsUnits + calcFinalPoints(original, deducted)
-                    }
-                  }
-                }
-              }
-            }
-
-            // 统计跨仓岗位
-            const crossBin = session['cross_bin'] as UTSJSONObject | null
-            if (crossBin != null) {
-              const enabled = crossBin['enabled'] as boolean | null
-              if (enabled == true) {
-                const personId = crossBin['person_id'] as number | null
-                const pointsUnits = crossBin['points_units'] as number | null
+            for (let j = 0; j < session.bins.length; j++) {
+              const bin = session.bins[j]
+              for (let k = 0; k < bin.workers.length; k++) {
+                const worker = bin.workers[k]
+                const personId = worker.person_id
+                const pointsUnits = worker.points_units
+                const deductedUnits = worker.deducted_units
                 if (personId != null) {
                   personIdSet.set(personId, true)
                 }
-                if (pointsUnits != null) {
-                  totalPointsUnits = totalPointsUnits + calcFinalPoints(pointsUnits, 0)
-                }
+                totalPointsUnits = totalPointsUnits + calcFinalPoints(pointsUnits, deductedUnits)
               }
             }
 
-            // 统计晾堂岗位
-            const liangTang = session['liang_tang'] as UTSJSONObject | null
+            const crossBin = session.cross_bin
+            if (crossBin != null && crossBin.enabled == true) {
+              const personId = crossBin.person_id
+              if (personId != null) {
+                personIdSet.set(personId, true)
+              }
+              totalPointsUnits = totalPointsUnits + calcFinalPoints(crossBin.points_units, 0)
+            }
+
+            const liangTang = session.liang_tang
             if (liangTang != null) {
               for (let r = 0; r < LIANG_TANG_ROLES.length; r++) {
-                const roleWorkers = liangTang[LIANG_TANG_ROLES[r]] as UTSJSONObject[] | null
+                const roleCode = LIANG_TANG_ROLES[r]
+                let roleWorkers = null as SessionWorkerStorageData[] | null
+                if (roleCode == 'WHEAT_MATERIAL') {
+                  roleWorkers = liangTang.WHEAT_MATERIAL
+                } else if (roleCode == 'MACHINE_GUARD') {
+                  roleWorkers = liangTang.MACHINE_GUARD
+                } else if (roleCode == 'KOJI_UNLOADER') {
+                  roleWorkers = liangTang.KOJI_UNLOADER
+                } else if (roleCode == 'MICRO_OPERATOR') {
+                  roleWorkers = liangTang.MICRO_OPERATOR
+                }
                 if (roleWorkers != null) {
                   for (let k = 0; k < roleWorkers.length; k++) {
                     const worker = roleWorkers[k]
-                    const personId = worker['personId'] as number | null
-                    const pointsUnits = worker['pointsUnits'] as number | null
+                    const personId = worker.person_id
                     if (personId != null) {
                       personIdSet.set(personId, true)
                     }
-                    if (pointsUnits != null) {
-                      totalPointsUnits = totalPointsUnits + calcFinalPoints(pointsUnits, 0)
-                    }
+                    totalPointsUnits = totalPointsUnits + calcFinalPoints(worker.points_units, 0)
                   }
                 }
               }
             }
 
-            // 统计堆曲岗位
-            const duiQu = session['dui_qu'] as UTSJSONObject | null
+            const duiQu = session.dui_qu
             if (duiQu != null) {
-              const workers = duiQu['workers'] as UTSJSONObject[] | null
-              if (workers != null) {
-                for (let k = 0; k < workers.length; k++) {
-                  const worker = workers[k]
-                  const personId = worker['personId'] as number | null
-                  const pointsUnits = worker['pointsUnits'] as number | null
-                  if (personId != null) {
-                    personIdSet.set(personId, true)
-                  }
-                  if (pointsUnits != null) {
-                    totalPointsUnits = totalPointsUnits + calcFinalPoints(pointsUnits, 0)
-                  }
+              for (let k = 0; k < duiQu.workers.length; k++) {
+                const worker = duiQu.workers[k]
+                const personId = worker.person_id
+                if (personId != null) {
+                  personIdSet.set(personId, true)
                 }
+                totalPointsUnits = totalPointsUnits + calcFinalPoints(worker.points_units, 0)
               }
             }
           }
@@ -277,11 +258,11 @@
         const drafts = getAllDraftSessions()
         for (let i = 0; i < drafts.length; i++) {
           const sessionData = drafts[i]
-          const dateVal = sessionData['session_date'] as string | null
-          const stageCodeVal = sessionData['stage_code'] as string | null
-          const roundIdVal = sessionData['round_id'] as number | null
+          const dateVal = sessionData.session_date
+          const stageCodeVal = sessionData.stage_code
+          const roundIdVal = sessionData.round_id
 
-          if (dateVal != null && stageCodeVal != null) {
+          if (dateVal != '' && stageCodeVal != '') {
             sessions.push({
               date: dateVal,
               stageCode: stageCodeVal,
@@ -299,12 +280,12 @@
 
           for (let i = 0; i < daySessions.length; i++) {
             const sessionData = daySessions[i]
-            const dateVal = sessionData['session_date'] as string | null
-            const stageCodeVal = sessionData['stage_code'] as string | null
-            const roundIdVal = sessionData['round_id'] as number | null
-            const statusVal = sessionData['status'] as string | null
+            const dateVal = sessionData.session_date
+            const stageCodeVal = sessionData.stage_code
+            const roundIdVal = sessionData.round_id
+            const statusVal = sessionData.status
 
-            if (dateVal != null && stageCodeVal != null && statusVal == 'submitted') {
+            if (dateVal != '' && stageCodeVal != '' && statusVal == 'submitted') {
               sessions.push({
                 date: dateVal,
                 stageCode: stageCodeVal,

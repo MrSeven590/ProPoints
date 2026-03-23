@@ -93,8 +93,9 @@
 
 <script lang="uts">
   import { getTodayDateString, addDaysToDate, StageCode } from '../../domain/models/types.uts'
-  import { getSessionsByDate, getAllDraftSessions, deleteDraftSession, deleteAllDraftSessions, getCurrentClassNo, loadRounds, getManagerName, loadPersons } from '../../domain/stores/AppStore.uts'
+  import { getSessionsByDate, getAllDraftSessions, deleteDraftSession, deleteAllDraftSessions, getCurrentClassNo, loadRoundsData, getManagerName, loadPersons } from '../../domain/stores/AppStore.uts'
   import { getCurrentRoundId, getDefaultRoundIdForStage } from '../../domain/services/RoundService.uts'
+  import type { FermentRound } from '../../domain/models/ferment.uts'
 
   /**
    * 会话列表项类型
@@ -113,7 +114,7 @@
         todayDate: '',
         drafts: [] as SessionListItem[],
         submitted: [] as SessionListItem[],
-        rounds: [] as UTSJSONObject[]
+        rounds: [] as FermentRound[]
       }
     },
     onLoad() {
@@ -148,7 +149,7 @@
        * 加载所有会话数据
        */
       loadSessions() {
-        this.rounds = loadRounds()
+        this.rounds = loadRoundsData()
         const draftList: SessionListItem[] = []
         const submittedList: SessionListItem[] = []
 
@@ -156,10 +157,10 @@
         const drafts = getAllDraftSessions()
         for (let i = 0; i < drafts.length; i++) {
           const sessionData = drafts[i]
-          const dateVal = sessionData['session_date'] as string | null
-          const stageCodeVal = sessionData['stage_code'] as string | null
-          const roundIdVal = sessionData['round_id'] as number | null
-          if (dateVal != null && stageCodeVal != null) {
+          const dateVal = sessionData.session_date
+          const stageCodeVal = sessionData.stage_code
+          const roundIdVal = sessionData.round_id
+          if (dateVal != '' && stageCodeVal != '') {
             draftList.push({
               session_date: dateVal,
               stage_code: stageCodeVal,
@@ -177,12 +178,11 @@
           const todaySessions = getSessionsByDate(date)
           for (let i = 0; i < todaySessions.length; i++) {
             const sessionData = todaySessions[i]
-            const status = sessionData['status']
+            const status = sessionData.status
             if (status == 'submitted') {
-              const dateVal = sessionData['session_date'] as string
-              const stageCode = sessionData['stage_code'] as string
-              const roundIdVal = sessionData['round_id']
-              const roundId = roundIdVal != null ? (roundIdVal as number) : null
+              const dateVal = sessionData.session_date
+              const stageCode = sessionData.stage_code
+              const roundId = sessionData.round_id
               const item: SessionListItem = {
                 session_date: dateVal,
                 stage_code: stageCode,
@@ -230,8 +230,8 @@
         if (roundId == null) return ''
         for (let i = 0; i < this.rounds.length; i++) {
           const round = this.rounds[i]
-          if ((round['id'] as number) == roundId) {
-            const roundNo = round['round_no'] as number
+          if (round.id == roundId) {
+            const roundNo = round.round_no
             return ` | 轮次${roundNo}`
           }
         }

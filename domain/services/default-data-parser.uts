@@ -3,7 +3,15 @@
  * 负责将存储层的 UTSJSONObject 转换为强类型的业务对象
  */
 
-import type { SessionWorkerData, SessionPenaltyWorkerData, AssignmentSourceCreateParams } from '../models/assignment.uts'
+import type {
+  SessionWorkerData,
+  SessionPenaltyWorkerData,
+  AssignmentSourceCreateParams,
+  SessionRoleCardChangePayload,
+  BinsChangeMetaPayload,
+  CrossBinChangePayload,
+  BinCardChangePayload
+} from '../models/assignment.uts'
 import type { RoleCode, PointsUnits } from '../models/types.uts'
 import type { LiangTangRoleData, DuiQuWorkerData } from '../models/session.uts'
 import { LIANG_TANG_ROLES } from '../models/types.uts'
@@ -33,12 +41,10 @@ export type LiangTangDefaultsData = {
 
 /**
  * 晾堂岗位变更 Payload 解析结果
+ * 复用组件层的 SessionRoleCardChangePayload 类型，保持结构一致
+ * source 类型保持 'user' | 'system' 联合类型，与组件层完全对齐
  */
-export type LiangTangRoleChangePayloadResult = {
-  roleCode: RoleCode
-  workers: SessionWorkerData[]
-  source: string
-}
+export type LiangTangRoleChangePayloadResult = SessionRoleCardChangePayload
 
 /**
  * 堆曲岗位变更 Payload 解析结果
@@ -50,10 +56,9 @@ export type DuiQuRoleChangePayloadResult = {
 
 /**
  * 发酵仓选择变更元信息解析结果
+ * 复用组件层的 BinsChangeMetaPayload 类型，完全同构
  */
-export type BinsChangeMetaPayloadResult = {
-  source: string
-}
+export type BinsChangeMetaPayloadResult = BinsChangeMetaPayload
 
 /**
  * 从 UTSJSONObject 解析 SessionWorkerData
@@ -319,26 +324,15 @@ export function parsePenaltyWorkerDataArray(rawWorkers: UTSJSONObject[] | null):
 
 /**
  * 跨仓岗位变更 Payload 解析结果
+ * 复用组件层的 CrossBinChangePayload 类型，完全同构
  */
-export type CrossBinChangePayloadResult = {
-  personId: number | null
-  personName: string
-  pointsUnits: PointsUnits
-  sources: AssignmentSourceCreateParams[]
-}
+export type CrossBinChangePayloadResult = CrossBinChangePayload
 
 /**
  * 仓卡片变更 Payload 解析结果
+ * 复用组件层的 BinCardChangePayload 类型，完全同构
  */
-export type BinCardChangePayloadResult = {
-  stageBinId: number
-  binId: number
-  binCode: string
-  kojiCount: number
-  totalPointsUnits: PointsUnits
-  assignedUnits: PointsUnits
-  workers: SessionPenaltyWorkerData[]
-}
+export type BinCardChangePayloadResult = BinCardChangePayload
 
 /**
  * 从 UTSJSONObject 解析跨仓岗位变更 Payload
@@ -361,13 +355,17 @@ export function parseCrossBinChangePayload(payload: UTSJSONObject): CrossBinChan
 
 /**
  * 解析晾堂岗位变更 payload
+ * 返回类型复用 SessionRoleCardChangePayload，source 字段做类型适配
  */
 export function parseLiangTangRoleChangePayload(payload: UTSJSONObject): LiangTangRoleChangePayloadResult {
+  const sourceValue = (payload['source'] as string | null) ?? ''
+  // 类型适配：确保 source 符合 'user' | 'system' 联合类型
+  const sourceTyped: 'user' | 'system' = (sourceValue === 'user' || sourceValue === 'system') ? sourceValue : 'system'
   return {
     roleCode: payload['roleCode'] as RoleCode,
     workers: parseWorkerDataArray(payload['workers'] as UTSJSONObject[] | null),
-    source: (payload['source'] as string | null) ?? ''
-  } as LiangTangRoleChangePayloadResult
+    source: sourceTyped
+  }
 }
 
 /**
@@ -382,11 +380,12 @@ export function parseDuiQuRoleChangePayload(payload: UTSJSONObject): DuiQuRoleCh
 
 /**
  * 解析发酵仓选择变更元信息 payload
+ * 返回类型复用 BinsChangeMetaPayload，结构完全一致
  */
 export function parseBinsChangeMetaPayload(payload: UTSJSONObject): BinsChangeMetaPayloadResult {
   return {
     source: (payload['source'] as string | null) ?? ''
-  } as BinsChangeMetaPayloadResult
+  }
 }
 
 /**

@@ -423,7 +423,7 @@ import {
   getStageCoefFromSnapshot,
   getDuiQuCoef,
 } from "../../domain/services/StageCoefService.uts";
-import type { BinCode, StageBinInfo } from "../../domain/models/ferment.uts";
+import type { BinCode, StageBinInfo, FermentRound } from "../../domain/models/ferment.uts";
 import type {
   AssignmentSourceCreateParams,
   CrossBinChangePayload,
@@ -458,7 +458,7 @@ import {
   loadCoefSet,
   getCurrentClassNo,
   getManagerName,
-  loadRounds,
+  loadRoundsData,
 } from "../../domain/stores/AppStore.uts";
 import {
   validateTypedSessionData,
@@ -479,7 +479,6 @@ import {
 import {
   storageJsonToSessionData,
   sessionDataToEntryPageState,
-  sessionDataToStorageJson,
   entryPageStateToSessionData,
 } from "../../domain/services/session-adapter.uts";
 import {
@@ -834,21 +833,18 @@ export default {
         return;
       }
 
-      const rawData = loadSessionForEdit(
+      const sessionData = loadSessionForEdit(
         this.sessionDate,
         this.stageCode,
         roundId,
       );
-      if (rawData == null) {
+      if (sessionData == null) {
         uni.showToast({
           title: "无法加载会话数据",
           icon: "none",
         });
         return;
       }
-
-      // 通过 adapter 反序列化
-      const sessionData = storageJsonToSessionData(rawData);
 
       // 修改状态为 draft
       sessionData.status = "draft";
@@ -862,13 +858,11 @@ export default {
         sessionData.updated_by_manager = managerName;
       }
 
-      // 通过 adapter 序列化后保存
-      const raw = sessionDataToStorageJson(sessionData);
       saveDraftSession(
         this.sessionDate,
         this.stageCode,
         roundId,
-        raw,
+        sessionData,
       );
 
       // 切换到编辑模式
@@ -1786,14 +1780,12 @@ export default {
       }
 
       // 加载会话数据
-      const raw = loadSessionForEdit(date, this.stageCode, roundId);
-      if (raw == null) {
+      const session = loadSessionForEdit(date, this.stageCode, roundId);
+      if (session == null) {
         // 无已有数据，返回默认新建状态
         return this.buildDefaultEntryState(date);
       }
 
-      // 使用 adapter 解析数据
-      const session = storageJsonToSessionData(raw);
       const state = sessionDataToEntryPageState(session, {
         stageCode: this.stageCode,
         roundId: this.roundId,
@@ -1921,8 +1913,7 @@ export default {
         uni.hideKeyboard();
         try {
           const session = this.buildSessionDataFromState('draft');
-          const raw = sessionDataToStorageJson(session);
-          saveDraftSession(fromDate, this.stageCode, this.roundId, raw);
+          saveDraftSession(fromDate, this.stageCode, this.roundId, session);
           this.savedRevision = this.draftRevision;
         } catch (e) {
           console.error('保存草稿失败:', e);
@@ -2000,7 +1991,7 @@ export default {
      */
     loadRoundList() {
       const classNo = getCurrentClassNo();
-      const allRounds = loadRounds();
+      const allRounds = loadRoundsData();
       const options: string[] = [];
       const ids: number[] = [];
 
@@ -2008,10 +1999,10 @@ export default {
       const roundNoMap = new Map<number, number>();
       for (let i = 0; i < allRounds.length; i++) {
         const round = allRounds[i];
-        const roundClassNo = round['class_no'] as number;
+        const roundClassNo = round.class_no;
         if (roundClassNo == classNo) {
-          const roundId = round['id'] as number;
-          const roundNo = round['round_no'] as number;
+          const roundId = round.id;
+          const roundNo = round.round_no;
           options.push(`第${roundNo}轮`);
           ids.push(roundId);
           roundNoMap.set(roundId, roundNo);
@@ -2136,11 +2127,11 @@ export default {
           // 5. 更新轮次显示
           for (let i = 0; i < this.roundIds.length; i++) {
             if (this.roundIds[i] == targetRoundId) {
-              const allRounds = loadRounds();
+              const allRounds = loadRoundsData();
               for (let j = 0; j < allRounds.length; j++) {
                 const round = allRounds[j];
-                if ((round['id'] as number) == targetRoundId) {
-                  this.currentRoundNo = round['round_no'] as number;
+                if (round.id == targetRoundId) {
+                  this.currentRoundNo = round.round_no;
                   break;
                 }
               }
@@ -2182,8 +2173,7 @@ export default {
         uni.hideKeyboard();
         try {
           const session = this.buildSessionDataFromState('draft');
-          const raw = sessionDataToStorageJson(session);
-          saveDraftSession(date, this.stageCode, roundId, raw);
+          saveDraftSession(date, this.stageCode, roundId, session);
           this.savedRevision = this.draftRevision;
         } catch (e) {
           console.error('保存草稿失败:', e);
@@ -2345,8 +2335,7 @@ export default {
       this.cancelAutoSave();
       this.isSubmitting = true;
       try {
-        const raw = sessionDataToStorageJson(sessionData);
-        saveSubmittedSession(this.sessionDate, this.stageCode, this.roundId, raw);
+        saveSubmittedSession(this.sessionDate, this.stageCode, this.roundId, sessionData);
         this.saveLiangTangDefaultPersons();
         this.saveDuiQuDefaults();
         this.sessionStatus = "submitted";
@@ -2465,14 +2454,13 @@ export default {
       try {
         // 构建会话数据
         const session = this.buildSessionDataFromState("draft");
-        const raw = sessionDataToStorageJson(session);
 
         // 保存到存储
         saveDraftSession(
           this.sessionDate,
           this.stageCode,
           this.roundId,
-          raw,
+          session,
         );
 
         // 更新已保存版本号

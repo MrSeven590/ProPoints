@@ -84,9 +84,10 @@
 
 <script lang="uts">
   import { getTodayDateString, addDaysToDate, formatPointsUnits, LIANG_TANG_ROLES } from '../../domain/models/types.uts'
-  import type { PointsUnits, StageCode, RoleCode } from '../../domain/models/types.uts'
+  import type { PointsUnits, StageCode } from '../../domain/models/types.uts'
+  import type { SessionWorkerStorageData } from '../../domain/models/session.uts'
+  import { calcFinalPoints, getRoleName, type PersonSelectPayload } from '../../domain/models/assignment.uts'
   import { getStageName } from '../../domain/models/stage-session.uts'
-  import { calcFinalPoints, getRoleName } from '../../domain/models/assignment.uts'
   import { getSessionsByDate } from '../../domain/stores/AppStore.uts'
 
   type PointsRecord = {
@@ -131,14 +132,10 @@
       }
     },
     methods: {
-      onPersonSelect(payload: UTSJSONObject) {
-        const id = payload['id'] as number | null
-        const name = payload['name'] as string | null
-        if (id != null && name != null) {
-          this.selectedPersonId = id
-          this.selectedPersonName = name
-          this.loadPersonRecords()
-        }
+      onPersonSelect(payload: PersonSelectPayload) {
+        this.selectedPersonId = payload.personId
+        this.selectedPersonName = payload.personName
+        this.loadPersonRecords()
       },
       onPersonClear() {
         this.selectedPersonId = null
@@ -170,105 +167,91 @@
 
           for (let i = 0; i < sessions.length; i++) {
             const session = sessions[i]
-            // 过滤草稿数据
-            const status = session['status'] as string | null
-            if (status == 'draft') {
+            if (session.status == 'draft') {
               continue
             }
 
-            const stageCode = session['stage_code'] as string | null
-            const roundId = session['round_id'] as number | null
+            const stageCode = session.stage_code
+            const roundId = session.round_id
 
-            // 查找仓内人员
-            const binsData = session['bins'] as UTSJSONObject[] | null
-            if (binsData != null) {
-              for (let j = 0; j < binsData.length; j++) {
-                const bin = binsData[j]
-                const binCode = bin['bin_code'] as string | null
-                const workers = bin['workers'] as UTSJSONObject[] | null
+            for (let j = 0; j < session.bins.length; j++) {
+              const bin = session.bins[j]
+              const binCode = bin.bin_code
 
-                if (workers != null) {
-                  for (let k = 0; k < workers.length; k++) {
-                    const worker = workers[k]
-                    const workerId = worker['personId'] as number | null
-                    if (workerId == personId) {
-                      const pointsUnits = worker['pointsUnits'] as number | null
-                      const deductedUnits = worker['deductedUnits'] as number | null
-                      const positionIndex = worker['positionIndex'] as number | null
-                      const penaltyReason = worker['penaltyReason'] as string | null
-
-                      const original = pointsUnits != null ? pointsUnits : 0
-                      const deducted = deductedUnits != null ? deductedUnits : 0
-
-                      dayRecords.push({
-                        date: date,
-                        stageCode: stageCode != null ? stageCode : '',
-                        stageName: stageCode != null ? getStageName(stageCode as StageCode) : '',
-                        roundId: roundId,
-                        binCode: binCode != null ? binCode : '',
-                        positionIndex: positionIndex != null ? positionIndex : 0,
-                        originalUnits: original,
-                        deductedUnits: deducted,
-                        penaltyReason: penaltyReason != null ? penaltyReason : '',
-                        expanded: false
-                      } as PointsRecord)
-
-                      totalOriginal = totalOriginal + original
-                      totalDeducted = totalDeducted + deducted
-                    }
-                  }
-                }
-              }
-            }
-
-            // 查找跨仓岗位
-            const crossBin = session['cross_bin'] as UTSJSONObject | null
-            if (crossBin != null) {
-              const enabled = crossBin['enabled'] as boolean | null
-              if (enabled == true) {
-                const crossPersonId = crossBin['person_id'] as number | null
-                if (crossPersonId == personId) {
-                  const pointsUnits = crossBin['points_units'] as number | null
-                  const roleName = crossBin['role_name'] as string | null
-
-                  const original = pointsUnits != null ? pointsUnits : 0
+              for (let k = 0; k < bin.workers.length; k++) {
+                const worker = bin.workers[k]
+                const workerId = worker.person_id
+                if (workerId == personId) {
+                  const original = worker.points_units
+                  const deducted = worker.deducted_units
 
                   dayRecords.push({
                     date: date,
-                    stageCode: stageCode != null ? stageCode : '',
-                    stageName: stageCode != null ? getStageName(stageCode as StageCode) : '',
+                    stageCode: stageCode,
+                    stageName: getStageName(stageCode as StageCode),
                     roundId: roundId,
-                    binCode: roleName != null ? roleName : '跨仓',
-                    positionIndex: 0,
+                    binCode: binCode,
+                    positionIndex: worker.position_index,
                     originalUnits: original,
-                    deductedUnits: 0,
-                    penaltyReason: '',
+                    deductedUnits: deducted,
+                    penaltyReason: worker.penalty_reason,
                     expanded: false
                   } as PointsRecord)
 
                   totalOriginal = totalOriginal + original
+                  totalDeducted = totalDeducted + deducted
                 }
               }
             }
 
-            // 查找晾堂岗位
-            const liangTang = session['liang_tang'] as UTSJSONObject | null
+            const crossBin = session.cross_bin
+            if (crossBin != null && crossBin.enabled == true) {
+              const crossPersonId = crossBin.person_id
+              if (crossPersonId == personId) {
+                const original = crossBin.points_units
+
+                dayRecords.push({
+                  date: date,
+                  stageCode: stageCode,
+                  stageName: getStageName(stageCode as StageCode),
+                  roundId: roundId,
+                  binCode: crossBin.role_name != '' ? crossBin.role_name : '跨仓',
+                  positionIndex: 0,
+                  originalUnits: original,
+                  deductedUnits: 0,
+                  penaltyReason: '',
+                  expanded: false
+                } as PointsRecord)
+
+                totalOriginal = totalOriginal + original
+              }
+            }
+
+            const liangTang = session.liang_tang
             if (liangTang != null) {
               for (let r = 0; r < LIANG_TANG_ROLES.length; r++) {
                 const roleCode = LIANG_TANG_ROLES[r]
-                const roleWorkers = liangTang[roleCode] as UTSJSONObject[] | null
+                let roleWorkers = null as SessionWorkerStorageData[] | null
+                if (roleCode == 'WHEAT_MATERIAL') {
+                  roleWorkers = liangTang.WHEAT_MATERIAL
+                } else if (roleCode == 'MACHINE_GUARD') {
+                  roleWorkers = liangTang.MACHINE_GUARD
+                } else if (roleCode == 'KOJI_UNLOADER') {
+                  roleWorkers = liangTang.KOJI_UNLOADER
+                } else if (roleCode == 'MICRO_OPERATOR') {
+                  roleWorkers = liangTang.MICRO_OPERATOR
+                }
                 if (roleWorkers != null) {
                   for (let k = 0; k < roleWorkers.length; k++) {
                     const worker = roleWorkers[k]
-                    const workerId = worker['personId'] as number | null
+                    const workerId = worker.person_id
                     if (workerId == personId) {
-                      const pointsUnits = worker['pointsUnits'] as number | null
-                      const original = pointsUnits != null ? pointsUnits : 0
+                      const original = worker.points_units
 
                       dayRecords.push({
                         date: date,
-                        stageCode: stageCode != null ? stageCode : '',
-                        stageName: stageCode != null ? getStageName(stageCode as StageCode) : '',
+                        stageCode: stageCode,
+                        stageName: getStageName(stageCode as StageCode),
                         roundId: roundId,
                         binCode: getRoleName(roleCode),
                         positionIndex: k + 1,
@@ -285,33 +268,28 @@
               }
             }
 
-            // 查找堆曲岗位
-            const duiQu = session['dui_qu'] as UTSJSONObject | null
+            const duiQu = session.dui_qu
             if (duiQu != null) {
-              const workers = duiQu['workers'] as UTSJSONObject[] | null
-              if (workers != null) {
-                for (let k = 0; k < workers.length; k++) {
-                  const worker = workers[k]
-                  const workerId = worker['personId'] as number | null
-                  if (workerId == personId) {
-                    const pointsUnits = worker['pointsUnits'] as number | null
-                    const original = pointsUnits != null ? pointsUnits : 0
+              for (let k = 0; k < duiQu.workers.length; k++) {
+                const worker = duiQu.workers[k]
+                const workerId = worker.person_id
+                if (workerId == personId) {
+                  const original = worker.points_units
 
-                    dayRecords.push({
-                      date: date,
-                      stageCode: stageCode != null ? stageCode : '',
-                      stageName: stageCode != null ? getStageName(stageCode as StageCode) : '',
-                      roundId: roundId,
-                      binCode: '堆曲',
-                      positionIndex: k + 1,
-                      originalUnits: original,
-                      deductedUnits: 0,
-                      penaltyReason: '',
-                      expanded: false
-                    } as PointsRecord)
+                  dayRecords.push({
+                    date: date,
+                    stageCode: stageCode,
+                    stageName: getStageName(stageCode as StageCode),
+                    roundId: roundId,
+                    binCode: '堆曲',
+                    positionIndex: k + 1,
+                    originalUnits: original,
+                    deductedUnits: 0,
+                    penaltyReason: '',
+                    expanded: false
+                  } as PointsRecord)
 
-                    totalOriginal = totalOriginal + original
-                  }
+                  totalOriginal = totalOriginal + original
                 }
               }
             }

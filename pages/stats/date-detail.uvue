@@ -75,9 +75,10 @@
 
 <script lang="uts">
   import { getTodayDateString, addDaysToDate, formatPointsUnits, LIANG_TANG_ROLES } from '../../domain/models/types.uts'
-  import type { StageCode, PointsUnits, RoleCode } from '../../domain/models/types.uts'
-  import { getStageName } from '../../domain/models/stage-session.uts'
+  import type { StageCode, PointsUnits } from '../../domain/models/types.uts'
+  import type { SessionWorkerStorageData } from '../../domain/models/session.uts'
   import { calcFinalPoints, getRoleName } from '../../domain/models/assignment.uts'
+  import { getStageName } from '../../domain/models/stage-session.uts'
   import { getSessionsByDateAndStage } from '../../domain/stores/AppStore.uts'
 
   type StageItem = {
@@ -145,96 +146,92 @@
 
         for (let i = 0; i < sessions.length; i++) {
           const session = sessions[i]
-          // 过滤草稿数据
-          const status = session['status'] as string | null
-          if (status == 'draft') {
+          if (session.status == 'draft') {
             continue
           }
 
           // 解析仓内人员
-          const binsData = session['bins'] as UTSJSONObject[] | null
-          if (binsData != null) {
-            for (let j = 0; j < binsData.length; j++) {
-              const bin = binsData[j]
-              const binCode = bin['bin_code'] as string | null
-              const workers = bin['workers'] as UTSJSONObject[] | null
+          for (let j = 0; j < session.bins.length; j++) {
+            const bin = session.bins[j]
+            const binCode = bin.bin_code
+            for (let k = 0; k < bin.workers.length; k++) {
+              const worker = bin.workers[k]
+              const personId = worker.person_id
+              const personName = worker.person_name
+              const pointsUnits = worker.points_units
+              const deductedUnits = worker.deducted_units
+              const positionIndex = worker.position_index
+              const penaltyReason = worker.penalty_reason
 
-              if (workers != null && binCode != null) {
-                for (let k = 0; k < workers.length; k++) {
-                  const worker = workers[k]
-                  const personId = worker['personId'] as number | null
-                  const personName = worker['personName'] as string | null
-                  const pointsUnits = worker['pointsUnits'] as number | null
-                  const deductedUnits = worker['deductedUnits'] as number | null
-                  const positionIndex = worker['positionIndex'] as number | null
-                  const penaltyReason = worker['penaltyReason'] as string | null
-
-                  if (personId != null && personName != null) {
-                    const original = pointsUnits != null ? pointsUnits : 0
-                    const deducted = deductedUnits != null ? deductedUnits : 0
-                    items.push({
-                      personId: personId,
-                      personName: personName,
-                      binCode: binCode,
-                      positionIndex: positionIndex != null ? positionIndex : 0,
-                      originalUnits: original,
-                      deductedUnits: deducted,
-                      finalUnits: calcFinalPoints(original, deducted),
-                      penaltyReason: penaltyReason != null ? penaltyReason : ''
-                    } as DisplayItem)
-                  }
-                }
-              }
-            }
-          }
-
-          // 解析跨仓岗位
-          const crossBin = session['cross_bin'] as UTSJSONObject | null
-          if (crossBin != null) {
-            const enabled = crossBin['enabled'] as boolean | null
-            if (enabled == true) {
-              const personId = crossBin['person_id'] as number | null
-              const personName = crossBin['person_name'] as string | null
-              const pointsUnits = crossBin['points_units'] as number | null
-              const roleName = crossBin['role_name'] as string | null
-
-              if (personId != null && personName != null) {
+              if (personId != null && personName != '') {
+                const original = pointsUnits
+                const deducted = deductedUnits
                 items.push({
                   personId: personId,
                   personName: personName,
-                  binCode: roleName != null ? roleName : '跨仓',
-                  positionIndex: 0,
-                  originalUnits: pointsUnits != null ? pointsUnits : 0,
-                  deductedUnits: 0,
-                  finalUnits: pointsUnits != null ? pointsUnits : 0,
-                  penaltyReason: ''
+                  binCode: binCode,
+                  positionIndex: positionIndex,
+                  originalUnits: original,
+                  deductedUnits: deducted,
+                  finalUnits: calcFinalPoints(original, deducted),
+                  penaltyReason: penaltyReason
                 } as DisplayItem)
               }
             }
           }
 
+          // 解析跨仓岗位
+          const crossBin = session.cross_bin
+          if (crossBin != null && crossBin.enabled == true) {
+            const personId = crossBin.person_id
+            const personName = crossBin.person_name
+            const pointsUnits = crossBin.points_units
+            const roleName = crossBin.role_name
+
+            if (personId != null && personName != '') {
+              items.push({
+                personId: personId,
+                personName: personName,
+                binCode: roleName != '' ? roleName : '跨仓',
+                positionIndex: 0,
+                originalUnits: pointsUnits,
+                deductedUnits: 0,
+                finalUnits: pointsUnits,
+                penaltyReason: ''
+              } as DisplayItem)
+            }
+          }
+
           // 解析晾堂岗位
-          const liangTang = session['liang_tang'] as UTSJSONObject | null
+          const liangTang = session.liang_tang
           if (liangTang != null) {
             for (let r = 0; r < LIANG_TANG_ROLES.length; r++) {
               const roleCode = LIANG_TANG_ROLES[r]
-              const roleWorkers = liangTang[roleCode] as UTSJSONObject[] | null
+              let roleWorkers = null as SessionWorkerStorageData[] | null
+              if (roleCode == 'WHEAT_MATERIAL') {
+                roleWorkers = liangTang.WHEAT_MATERIAL
+              } else if (roleCode == 'MACHINE_GUARD') {
+                roleWorkers = liangTang.MACHINE_GUARD
+              } else if (roleCode == 'KOJI_UNLOADER') {
+                roleWorkers = liangTang.KOJI_UNLOADER
+              } else if (roleCode == 'MICRO_OPERATOR') {
+                roleWorkers = liangTang.MICRO_OPERATOR
+              }
               if (roleWorkers != null) {
                 for (let k = 0; k < roleWorkers.length; k++) {
                   const worker = roleWorkers[k]
-                  const personId = worker['personId'] as number | null
-                  const personName = worker['personName'] as string | null
-                  const pointsUnits = worker['pointsUnits'] as number | null
-                  if (personId != null && personName != null) {
-                    const original = pointsUnits != null ? pointsUnits : 0
+                  const personId = worker.person_id
+                  const personName = worker.person_name
+                  const pointsUnits = worker.points_units
+                  if (personId != null && personName != '') {
                     items.push({
                       personId: personId,
                       personName: personName,
                       binCode: getRoleName(roleCode),
                       positionIndex: k + 1,
-                      originalUnits: original,
+                      originalUnits: pointsUnits,
                       deductedUnits: 0,
-                      finalUnits: original,
+                      finalUnits: pointsUnits,
                       penaltyReason: ''
                     } as DisplayItem)
                   }
@@ -244,28 +241,24 @@
           }
 
           // 解析堆曲岗位
-          const duiQu = session['dui_qu'] as UTSJSONObject | null
+          const duiQu = session.dui_qu
           if (duiQu != null) {
-            const workers = duiQu['workers'] as UTSJSONObject[] | null
-            if (workers != null) {
-              for (let k = 0; k < workers.length; k++) {
-                const worker = workers[k]
-                const personId = worker['personId'] as number | null
-                const personName = worker['personName'] as string | null
-                const pointsUnits = worker['pointsUnits'] as number | null
-                if (personId != null && personName != null) {
-                  const original = pointsUnits != null ? pointsUnits : 0
-                  items.push({
-                    personId: personId,
-                    personName: personName,
-                    binCode: '堆曲',
-                    positionIndex: k + 1,
-                    originalUnits: original,
-                    deductedUnits: 0,
-                    finalUnits: original,
-                    penaltyReason: ''
-                  } as DisplayItem)
-                }
+            for (let k = 0; k < duiQu.workers.length; k++) {
+              const worker = duiQu.workers[k]
+              const personId = worker.person_id
+              const personName = worker.person_name
+              const pointsUnits = worker.points_units
+              if (personId != null && personName != '') {
+                items.push({
+                  personId: personId,
+                  personName: personName,
+                  binCode: '堆曲',
+                  positionIndex: k + 1,
+                  originalUnits: pointsUnits,
+                  deductedUnits: 0,
+                  finalUnits: pointsUnits,
+                  penaltyReason: ''
+                } as DisplayItem)
               }
             }
           }

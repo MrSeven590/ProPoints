@@ -10,10 +10,6 @@ import {
   getBinSeqMax,
   getSessionsByDateAndStage
 } from '../stores/AppStore.uts'
-import {
-  listAllSessionKeys,
-  loadData
-} from '../stores/StorageUnsafe.uts'
 
 // ============================================
 // 历史记录查询
@@ -21,6 +17,7 @@ import {
 
 /**
  * 获取指定楼层的历史最大 seq_no
+ * 查询最近180天内指定环节的所有会话
  * @param classNo 班级编号
  * @param floorNo 楼层编号
  * @param stageCode 环节代码
@@ -31,40 +28,37 @@ export function getHistoryMaxSeqNo(
   floorNo: number,
   stageCode: StageCode
 ): number {
-  // 通过 AppStore 获取所有会话 key，查找该楼层的最大 seq_no
   let maxSeq = 0
 
   try {
-    const keys = listAllSessionKeys()
+    // 查询最近180天
+    const today = new Date()
+    for (let i = 0; i < 180; i++) {
+      const date = new Date(today.getTime() - i * 24 * 60 * 60 * 1000)
+      const dateStr = date.toISOString().split('T')[0]
 
-    for (let i = 0; i < keys.length; i++) {
-      const key = keys[i]
-      const sessionData = loadData(key)
-      if (sessionData != null) {
-        // 检查是否匹配环节
-        const sessionStage = sessionData['stage_code'] as string | null
-        if (sessionStage == stageCode) {
-          // 检查 bins 数组
-          const bins = sessionData['bins'] as UTSJSONObject[] | null
-          if (bins != null) {
-            for (let j = 0; j < bins.length; j++) {
-              const bin = bins[j]
-              const binClassNo = bin['class_no'] as number | null
-              const binFloorNo = bin['floor_no'] as number | null
-              const binSeqNo = bin['seq_no'] as number | null
+      const sessions = getSessionsByDateAndStage(dateStr, stageCode)
 
-              if (binClassNo == classNo && binFloorNo == floorNo && binSeqNo != null) {
-                if (binSeqNo > maxSeq) {
-                  maxSeq = binSeqNo
-                }
-              }
+      for (let s = 0; s < sessions.length; s++) {
+        const session = sessions[s]
+        // 只处理已提交的会话
+        if (session.status != 'submitted') {
+          continue
+        }
+
+        // 检查 bins 数组
+        for (let b = 0; b < session.bins.length; b++) {
+          const bin = session.bins[b]
+          if (bin.class_no == classNo && bin.floor_no == floorNo) {
+            if (bin.seq_no > maxSeq) {
+              maxSeq = bin.seq_no
             }
           }
         }
       }
     }
   } catch (e) {
-    // 忽略错误，返回 0
+    // 忽略错误，返回当前 maxSeq
   }
 
   return maxSeq
@@ -100,7 +94,8 @@ export function getSeqMaxForFloor(
  */
 export type InferredBins = {
   bins: BinCode[]
-  hasHistory: boolean
+  inferred: boolean
+  suggestedText: string
 }
 
 /**
@@ -118,45 +113,37 @@ export function getLastSubmittedBins(
   let latestBins: BinCode[] = []
 
   try {
-    const keys = listAllSessionKeys()
+    // 查询最近180天
+    const today = new Date()
+    for (let i = 0; i < 180; i++) {
+      const date = new Date(today.getTime() - i * 24 * 60 * 60 * 1000)
+      const dateStr = date.toISOString().split('T')[0]
 
-    for (let i = 0; i < keys.length; i++) {
-      const key = keys[i]
-      const sessionData = loadData(key)
-      if (sessionData != null) {
-        const sessionStage = sessionData['stage_code'] as string | null
-        const sessionDate = sessionData['session_date'] as string | null
-        const sessionStatus = sessionData['status'] as string | null
+      const sessions = getSessionsByDateAndStage(dateStr, stageCode)
 
+      for (let s = 0; s < sessions.length; s++) {
+        const session = sessions[s]
         // 只处理已提交的会话，跳过草稿
-        if (sessionStatus != 'submitted') {
+        if (session.status != 'submitted') {
           continue
         }
 
-        if (sessionStage == stageCode && sessionDate != null) {
-          // 比较日期，取最新的
-          if (sessionDate > latestDate) {
-            latestDate = sessionDate
-            // 解析 bins
-            const bins = sessionData['bins'] as UTSJSONObject[] | null
-            if (bins != null) {
-              latestBins = []
-              for (let j = 0; j < bins.length; j++) {
-                const bin = bins[j]
-                const binClassNo = bin['class_no'] as number | null
-                const binFloorNo = bin['floor_no'] as number | null
-                const binSeqNo = bin['seq_no'] as number | null
-
-                if (binClassNo == classNo && binFloorNo != null && binSeqNo != null) {
-                  latestBins.push({
-                    class_no: binClassNo,
-                    floor_no: binFloorNo,
-                    seq_no: binSeqNo
-                  } as BinCode)
-                }
-              }
+        // 比较日期，取最新的
+        if (session.session_date > latestDate) {
+          latestDate = session.session_date
+          // 解析 bins
+          const bins: BinCode[] = []
+          for (let b = 0; b < session.bins.length; b++) {
+            const bin = session.bins[b]
+            if (bin.class_no == classNo) {
+              bins.push({
+                class_no: bin.class_no,
+                floor_no: bin.floor_no,
+                seq_no: bin.seq_no
+              } as BinCode)
             }
           }
+          latestBins = bins
         }
       }
     }
@@ -193,70 +180,96 @@ export function inferNextBins(
     }
     return {
       bins: bins,
-      hasHistory: false
-    } as InferredBins
-  }
-
-  // 找到尾部仓（按 floor DESC, seq DESC 排序取第一个）
-  let tailBin: BinCode | null = null
-  for (let i = 0; i < lastBins.length; i++) {
-    const bin = lastBins[i]
-    if (tailBin == null) {
-      tailBin = bin
-    } else {
-      if (bin.floor_no > tailBin.floor_no) {
-        tailBin = bin
-      } else if (bin.floor_no == tailBin.floor_no && bin.seq_no > tailBin.seq_no) {
-        tailBin = bin
-      }
+      inferred: true,
+      suggestedText: `建议从 3 楼 1 号开始（无历史记录）`
     }
   }
 
-  if (tailBin == null) {
-    // 不应该发生，但作为兜底
-    const bins: BinCode[] = []
-    for (let i = 1; i <= count; i++) {
-      bins.push({
-        class_no: classNo,
-        floor_no: 3,
-        seq_no: i
-      } as BinCode)
+  // 按楼层和序号排序（降序）
+  const sortedBins = [...lastBins].sort((a: BinCode, b: BinCode): number => {
+    if (b.floor_no != a.floor_no) {
+      return b.floor_no - a.floor_no
     }
-    return {
-      bins: bins,
-      hasHistory: false
-    } as InferredBins
-  }
+    return b.seq_no - a.seq_no
+  })
 
-  // 从尾部仓的下一个开始推断
-  const bins: BinCode[] = []
-  let currentFloor = tailBin.floor_no
-  let currentSeq = tailBin.seq_no
+  // 取最后一个仓（floor 最小，seq 最小）
+  const lastBin = sortedBins[sortedBins.length - 1]
+  const lastFloor = lastBin.floor_no
+  const lastSeq = lastBin.seq_no
+
+  // 获取该楼层的最大容量
+  const floorCapacity = getBinSeqMax(lastFloor)
+
+  // 推断下一组
+  const inferredBins: BinCode[] = []
+  let currentFloor = lastFloor
+  let currentSeq = lastSeq
 
   for (let i = 0; i < count; i++) {
-    currentSeq = currentSeq + 1
-    const seqMax = getSeqMaxForFloor(classNo, currentFloor, stageCode)
-
-    // 检查是否需要跨楼层
-    if (currentSeq > seqMax) {
-      currentFloor = currentFloor + 1
+    currentSeq++
+    if (currentSeq > floorCapacity) {
+      // 当前楼层已满，跳到下一层
+      currentFloor--
       currentSeq = 1
-      // 楼层上限检查（假设最高 5 楼）
-      if (currentFloor > 5) {
-        currentFloor = 3
-        currentSeq = 1
+      if (currentFloor < 1) {
+        // 没有更多楼层了
+        break
       }
     }
 
-    bins.push({
+    inferredBins.push({
       class_no: classNo,
       floor_no: currentFloor,
       seq_no: currentSeq
     } as BinCode)
   }
 
+  // 生成建议文本
+  type FloorNamesType = {
+    1: string
+    2: string
+    3: string
+  }
+  const floorNames = {
+    1: '1楼',
+    2: '2楼',
+    3: '3楼'
+  } as FloorNamesType
+
+  const lastFloorName = floorNames[lastFloor] != null ? floorNames[lastFloor] : `${lastFloor}楼`
+  const suggestedFloorName = floorNames[currentFloor] != null ? floorNames[currentFloor] : `${currentFloor}楼`
+
+  let suggestedText: string
+  if (inferredBins.length < count) {
+    suggestedText = `上次提交: ${lastFloorName}${lastSeq}号（储量可能不足）`
+  } else if (lastFloor != currentFloor) {
+    suggestedText = `上次提交: ${lastFloorName}${lastSeq}号 → 建议从 ${suggestedFloorName}开始`
+  } else {
+    suggestedText = `上次提交: ${lastFloorName}${lastSeq}号 → 建议续接 ${currentSeq}号`
+  }
+
   return {
-    bins: bins,
-    hasHistory: true
-  } as InferredBins
+    bins: inferredBins,
+    inferred: true,
+    suggestedText: suggestedText
+  }
+}
+
+/**
+ * 推断下一组发酵仓（用于仓选择器）
+ * @param classNo 班级编号
+ * @param stageCode 环节代码
+ * @param count 需要推断的数量（默认 2）
+ * @returns 推断的仓号代码数组（如 ["3-3-1", "3-3-2"]）
+ */
+export function inferNextBinCodes(
+  classNo: number,
+  stageCode: StageCode,
+  count: number = 2
+): string[] {
+  const result = inferNextBins(classNo, stageCode, count)
+  return result.bins.map((bin: BinCode): string => {
+    return `${bin.class_no}-${bin.floor_no}-${bin.seq_no}`
+  })
 }

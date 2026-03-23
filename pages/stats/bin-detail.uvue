@@ -153,74 +153,56 @@
 
           for (let i = 0; i < sessions.length; i++) {
             const session = sessions[i]
-            // 过滤草稿数据
-            const status = session['status'] as string | null
-            if (status == 'draft') {
+            if (session.status == 'draft') {
               continue
             }
 
-            const stageCode = session['stage_code'] as string | null
-            const roundId = session['round_id'] as number | null
+            const stageCode = session.stage_code
+            const roundId = session.round_id
 
-            // 查找目标仓
-            const binsData = session['bins'] as UTSJSONObject[] | null
-            if (binsData != null) {
-              for (let j = 0; j < binsData.length; j++) {
-                const bin = binsData[j]
-                const binCode = bin['bin_code'] as string | null
+            for (let j = 0; j < session.bins.length; j++) {
+              const bin = session.bins[j]
+              const binCode = bin.bin_code
 
-                if (binCode == targetBinCode) {
-                  const workers = bin['workers'] as UTSJSONObject[] | null
-                  const workerInfos: WorkerInfo[] = []
-                  let hasPenalty = false
+              if (binCode == targetBinCode) {
+                const workerInfos: WorkerInfo[] = []
+                let hasPenalty = false
 
-                  if (workers != null) {
-                    for (let k = 0; k < workers.length; k++) {
-                      const worker = workers[k]
-                      const personId = worker['personId'] as number | null
-                      const personName = worker['personName'] as string | null
-                      const positionIndex = worker['positionIndex'] as number | null
-                      const pointsUnits = worker['pointsUnits'] as number | null
-                      const deductedUnits = worker['deductedUnits'] as number | null
-                      const penaltyReason = worker['penaltyReason'] as string | null
-
-                      if (personId != null && personName != null) {
-                        const deducted = deductedUnits != null ? deductedUnits : 0
-                        if (deducted > 0) {
-                          hasPenalty = true
-                        }
-
-                        workerInfos.push({
-                          personId: personId,
-                          personName: personName,
-                          positionIndex: positionIndex != null ? positionIndex : k + 1,
-                          originalUnits: pointsUnits != null ? pointsUnits : 0,
-                          deductedUnits: deducted,
-                          penaltyReason: penaltyReason != null ? penaltyReason : ''
-                        } as WorkerInfo)
-                      }
+                for (let k = 0; k < bin.workers.length; k++) {
+                  const worker = bin.workers[k]
+                  const deducted = worker.deducted_units
+                  if (worker.person_id != null && worker.person_name != '') {
+                    if (deducted > 0) {
+                      hasPenalty = true
                     }
+
+                    workerInfos.push({
+                      personId: worker.person_id,
+                      personName: worker.person_name,
+                      positionIndex: worker.position_index,
+                      originalUnits: worker.points_units,
+                      deductedUnits: deducted,
+                      penaltyReason: worker.penalty_reason
+                    } as WorkerInfo)
                   }
+                }
 
-                  // 按站位排序（门口→最里面）
-                  workerInfos.sort((a: WorkerInfo, b: WorkerInfo): number => {
-                    return a.positionIndex - b.positionIndex
-                  })
+                workerInfos.sort((a: WorkerInfo, b: WorkerInfo): number => {
+                  return a.positionIndex - b.positionIndex
+                })
 
-                  // 读取备注
-                  const remark = session['remark'] as string | null
+                const remark = session.remark
 
-                  if (workerInfos.length > 0) {
-                    records.push({
-                      date: date,
-                      stageCode: stageCode != null ? (stageCode as StageCode) : 'AN_QU',
-                      stageName: stageCode != null ? getStageName(stageCode as StageCode) : '',
-                      roundId: roundId,
-                      workers: workerInfos,
-                      hasPenalty: hasPenalty,
-                      remark: remark != null ? remark : ''
-                    } as HistoryRecord)
-                  }
+                if (workerInfos.length > 0) {
+                  records.push({
+                    date: date,
+                    stageCode: stageCode,
+                    stageName: getStageName(stageCode),
+                    roundId: roundId,
+                    workers: workerInfos,
+                    hasPenalty: hasPenalty,
+                    remark: remark
+                  } as HistoryRecord)
                 }
               }
             }

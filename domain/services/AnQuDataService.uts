@@ -5,8 +5,9 @@
 import {
   getSessionsByDateAndStage,
   getCurrentClassNo,
-  loadRounds,
+  loadRoundsData,
   loadBins,
+  getSessionsByRoundId,
   saveAnQuImportSnapshot as saveAnQuSnapshotToStorage,
   loadAnQuImportSnapshot as loadAnQuSnapshotFromStorage,
   removeAnQuImportSnapshot as removeAnQuSnapshotFromStorage
@@ -16,6 +17,9 @@ import {
   parseBinCode,
   normalizeBinCode
 } from '../models/ferment.uts'
+
+import type { SessionData } from '../models/session.uts'
+import type { FermentRound } from '../models/ferment.uts'
 
 // ============================================
 // 常量定义
@@ -111,11 +115,10 @@ export function exportAnQuData(roundId: number): ExportResult {
   const classNo = getCurrentClassNo()
 
   // 获取轮次信息
-  const allRounds = loadRounds()
-  let roundInfo: UTSJSONObject | null = null
+  const allRounds = loadRoundsData()
+  let roundInfo: FermentRound | null = null
   for (let i = 0; i < allRounds.length; i++) {
-    const id = allRounds[i]['id'] as number
-    if (id == roundId) {
+    if (allRounds[i].id == roundId) {
       roundInfo = allRounds[i]
       break
     }
@@ -131,41 +134,27 @@ export function exportAnQuData(roundId: number): ExportResult {
     }
   }
 
-  const roundNo = roundInfo['round_no'] as number
+  const roundNo = roundInfo.round_no
 
   // 收集该轮次的所有安曲会话
   const binItems: ExportBinItem[] = []
-  const allSessions = getSessionsByRound(roundInfo)
+  const allSessions = getSessionsByRoundId(roundId)
 
   for (let i = 0; i < allSessions.length; i++) {
     const session = allSessions[i]
-    const sessionRoundId = session['round_id'] as number | null
-    const sessionStatus = session['status'] as string | null
 
     // 只处理已提交的数据（白名单模式）
-    if (sessionStatus != SESSION_STATUS_SUBMITTED) {
-      continue
-    }
-
-    // 过滤轮次
-    if (sessionRoundId != roundId) {
+    if (session.status != SESSION_STATUS_SUBMITTED) {
       continue
     }
 
     // 提取 bins 数据
-    const bins = session['bins']
-    if (bins != null) {
-      const binArray = bins as UTSJSONObject[]
-      for (let j = 0; j < binArray.length; j++) {
-        const bin = binArray[j]
-        const binCode = bin['bin_code'] as string
-        const kojiCount = bin['koji_count'] as number
-
-        binItems.push({
-          binCode: binCode,
-          kojiCount: kojiCount
-        })
-      }
+    for (let j = 0; j < session.bins.length; j++) {
+      const bin = session.bins[j]
+      binItems.push({
+        binCode: bin.bin_code,
+        kojiCount: bin.koji_count
+      })
     }
   }
 
@@ -228,57 +217,6 @@ function compareBinCodes(a: string, b: string): number {
 
   // 最后比较序号
   return parsedA.seq_no - parsedB.seq_no
-}
-
-/**
- * 获取指定轮次的所有安曲会话
- * 根据轮次的日期范围动态扫描，确保完整覆盖
- * @param roundInfo 轮次信息
- * @returns 安曲会话列表
- */
-function getSessionsByRound(roundInfo: UTSJSONObject): UTSJSONObject[] {
-  const sessions: UTSJSONObject[] = []
-  const sessionKeySet: Set<string> = new Set()
-
-  const startedAt = roundInfo['started_at'] as number
-  const endedAt = roundInfo['ended_at'] as number | null
-
-  const startDate = new Date(startedAt)
-  const endDate = new Date(endedAt != null ? endedAt : Date.now())
-
-  // 处理日期范围倒置的情况
-  if (startDate.getTime() > endDate.getTime()) {
-    const temp = startDate.getTime()
-    startDate.setTime(endDate.getTime())
-    endDate.setTime(temp)
-  }
-
-  // 扫描该轮次的日期范围（加上前后各3天的缓冲）
-  const BUFFER_DAYS = 3
-  const scanStart = new Date(startDate.getTime() - BUFFER_DAYS * 24 * 60 * 60 * 1000)
-  const scanEnd = new Date(endDate.getTime() + BUFFER_DAYS * 24 * 60 * 60 * 1000)
-
-  let currentDate = new Date(scanStart.getFullYear(), scanStart.getMonth(), scanStart.getDate())
-  const endDateCalendar = new Date(scanEnd.getFullYear(), scanEnd.getMonth(), scanEnd.getDate())
-
-  while (currentDate.getTime() <= endDateCalendar.getTime()) {
-    const dateStr = formatDate(currentDate)
-    const daySessions = getSessionsByDateAndStage(dateStr, 'AN_QU')
-    for (let j = 0; j < daySessions.length; j++) {
-      const session = daySessions[j]
-      // 使用 dateStr + 'AN_QU' + round_id 作为去重键
-      // 不依赖 session 中可能缺失的字段
-      const roundId = session['round_id'] as number | null
-      const dedupKey = `${dateStr}:AN_QU:${roundId != null ? roundId.toString() : '0'}`
-      if (!sessionKeySet.has(dedupKey)) {
-        sessionKeySet.add(dedupKey)
-        sessions.push(session)
-      }
-    }
-    currentDate.setDate(currentDate.getDate() + 1)
-  }
-
-  return sessions
 }
 
 /**
@@ -712,53 +650,27 @@ export function lookupKojiCountBatch(roundId: number, binCodes: string[]): KojiL
 function buildRealKojiMap(roundId: number): Map<string, number> {
   const kojiMap = new Map<string, number>()
 
-  // 获取轮次信息
-  const allRounds = loadRounds()
-  let roundInfo: UTSJSONObject | null = null
-  for (let i = 0; i < allRounds.length; i++) {
-    const id = allRounds[i]['id'] as number
-    if (id == roundId) {
-      roundInfo = allRounds[i]
-      break
-    }
-  }
-
-  if (roundInfo == null) {
-    return kojiMap
-  }
-
-  // 收集该轮次的所有安曲会话
-  const allSessions = getSessionsByRound(roundInfo)
+  // 直接使用 AppStore 提供的强类型查询
+  const allSessions = getSessionsByRoundId(roundId)
 
   // 遍历会话构建映射
   for (let i = 0; i < allSessions.length; i++) {
     const session = allSessions[i]
-    const sessionRoundId = session['round_id'] as number | null
-    const sessionStatus = session['status'] as string | null
 
     // 只处理已提交的数据
-    if (sessionStatus != SESSION_STATUS_SUBMITTED) {
-      continue
-    }
-
-    // 过滤轮次
-    if (sessionRoundId != roundId) {
+    if (session.status != SESSION_STATUS_SUBMITTED) {
       continue
     }
 
     // 提取 bins 数据
-    const bins = session['bins']
-    if (bins != null) {
-      const binArray = bins as UTSJSONObject[]
-      for (let j = 0; j < binArray.length; j++) {
-        const bin = binArray[j]
-        const binCode = bin['bin_code'] as string
-        const kojiCount = bin['koji_count'] as number
-        // 会话中的 binCode 已经是标准化格式 "3-3-1"
-        const normalizedCode = normalizeBinCode(binCode)
-        if (normalizedCode != null) {
-          kojiMap.set(normalizedCode, kojiCount)
-        }
+    for (let j = 0; j < session.bins.length; j++) {
+      const bin = session.bins[j]
+      const binCode = bin.bin_code
+      const kojiCount = bin.koji_count
+      // 会话中的 binCode 已经是标准化格式 "3-3-1"
+      const normalizedCode = normalizeBinCode(binCode)
+      if (normalizedCode != null) {
+        kojiMap.set(normalizedCode, kojiCount)
       }
     }
   }
@@ -774,62 +686,33 @@ function buildRealKojiMap(roundId: number): Map<string, number> {
  * @returns 曲坯数量，未找到返回 null
  */
 function getKojiCountFromRealSessions(roundId: number, binCode: string, binId: number | null): number | null {
-  // 获取轮次信息
-  const allRounds = loadRounds()
-  let roundInfo: UTSJSONObject | null = null
-  for (let i = 0; i < allRounds.length; i++) {
-    const id = allRounds[i]['id'] as number
-    if (id == roundId) {
-      roundInfo = allRounds[i]
-      break
-    }
-  }
-
-  if (roundInfo == null) {
-    return null
-  }
-
-  // 收集该轮次的所有安曲会话
-  const allSessions = getSessionsByRound(roundInfo)
+  // 直接使用 AppStore 提供的强类型查询
+  const allSessions = getSessionsByRoundId(roundId)
 
   // 遍历会话查找匹配的曲块
   for (let i = 0; i < allSessions.length; i++) {
     const session = allSessions[i]
-    const sessionRoundId = session['round_id'] as number | null
-    const sessionStatus = session['status'] as string | null
 
     // 只处理已提交的数据
-    if (sessionStatus != SESSION_STATUS_SUBMITTED) {
-      continue
-    }
-
-    // 过滤轮次
-    if (sessionRoundId != roundId) {
+    if (session.status != SESSION_STATUS_SUBMITTED) {
       continue
     }
 
     // 查找 bins 数据
-    const bins = session['bins']
-    if (bins != null) {
-      const binArray = bins as UTSJSONObject[]
-      for (let j = 0; j < binArray.length; j++) {
-        const bin = binArray[j]
-        const sessionBinCode = bin['bin_code'] as string
+    for (let j = 0; j < session.bins.length; j++) {
+      const bin = session.bins[j]
+      const sessionBinCode = bin.bin_code
 
-        // 匹配 binCode（使用 normalizeBinCode 确保格式一致）
-        const normalizedSessionCode = normalizeBinCode(sessionBinCode)
-        const normalizedBinCode = normalizeBinCode(binCode)
-        if (normalizedSessionCode != null && normalizedBinCode != null && normalizedSessionCode == normalizedBinCode) {
-          return bin['koji_count'] as number
-        }
+      // 匹配 binCode（使用 normalizeBinCode 确保格式一致）
+      const normalizedSessionCode = normalizeBinCode(sessionBinCode)
+      const normalizedBinCode = normalizeBinCode(binCode)
+      if (normalizedSessionCode != null && normalizedBinCode != null && normalizedSessionCode == normalizedBinCode) {
+        return bin.koji_count
+      }
 
-        // 如果提供了 binId，也尝试匹配
-        if (binId != null) {
-          const sessionBinId = bin['bin_id'] as number | null
-          if (sessionBinId == binId) {
-            return bin['koji_count'] as number
-          }
-        }
+      // 如果提供了 binId，也尝试匹配
+      if (binId != null && bin.bin_id == binId) {
+        return bin.koji_count
       }
     }
   }
