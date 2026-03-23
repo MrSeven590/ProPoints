@@ -12,7 +12,7 @@ import {
   SessionDuiQuData,
   DuiQuStorageWorkerData,
   SessionWorkerStorageData,
-  SessionEntryPageState,
+  EntryPageState,
   EntryBinCardState,
   LiangTangRoleData,
   LiangTangWorkerData,
@@ -422,7 +422,7 @@ export function sessionDataToStorageJson(data: SessionData): UTSJSONObject {
 export function sessionDataToEntryPageState(
   data: SessionData,
   options: SessionEntryStateBuildOptions
-): SessionEntryPageState {
+): EntryPageState {
   // 构建 binCardsData Map
   const binCardsData = new Map<number, EntryBinCardState>()
   for (let i = 0; i < data.bins.length; i++) {
@@ -625,7 +625,7 @@ export function sessionDataToEntryPageState(
     updatedByManager: data.updated_by_manager,
     occupiedIds: [],
     missingAnQuBins: missingAnQuBins
-  } as SessionEntryPageState
+  } as EntryPageState
 }
 
 // ============================================
@@ -639,7 +639,7 @@ export function sessionDataToEntryPageState(
  * @returns SessionData
  */
 export function entryPageStateToSessionData(
-  state: SessionEntryPageState,
+  state: EntryPageState,
   options: SessionDataBuildOptions
 ): SessionData {
   const bins: SessionBinData[] = []

@@ -436,7 +436,7 @@ import type {
   BinsChangeMetaPayload
 } from "../../domain/models/assignment.uts";
 import type {
-  SessionEntryPageState,
+  EntryPageState,
   EntryBinCardState,
   SessionData,
   LiangTangRoleData,
@@ -1735,7 +1735,7 @@ export default {
     /**
      * 构建默认的新建页面状态
      */
-    buildDefaultEntryState(date: string): SessionEntryPageState {
+    buildDefaultEntryState(date: string): EntryPageState {
       const defaultLiangTangData = this.loadLiangTangDefaultsForNewSession();
       const defaultDuiQuWorkers = this.loadDuiQuDefaultsForNewSession();
       const activeCoefSetId = loadActiveCoefSetId() ?? DEFAULT_COEF_SET_ID;
@@ -1766,13 +1766,13 @@ export default {
         updatedByManager: getManagerName().trim(),
         occupiedIds: [] as number[],
         missingAnQuBins: [] as string[]
-      } as SessionEntryPageState;
+      } as EntryPageState;
     },
 
     /**
      * 构建指定日期的状态对象（无副作用）
      */
-    buildStateForDate(date: string): SessionEntryPageState {
+    buildStateForDate(date: string): EntryPageState {
       const roundId = this.roundId;
       if (roundId == null) {
         // 轮次信息缺失，返回默认新建状态
@@ -1830,7 +1830,7 @@ export default {
     /**
      * 应用状态对象到组件（原子性替换）
      */
-    applyState(nextState: SessionEntryPageState) {
+    applyState(nextState: EntryPageState) {
       try {
         this.isRestoring = true;
 
@@ -2190,7 +2190,7 @@ export default {
      * @param status 会话状态
      * @returns 页面状态快照
      */
-    captureCurrentEntryState(status: SessionStatus): SessionEntryPageState {
+    captureCurrentEntryState(status: SessionStatus): EntryPageState {
       return {
         hasData: true,
         sessionDate: this.sessionDate,
@@ -2217,7 +2217,7 @@ export default {
         updatedByManager: this.updatedByManager,
         occupiedIds: this.occupiedIds,
         missingAnQuBins: this.missingAnQuBins
-      } as SessionEntryPageState
+      } as EntryPageState
     },
 
     /**

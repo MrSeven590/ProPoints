@@ -198,7 +198,15 @@ export type EntryBinCardState = {
   workers: SessionPenaltyWorkerData[]
 }
 
-export type SessionEntryPageState = {
+// ============================================
+// Entry 页面状态类型
+// ============================================
+
+/**
+ * Entry 页面状态（用于页面内部状态管理）
+ * 这是主要的页面状态类型定义
+ */
+export type EntryPageState = {
   hasData: boolean
   sessionDate: DateString
   coefSetId: number
@@ -226,11 +234,8 @@ export type SessionEntryPageState = {
   missingAnQuBins: string[]
 }
 
-// ============================================
-// Entry 页面状态类型
-// ============================================
-
 /**
- * Entry 页面状态（用于页面内部状态管理）
+ * Entry 页面状态（向后兼容的别名）
+ * @deprecated 请直接使用 EntryPageState
  */
-export type EntryPageState = SessionEntryPageState
+export type SessionEntryPageState = EntryPageState
