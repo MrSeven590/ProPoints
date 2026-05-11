@@ -41,115 +41,128 @@
       <view class="workers-header">
         <text class="workers-title">人员分配</text>
         <text v-if="stageCode == 'AN_QU'" class="workers-hint">岗位：安曲→辅助</text>
-        <text v-else class="workers-hint">站位：门口→里面</text>
+        <text v-else class="workers-hint">站位：门口→靠窗</text>
       </view>
 
-      <view class="worker-list">
-        <view v-for="(worker, index) in workerList" :key="index" class="worker-item-wrapper">
-          <!-- 人员分配行 -->
-          <view class="worker-item">
-            <view class="worker-position">
-              <text class="position-text">{{ getPositionLabel(index) }}</text>
-            </view>
-            <view class="bin-worker-selector" @click="onOpenWorkerSelector(index)">
-              <text v-if="worker.personId == null" class="placeholder-text">点击选择</text>
-              <text v-else class="worker-name">{{ worker.personName }}</text>
-            </view>
-            <view class="worker-points">
-              <view class="stepper-btn-small" @click="onWorkerPointsDecrease(index)">
-                <text class="stepper-btn-text-small">-</text>
+      <uni-drag-cell
+        v-model="workerList"
+        :column="1"
+        :handle-mode="true"
+        :disabled="readonly"
+        @change="onWorkerListReorder"
+      >
+        <template #default="{ item, index }">
+          <view class="worker-item-wrapper">
+            <!-- 人员分配行 -->
+            <view class="worker-item">
+              <view class="worker-position">
+                <text class="position-text">{{ getPositionLabel(index as number) }}</text>
               </view>
-              <input
-                class="points-input"
-                type="digit"
-                :value="worker.displayPoints"
-                placeholder="0.0"
-                @input="onWorkerPointsInput(index, $event)"
-                @blur="onWorkerPointsBlur(index)"
-              />
-              <view class="stepper-btn-small" @click="onWorkerPointsIncrease(index)">
-                <text class="stepper-btn-text-small">+</text>
+              <view class="bin-worker-selector" @click.stop="onOpenWorkerSelector(index as number)">
+                <text v-if="(item as BinWorkerItem).personId == null" class="placeholder-text">点击选择</text>
+                <text v-else class="worker-name">{{ (item as BinWorkerItem).personName }}</text>
+              </view>
+              <view class="worker-points">
+                <view class="stepper-btn-small" @click="onWorkerPointsDecrease(index as number)">
+                  <text class="stepper-btn-text-small">-</text>
+                </view>
+                <input
+                  class="points-input"
+                  type="digit"
+                  :value="(item as BinWorkerItem).displayPoints"
+                  placeholder="0.0"
+                  @input="onWorkerPointsInput(index as number, $event)"
+                  @blur="onWorkerPointsBlur(index as number)"
+                />
+                <view class="stepper-btn-small" @click="onWorkerPointsIncrease(index as number)">
+                  <text class="stepper-btn-text-small">+</text>
+                </view>
+              </view>
+              <!-- 考核按钮 -->
+              <view
+                :class="['penalty-btn', (item as BinWorkerItem).deductedUnits > 0 ? 'penalty-btn-active' : '']"
+                @click="onTogglePenalty(index as number)"
+              >
+                <text :class="['penalty-btn-text', (item as BinWorkerItem).deductedUnits > 0 ? 'penalty-btn-text-active' : '']">考核</text>
               </view>
             </view>
-            <!-- 考核按钮 -->
-            <view
-              :class="['penalty-btn', worker.deductedUnits > 0 ? 'penalty-btn-active' : '']"
-              @click="onTogglePenalty(index)"
-            >
-              <text :class="['penalty-btn-text', worker.deductedUnits > 0 ? 'penalty-btn-text-active' : '']">考核</text>
-            </view>
-          </view>
 
-          <!-- 考核摘要（保存后显示，面板未展开时） -->
-          <view v-if="worker.deductedUnits > 0 && expandedPenaltyIndex != index" class="penalty-summary">
-            <text class="penalty-summary-text">原始 {{ formatPoints(worker.pointsUnits) }}</text>
-            <text class="penalty-summary-text penalty-summary-deducted">-{{ formatPoints(worker.deductedUnits) }}</text>
-            <text class="penalty-summary-text penalty-summary-final">= {{ formatPoints(calcFinalPointsForWorker(worker.pointsUnits, worker.deductedUnits)) }}</text>
-          </view>
+            <!-- 考核摘要（保存后显示，面板未展开时） -->
+            <view v-if="(item as BinWorkerItem).deductedUnits > 0 && expandedPenaltyIndex != (index as number)" class="penalty-summary">
+              <text class="penalty-summary-text">原始 {{ formatPoints((item as BinWorkerItem).pointsUnits) }}</text>
+              <text class="penalty-summary-text penalty-summary-deducted">-{{ formatPoints((item as BinWorkerItem).deductedUnits) }}</text>
+              <text class="penalty-summary-text penalty-summary-final">= {{ formatPoints(calcFinalPointsForWorker((item as BinWorkerItem).pointsUnits, (item as BinWorkerItem).deductedUnits)) }}</text>
+            </view>
 
-          <!-- 考核输入区域（展开时显示） -->
-          <view v-if="expandedPenaltyIndex == index" class="penalty-panel">
-            <view class="penalty-points-row">
-              <!-- 原始工分（使用 pointsUnits 确保一致性） -->
-              <view class="penalty-points-item">
-                <text class="penalty-points-label">原始</text>
-                <text class="penalty-points-value penalty-original">{{ formatPoints(worker.pointsUnits) }}</text>
+            <!-- 考核输入区域（展开时显示） -->
+            <view v-if="expandedPenaltyIndex == (index as number)" class="penalty-panel">
+              <view class="penalty-points-row">
+                <!-- 原始工分（使用 pointsUnits 确保一致性） -->
+                <view class="penalty-points-item">
+                  <text class="penalty-points-label">原始</text>
+                  <text class="penalty-points-value penalty-original">{{ formatPoints((item as BinWorkerItem).pointsUnits) }}</text>
+                </view>
+                <!-- 扣分（使用草稿值） -->
+                <view class="penalty-points-item">
+                  <text class="penalty-points-label">扣分</text>
+                  <biz-score-input
+                    :modelValue="penaltyDraft.deductedUnits"
+                    :min="0"
+                    :max="(item as BinWorkerItem).pointsUnits"
+                    :step="1"
+                    size="small"
+                    @update:modelValue="onDraftDeductedChange"
+                  />
+                </view>
+                <!-- 最终工分（使用草稿值计算） -->
+                <view class="penalty-points-item">
+                  <text class="penalty-points-label">最终</text>
+                  <text class="penalty-points-value penalty-final">{{ getDraftFinalPoints((item as BinWorkerItem).pointsUnits) }}</text>
+                </view>
               </view>
-              <!-- 扣分（使用草稿值） -->
-              <view class="penalty-points-item">
-                <text class="penalty-points-label">扣分</text>
-                <biz-score-input
-                  :modelValue="penaltyDraft.deductedUnits"
-                  :min="0"
-                  :max="worker.pointsUnits"
-                  :step="1"
-                  size="small"
-                  @update:modelValue="onDraftDeductedChange"
+              <!-- 扣分原因（使用草稿值） -->
+              <view class="penalty-reason-row">
+                <text class="penalty-reason-label">原因</text>
+                <input
+                  class="penalty-reason-input"
+                  type="text"
+                  placeholder="请输入扣分原因"
+                  :value="penaltyDraft.reason"
+                  @input="onDraftReasonInput"
                 />
               </view>
-              <!-- 最终工分（使用草稿值计算） -->
-              <view class="penalty-points-item">
-                <text class="penalty-points-label">最终</text>
-                <text class="penalty-points-value penalty-final">{{ getDraftFinalPoints(worker.pointsUnits) }}</text>
+              <!-- 错误提示 -->
+              <view v-if="penaltyDraft.deductedUnits > 0 && penaltyDraft.reason.trim().length == 0" class="penalty-error">
+                <text class="penalty-error-text">扣分时原因必填</text>
               </view>
-            </view>
-            <!-- 扣分原因（使用草稿值） -->
-            <view class="penalty-reason-row">
-              <text class="penalty-reason-label">原因</text>
-              <input
-                class="penalty-reason-input"
-                type="text"
-                placeholder="请输入扣分原因"
-                :value="penaltyDraft.reason"
-                @input="onDraftReasonInput"
-              />
-            </view>
-            <!-- 错误提示 -->
-            <view v-if="penaltyDraft.deductedUnits > 0 && penaltyDraft.reason.trim().length == 0" class="penalty-error">
-              <text class="penalty-error-text">扣分时原因必填</text>
-            </view>
-            <!-- 操作按钮 -->
-            <view class="penalty-actions">
-              <view class="penalty-cancel-btn" @click="onCancelPenalty">
-                <text class="penalty-cancel-text">取消</text>
-              </view>
-              <view
-                :class="['penalty-save-btn', canSavePenaltyDraft() ? '' : 'penalty-save-btn-disabled']"
-                @click="onSavePenalty(index)"
-              >
-                <text :class="['penalty-save-text', canSavePenaltyDraft() ? '' : 'penalty-save-text-disabled']">保存</text>
+              <!-- 操作按钮 -->
+              <view class="penalty-actions">
+                <view class="penalty-cancel-btn" @click="onCancelPenalty">
+                  <text class="penalty-cancel-text">取消</text>
+                </view>
+                <view
+                  :class="['penalty-save-btn', canSavePenaltyDraft() ? '' : 'penalty-save-btn-disabled']"
+                  @click="onSavePenalty(index as number)"
+                >
+                  <text :class="['penalty-save-text', canSavePenaltyDraft() ? '' : 'penalty-save-text-disabled']">保存</text>
+                </view>
               </view>
             </view>
           </view>
-        </view>
-      </view>
+        </template>
+        <template #handle>
+          <view class="drag-handle">
+            <text class="drag-handle-text">⠿</text>
+          </view>
+        </template>
+      </uni-drag-cell>
 
       <!-- 添加/删除人员按钮 -->
       <view class="worker-actions">
         <view class="action-btn add-btn" @click="onAddWorker">
           <text class="action-btn-text">+ 添加</text>
         </view>
-        <view v-if="workerList.length > 1" class="action-btn remove-btn" @click="onRemoveWorker">
+        <view v-if="workerList.length > 2" class="action-btn remove-btn" @click="onRemoveWorker">
           <text class="action-btn-text remove-text">- 移除</text>
         </view>
         <view class="action-btn split-btn" @click="onEqualSplit">
@@ -585,6 +598,9 @@
           worker.personName = payload.personName
           this.showWorkerPicker = false
           this.currentWorkerIndex = -1
+          // 强制触发 uni-drag-cell 的数据同步
+          // 因为直接修改对象属性不会改变数组长度，需要手动触发
+          this.workerList = [...this.workerList]
           this.emitChange()
         }
       },
@@ -601,6 +617,8 @@
           worker.penaltyReason = ''
           this.showWorkerPicker = false
           this.currentWorkerIndex = -1
+          // 强制触发 uni-drag-cell 的数据同步
+          this.workerList = [...this.workerList]
           this.emitChange()
         }
       },
@@ -681,7 +699,9 @@
         if (this.readonly == true) {
           return
         }
-        this.workerList.push({
+        // 在倒数第二个位置插入（靠窗之前），保持门口和靠窗固定
+        const insertIndex = this.workerList.length - 1
+        const newWorker: BinWorkerItem = {
           personId: null,
           personName: '',
           pointsUnits: 0,
@@ -689,7 +709,8 @@
           deductedUnits: 0,
           penaltyReason: '',
           penaltyId: null
-        } as BinWorkerItem)
+        } as BinWorkerItem
+        this.workerList.splice(insertIndex, 0, newWorker)
         this.emitChange()
       },
 
@@ -698,10 +719,13 @@
         if (this.readonly == true) {
           return
         }
-        if (this.workerList.length > 1) {
-          this.workerList.pop()
-          this.emitChange()
+        // 至少保留门口和靠窗两个固定岗位
+        if (this.workerList.length <= 2) {
+          return
         }
+        // 删除倒数第二个位置（靠窗之前），保留门口和靠窗
+        this.workerList.splice(this.workerList.length - 2, 1)
+        this.emitChange()
       },
 
       /**
@@ -944,6 +968,26 @@
       },
 
       // ============================================
+      // 拖拽排序处理
+      // ============================================
+
+      /**
+       * 处理拖拽排序后的数据同步
+       * uni-drag-cell 会在松手后更新 v-model 绑定的数组
+       * 
+       * 需求：岗位标签（门口、中1、靠窗等）固定不变，只有人员数据在岗位之间移动
+       * 实现：uni-drag-cell 会给出新的数组顺序，我们需要保持岗位标签不变，
+       *       所以将新顺序的人员数据重新分配到各个固定的岗位上
+       * 
+       * @param reorderedList 排序后的数组
+       */
+      onWorkerListReorder(reorderedList: BinWorkerItem[]) {
+        // 岗位标签固定（index 0 = 门口，index 1 = 中1，等等），uni-drag-cell 已更新 workerList 顺序
+        // expandedPenaltyIndex 对应固定岗位位置，无需修改
+        this.emitChange()
+      },
+
+      // ============================================
       // 事件发送
       // ============================================
 
@@ -990,8 +1034,8 @@
        * @returns 站位标签
        */
       getPositionLabel(index: number): string {
-        // 直接使用 this.stageCode，避免类型转换
-        return getPositionLabelUtil(this.stageCode as StageCode, index + 1)
+        // 直接使用 this.stageCode，避免类型转换；传递总人数用于判断首尾固定岗位
+        return getPositionLabelUtil(this.stageCode as StageCode, index + 1, this.workerList.length)
       }
     }
   }
@@ -1152,7 +1196,14 @@
   .worker-item {
     flex-direction: row;
     align-items: center;
-    /* margin-bottom 移到 wrapper，避免重复 */
+  }
+
+  .worker-item-drop-target {
+    background-color: #e6f7ff;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #007aff;
+    border-radius: 4px;
   }
 
   .worker-position {
@@ -1356,10 +1407,29 @@
   }
 
   /* ============================================ */
+  /* 拖拽排序相关样式 */
+  /* ============================================ */
+
+  .drag-handle {
+    width: 24px;
+    height: 24px;
+    justify-content: center;
+    align-items: center;
+    margin-right: 4px;
+  }
+
+  .drag-handle-text {
+    font-size: 16px;
+    color: #999999;
+  }
+
+  /* ============================================ */
   /* 考核相关样式 */
   /* ============================================ */
 
   .worker-item-wrapper {
+    flex-direction: row;
+    align-items: center;
     margin-bottom: 8px;
   }
 
