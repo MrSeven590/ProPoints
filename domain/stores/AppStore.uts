@@ -47,9 +47,9 @@ import { getAnQuImportSnapshotKey } from '../../storage/storage-keys.uts'
 import { resetAllStorage as resetAllStorageFromInit } from '../../storage/init.uts'
 
 import { getCurrentTimestamp } from '../models/types.uts'
-import type { DateString } from '../models/types.uts'
+import type { DateString, SyncStatus } from '../models/types.uts'
 import type { SessionData } from '../models/session.uts'
-import type { FermentRound } from '../models/ferment.uts'
+import { createFermentRoundFromJSON, type FermentRound } from '../models/ferment.uts'
 import {
   storageJsonToSessionData,
   sessionDataToStorageJson
@@ -595,7 +595,12 @@ export function loadRounds(): UTSJSONObject[] {
 }
 
 export function loadRoundsData(): FermentRound[] {
-  return loadRoundsFromRepo() as FermentRound[]
+  const rawRounds = loadRoundsFromRepo()
+  const result: FermentRound[] = []
+  for (let i = 0; i < rawRounds.length; i++) {
+    result.push(createFermentRoundFromJSON(rawRounds[i]))
+  }
+  return result
 }
 
 /**
@@ -844,6 +849,74 @@ export function listTransferRoundsForCurrentClass(): TransferRoundOption[] {
 }
 
 /**
+ * 导出工分明细（CSV 格式）
+ * @param roundId 轮次ID
+ * @param stageCode 工序代码（可选，为空则导出全部工序）
+ * @returns CSV 格式字符串（日期,姓名,工分），存储值÷10转小数值，无数据时返回 null
+ */
+export function exportSessionCSV(roundId: number, stageCode: string | null = null): string | null {
+  const sessions = getSessionsByRoundId(roundId)
+
+  // CSV 表头
+  const lines: string[] = []
+  lines.push('\uFEFF日期,姓名,工分') // BOM + 表头（Excel 兼容中文）
+
+  let hasData = false
+
+  for (let i = 0; i < sessions.length; i++) {
+    const session = sessions[i]
+    // 只处理已提交会话
+    if (session.status != 'submitted') {
+      continue
+    }
+    const date = session.session_date
+    // 工序过滤
+    if (stageCode != null && session.stage_code != stageCode) {
+      continue
+    }
+
+    // 日期格式化 yyyy/M/D
+    const dateParts = date.split('-')
+    const dateFormatted = `${dateParts[0]}/${parseInt(dateParts[1])}/${parseInt(dateParts[2])}`
+
+    // 遍历所有仓的工人
+    for (let j = 0; j < session.bins.length; j++) {
+      const bin = session.bins[j]
+      for (let k = 0; k < bin.workers.length; k++) {
+        const worker = bin.workers[k]
+        const personName = worker.person_name
+        const pointsUnits = worker.points_units
+        const deductedUnits = worker.deducted_units
+        // 最终工分 = 原始 - 扣分（存储值为×10单位，导出时÷10转小数）
+        const finalUnits = pointsUnits - deductedUnits
+        if (finalUnits > 0) {
+          const displayPoints = (finalUnits / 10).toFixed(1)
+          lines.push(`${dateFormatted},${personName},${displayPoints}`)
+          hasData = true
+        }
+      }
+    }
+
+    // 跨仓人员（存储值为×10单位，导出时÷10转小数）
+    const crossBin = session.cross_bin
+    if (crossBin != null && crossBin.enabled == true) {
+      const personName = crossBin.person_name
+      const pointsUnits = crossBin.points_units
+      if (pointsUnits > 0 && personName != '') {
+        const displayPoints = (pointsUnits / 10).toFixed(1)
+        lines.push(`${dateFormatted},${personName},${displayPoints}`)
+        hasData = true
+      }
+    }
+  }
+
+  if (hasData == false) {
+    return null
+  }
+  return lines.join('\n')
+}
+
+/**
  * 导出安曲数据（PPX1 格式）
  * @param roundId 轮次ID
  * @returns PPX1 格式字符串，如果轮次不存在返回 null
@@ -889,8 +962,8 @@ export function exportConfigData(
  */
 export function exportBundleData(
   roundId: number,
-  includePersons: boolean,
-  includeCoef: boolean
+  includePersons: boolean = true,
+  includeCoef: boolean = true
 ): string | null {
   const classNo = getCurrentClassNo()
   const allRounds = loadRounds()

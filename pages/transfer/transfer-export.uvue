@@ -12,22 +12,22 @@
         <text class="section-title">导出模式</text>
         <radio-group @change="onExportModeChange">
           <view class="radio-item">
-            <radio value="config" :checked="exportMode == 'config'" />
-            <text class="radio-label">仅配置（花名册+系数）</text>
-          </view>
-          <view class="radio-item">
             <radio value="anqu" :checked="exportMode == 'anqu'" />
-            <text class="radio-label">仅安曲数据</text>
+            <text class="radio-label">曲坯数</text>
           </view>
           <view class="radio-item">
             <radio value="bundle" :checked="exportMode == 'bundle'" />
-            <text class="radio-label">安曲+配置</text>
+            <text class="radio-label">曲坯数+花名册+系数</text>
+          </view>
+          <view class="radio-item">
+            <radio value="csv" :checked="exportMode == 'csv'" />
+            <text class="radio-label">仅 CSV 明细</text>
           </view>
         </radio-group>
       </view>
 
       <!-- 配置区 -->
-      <view class="section" v-if="exportMode == 'anqu' || exportMode == 'bundle'">
+      <view class="section" v-if="exportMode == 'anqu' || exportMode == 'bundle' || exportMode == 'csv'">
         <text class="section-title">选择轮次</text>
         <view class="round-selector" @click="onShowRoundPicker">
           <view class="picker-display">
@@ -37,23 +37,42 @@
         </view>
       </view>
 
-      <!-- 数据包含选项 -->
-      <view class="section" v-if="exportMode == 'config' || exportMode == 'bundle'">
-        <text class="section-title">数据包含项</text>
-        <checkbox-group @change="onCheckboxChange">
-          <view class="checkbox-item">
-            <checkbox value="persons" :checked="includePersons" />
-            <text class="checkbox-label">包含人员数据</text>
+      <!-- 工序选择（仅 CSV 模式） -->
+      <view class="section" v-if="exportMode == 'csv'">
+        <text class="section-title">选择工序</text>
+        <radio-group @change="onStageChange">
+          <view class="radio-item">
+            <radio value="AN_QU" :checked="selectedStage == 'AN_QU'" />
+            <text class="radio-label">安曲</text>
           </view>
-          <view class="checkbox-item">
-            <checkbox value="coef" :checked="includeCoef" />
-            <text class="checkbox-label">包含系数数据</text>
+          <view class="radio-item">
+            <radio value="YI_FAN" :checked="selectedStage == 'YI_FAN'" />
+            <text class="radio-label">一次翻曲</text>
           </view>
-        </checkbox-group>
+          <view class="radio-item">
+            <radio value="ER_FAN" :checked="selectedStage == 'ER_FAN'" />
+            <text class="radio-label">二次翻曲</text>
+          </view>
+          <view class="radio-item">
+            <radio value="CHAI_QU" :checked="selectedStage == 'CHAI_QU'" />
+            <text class="radio-label">拆曲</text>
+          </view>
+        </radio-group>
       </view>
 
-      <!-- 数据输出区 -->
-      <view class="section" v-if="ppx1Text != ''">
+      <!-- 操作按钮（CSV 模式始终显示，其他模式依赖 ppx1Text） -->
+      <view class="section" v-if="exportMode == 'csv' || ppx1Text != ''">
+        <view v-if="exportMode == 'csv'" class="action-btn primary-btn" @click="onShareCSVFile">
+          <text class="action-btn-text">分享 CSV 文件</text>
+          <text v-if="csvLoading" class="action-btn-loading">生成中...</text>
+        </view>
+        <view v-else class="action-btn primary-btn" @click="onCopyToClipboard">
+          <text class="action-btn-text">复制到剪切板</text>
+        </view>
+      </view>
+
+      <!-- 数据输出区（非 CSV 模式） -->
+      <view class="section" v-if="ppx1Text != '' && exportMode != 'csv'">
         <view class="section-header">
           <text class="section-title">PPX1 文本</text>
           <text class="size-text">{{ getDataSize() }}</text>
@@ -68,24 +87,17 @@
         </view>
       </view>
 
-      <!-- 操作按钮 -->
-      <view class="section" v-if="ppx1Text != ''">
-        <view class="action-btn primary-btn" @click="onCopyToClipboard">
-          <text class="action-btn-text">复制到剪切板</text>
-        </view>
-      </view>
-
       <!-- 二维码占位区 -->
-      <view class="section" v-if="ppx1Text != ''">
+      <view class="section" v-if="ppx1Text != '' && exportMode != 'csv'">
         <text class="section-title">二维码</text>
         <view class="qr-placeholder">
           <text class="qr-text">二维码功能开发中...</text>
         </view>
       </view>
 
-      <!-- 空状态提示 -->
-      <view class="section hint-section" v-if="ppx1Text == ''">
-        <text class="hint-text">请选择轮次以生成PPX1数据</text>
+      <!-- 空状态提示（非 CSV 模式） -->
+      <view class="section hint-section" v-if="ppx1Text == '' && exportMode != 'csv'">
+        <text class="hint-text">请选择轮次以生成导出数据</text>
       </view>
     <!-- #ifdef APP -->
     </scroll-view>
@@ -125,6 +137,7 @@
     exportConfigData,
     exportAnQuData,
     exportBundleData,
+    exportSessionCSV,
     type TransferRoundOption
   } from '../../domain/stores/AppStore.uts'
 
@@ -135,12 +148,12 @@
         roundOptions: [] as string[],
         roundIds: [] as number[],
         selectedRoundIndex: 0 as number,
-        includePersons: false as boolean,
-        includeCoef: false as boolean,
         ppx1Text: '' as string,
         showRoundPickerModal: false as boolean,
         pickerViewIndex: 0 as number,
-        tempSelectedRoundIndex: 0 as number
+        tempSelectedRoundIndex: 0 as number,
+        selectedStage: 'AN_QU' as string,  // 'AN_QU' | 'YI_FAN' | 'ER_FAN' | 'CHAI_QU'
+        csvLoading: false as boolean
       }
     },
 
@@ -172,6 +185,9 @@
 
       onExportModeChange(e: UniRadioGroupChangeEvent) {
         this.exportMode = e.detail.value
+        if (this.exportMode == 'csv') {
+          this.selectedStage = 'AN_QU'
+        }
         this.generatePPX1Data()
       },
 
@@ -205,29 +221,27 @@
         this.generatePPX1Data()
       },
 
-      onCheckboxChange(e: UniCheckboxGroupChangeEvent) {
-        const values = e.detail.value
-        this.includePersons = values.includes('persons')
-        this.includeCoef = values.includes('coef')
-        this.generatePPX1Data()
+      onStageChange(e: UniRadioGroupChangeEvent) {
+        this.selectedStage = e.detail.value
       },
 
       generatePPX1Data() {
         let ppx1Result: string | null = null
 
-        if (this.exportMode == 'config') {
-          // 仅导出配置
-          ppx1Result = exportConfigData(this.includePersons, this.includeCoef)
-        } else if (this.exportMode == 'anqu') {
-          // 仅导出安曲
+        if (this.exportMode == 'anqu') {
+          // 导出曲坯数
           if (this.selectedRoundIndex >= 0 && this.selectedRoundIndex < this.roundIds.length) {
             ppx1Result = exportAnQuData(this.roundIds[this.selectedRoundIndex])
           }
         } else if (this.exportMode == 'bundle') {
-          // 导出安曲+配置
+          // 导出曲坯数+花名册+系数
           if (this.selectedRoundIndex >= 0 && this.selectedRoundIndex < this.roundIds.length) {
-            ppx1Result = exportBundleData(this.roundIds[this.selectedRoundIndex], this.includePersons, this.includeCoef)
+            ppx1Result = exportBundleData(this.roundIds[this.selectedRoundIndex])
           }
+        } else if (this.exportMode == 'csv') {
+          // CSV 模式不在此生成，点击分享按钮时再生成
+          this.ppx1Text = ''
+          return
         }
 
         if (ppx1Result == null) {
@@ -263,6 +277,91 @@
           const mb = (bytes / (1024 * 1024)).toFixed(1)
           return `约 ${mb} MB`
         }
+      },
+
+      onShareCSVFile() {
+        if (this.csvLoading == true) {
+          return
+        }
+
+        if (this.selectedRoundIndex < 0 || this.selectedRoundIndex >= this.roundIds.length) {
+          uni.showToast({
+            title: '请先选择轮次',
+            icon: 'none'
+          })
+          return
+        }
+
+        this.csvLoading = true
+
+        // 生成 CSV 数据
+        const csvData = exportSessionCSV(this.roundIds[this.selectedRoundIndex], this.selectedStage)
+
+        if (csvData == null) {
+          this.csvLoading = false
+          uni.showToast({
+            title: '该轮次暂无工分记录',
+            icon: 'none'
+          })
+          return
+        }
+
+        // 生成文件名：26年_3轮次_安曲.csv
+        const roundLabel = this.getCurrentRoundLabel()
+        // 解析轮次标签，如 "26年 第3轮 (微调1)" → year="26", roundNo="3"
+        const yearMatch = roundLabel.match(/^(\d+)年/)
+        const roundMatch = roundLabel.match(/第(\d+)轮/)
+        const yearStr = yearMatch != null ? yearMatch[1] : '?'
+        const roundStr = roundMatch != null ? roundMatch[1] : '?'
+        // 工序名称映射
+        let stageName = '未知'
+        if (this.selectedStage == 'AN_QU') {
+          stageName = '安曲'
+        } else if (this.selectedStage == 'YI_FAN') {
+          stageName = '一次翻曲'
+        } else if (this.selectedStage == 'ER_FAN') {
+          stageName = '二次翻曲'
+        } else if (this.selectedStage == 'CHAI_QU') {
+          stageName = '拆曲'
+        }
+        const filename = `${yearStr}年_${roundStr}轮次_${stageName}.csv`
+
+        // 写入用户数据目录
+        const filePath = `${uni.env.USER_DATA_PATH}/${filename}`
+        const fs = uni.getFileSystemManager()
+        fs.writeFile({
+          filePath: filePath,
+          data: csvData,
+          encoding: 'utf-8',
+          success: () => {
+            // 分享文件
+            uni.shareWithSystem({
+              filePaths: [filePath],
+              type: 'file',
+              success: () => {
+                console.log('CSV 分享成功')
+              },
+              fail: (err) => {
+                console.log('CSV 分享失败', err)
+                uni.showToast({
+                  title: '分享失败',
+                  icon: 'none'
+                })
+              },
+              complete: () => {
+                this.csvLoading = false
+              }
+            })
+          },
+          fail: (err) => {
+            this.csvLoading = false
+            console.log('CSV 文件写入失败', err)
+            uni.showToast({
+              title: '文件生成失败',
+              icon: 'none'
+            })
+          }
+        })
       },
 
       onCopyToClipboard() {
@@ -427,6 +526,13 @@
     font-size: 16px;
     color: #ffffff;
     font-weight: bold;
+  }
+
+  .action-btn-loading {
+    font-size: 14px;
+    color: #ffffff;
+    margin-left: 8px;
+    opacity: 0.8;
   }
 
   .qr-placeholder {
