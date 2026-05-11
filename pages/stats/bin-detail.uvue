@@ -1,5 +1,14 @@
 <template>
   <view class="page-container">
+    <!-- #ifdef APP -->
+    <scroll-view style="flex:1">
+    <!-- #endif -->
+    <!-- 轮次选择区域 -->
+    <view class="section">
+      <text class="section-title">选择轮次</text>
+      <biz-round-picker :selectedRoundId="selectedRoundId" @change="onRoundChange" />
+    </view>
+
     <!-- 发酵仓选择区域 -->
     <view class="section">
       <text class="section-title">选择发酵仓</text>
@@ -12,7 +21,6 @@
     </view>
 
     <!-- 历史记录 -->
-    <scroll-view class="content" scroll-y="true">
 	      <view v-if="historyRecords.length > 0" class="history-section">
 	        <view v-for="record in historyRecords" :key="record.date + '-' + record.stageCode + '-' + (record.roundId != null ? record.roundId : 0)" class="history-card">
           <view class="history-header">
@@ -31,7 +39,7 @@
               :key="worker.positionIndex"
               class="worker-row"
             >
-              <text class="worker-cell worker-pos">{{ getPositionLabelForWorker(record.stageCode, worker.positionIndex) }}</text>
+              <text class="worker-cell worker-pos">{{ getPositionLabelForWorker(record.stageCode, worker.positionIndex, record.workers.length) }}</text>
               <text class="worker-cell worker-name">{{ worker.personName }}</text>
               <view class="worker-points-cell">
                 <text class="worker-points">{{ formatPoints(worker.originalUnits) }}</text>
@@ -64,16 +72,19 @@
       <view v-else class="empty-hint">
         <text class="empty-hint-text">{{ emptyHintText }}</text>
       </view>
+
+    <!-- #ifdef APP -->
     </scroll-view>
+    <!-- #endif -->
   </view>
 </template>
 
 <script lang="uts">
-  import { getTodayDateString, addDaysToDate, formatPointsUnits } from '../../domain/models/types.uts'
+  import { formatPointsUnits } from '../../domain/models/types.uts'
   import type { PointsUnits, StageCode } from '../../domain/models/types.uts'
   import type { BinCode } from '../../domain/models/ferment.uts'
   import { getStageName } from '../../domain/models/stage-session.uts'
-  import { getSessionsByDate } from '../../domain/stores/AppStore.uts'
+  import { getSessionsByRoundId } from '../../domain/stores/AppStore.uts'
   import { getPositionLabel } from '../../domain/models/assignment.uts'
 
   type WorkerInfo = {
@@ -100,7 +111,8 @@
       return {
         selectedBins: [] as BinCode[],
         selectedFloor: 3 as number,
-        historyRecords: [] as HistoryRecord[]
+        historyRecords: [] as HistoryRecord[],
+        selectedRoundId: null as number | null,
       }
     },
     computed: {
@@ -119,7 +131,7 @@
       }
     },
     onLoad() {
-      // 不设置默认选择，等待用户手动选择
+      // 轮次由 biz-round-picker 组件内部加载，默认选择最新轮次
     },
     methods: {
       onBinSelect(bins: BinCode[]) {
@@ -132,78 +144,64 @@
         this.loadHistory()
       },
       /**
-       * 加载发酵仓历史记录
-       * 查询最近30天的数据
+       * 加载发酵仓历史记录（按轮次查询）
        */
       loadHistory() {
         const targetBinCode = this.binCodeDisplay
-        // 如果没有选择仓，清空历史记录并返回
-        if (targetBinCode == '') {
+        if (targetBinCode == '' || this.selectedRoundId == null) {
           this.historyRecords = []
           return
         }
 
-        const today = getTodayDateString()
+        const sessions = getSessionsByRoundId(this.selectedRoundId!)
         const records: HistoryRecord[] = []
 
-        // 查询最近30天
-        for (let d = 0; d < 30; d++) {
-          const date = addDaysToDate(today, -d)
-          const sessions = getSessionsByDate(date)
+        for (let i = 0; i < sessions.length; i++) {
+          const session = sessions[i]
+          const stageCode = session.stage_code
+          const roundId = session.round_id
+          const date = session.session_date
 
-          for (let i = 0; i < sessions.length; i++) {
-            const session = sessions[i]
-            if (session.status == 'draft') {
-              continue
-            }
+          for (let j = 0; j < session.bins.length; j++) {
+            const bin = session.bins[j]
+            const binCode = bin.bin_code
 
-            const stageCode = session.stage_code
-            const roundId = session.round_id
+            if (binCode == targetBinCode) {
+              const workerInfos: WorkerInfo[] = []
+              let hasPenalty = false
 
-            for (let j = 0; j < session.bins.length; j++) {
-              const bin = session.bins[j]
-              const binCode = bin.bin_code
-
-              if (binCode == targetBinCode) {
-                const workerInfos: WorkerInfo[] = []
-                let hasPenalty = false
-
-                for (let k = 0; k < bin.workers.length; k++) {
-                  const worker = bin.workers[k]
-                  const deducted = worker.deducted_units
-                  if (worker.person_id != null && worker.person_name != '') {
-                    if (deducted > 0) {
-                      hasPenalty = true
-                    }
-
-                    workerInfos.push({
-                      personId: worker.person_id,
-                      personName: worker.person_name,
-                      positionIndex: worker.position_index,
-                      originalUnits: worker.points_units,
-                      deductedUnits: deducted,
-                      penaltyReason: worker.penalty_reason
-                    } as WorkerInfo)
+              for (let k = 0; k < bin.workers.length; k++) {
+                const worker = bin.workers[k]
+                const deducted = worker.deducted_units
+                if (worker.person_id != null && worker.person_name != '') {
+                  if (deducted > 0) {
+                    hasPenalty = true
                   }
+                  workerInfos.push({
+                    personId: worker.person_id,
+                    personName: worker.person_name,
+                    positionIndex: worker.position_index,
+                    originalUnits: worker.points_units,
+                    deductedUnits: deducted,
+                    penaltyReason: worker.penalty_reason
+                  } as WorkerInfo)
                 }
+              }
 
-                workerInfos.sort((a: WorkerInfo, b: WorkerInfo): number => {
-                  return a.positionIndex - b.positionIndex
-                })
+              workerInfos.sort((a: WorkerInfo, b: WorkerInfo): number => {
+                return a.positionIndex - b.positionIndex
+              })
 
-                const remark = session.remark
-
-                if (workerInfos.length > 0) {
-                  records.push({
-                    date: date,
-                    stageCode: stageCode,
-                    stageName: getStageName(stageCode),
-                    roundId: roundId,
-                    workers: workerInfos,
-                    hasPenalty: hasPenalty,
-                    remark: remark
-                  } as HistoryRecord)
-                }
+              if (workerInfos.length > 0) {
+                records.push({
+                  date: date,
+                  stageCode: stageCode,
+                  stageName: getStageName(stageCode),
+                  roundId: roundId,
+                  workers: workerInfos,
+                  hasPenalty: hasPenalty,
+                  remark: session.remark
+                } as HistoryRecord)
               }
             }
           }
@@ -211,14 +209,18 @@
 
         this.historyRecords = records
       },
+      onRoundChange(roundId: number | null) {
+        this.selectedRoundId = roundId
+        this.loadHistory()
+      },
       /**
        * 获取站位标签（包含环节信息）
        * @param stageCode 环节代码
        * @param positionIndex 站位序号
        * @returns 站位标签
        */
-      getPositionLabelForWorker(stageCode: StageCode, positionIndex: number): string {
-        return getPositionLabel(stageCode, positionIndex)
+      getPositionLabelForWorker(stageCode: StageCode, positionIndex: number, totalWorkers: number): string {
+        return getPositionLabel(stageCode, positionIndex, totalWorkers)
       },
       formatPoints(units: PointsUnits): string {
         return formatPointsUnits(units)
@@ -236,7 +238,6 @@
 <style>
   .page-container {
     flex: 1;
-    flex-direction: column;
     background-color: #f5f5f5;
   }
 
@@ -252,10 +253,6 @@
     font-weight: bold;
     color: #333333;
     margin-bottom: 12px;
-  }
-
-  .content {
-    flex: 1;
   }
 
   .history-section {

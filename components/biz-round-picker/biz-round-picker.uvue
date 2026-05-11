@@ -1,0 +1,259 @@
+<template>
+  <view class="round-picker-trigger" @click="onShowPicker">
+    <text class="round-picker-trigger-text">{{ selectedRoundText }}</text>
+    <text class="round-picker-trigger-arrow">›</text>
+  </view>
+
+  <!-- 轮次选择器弹窗 -->
+  <view v-show="showPicker" class="picker-mask" @click="onPickerCancel">
+    <view class="modal-container round-picker-container" @click.stop="">
+      <view class="modal-header">
+        <text class="modal-title">选择轮次</text>
+      </view>
+      <view class="round-picker-body">
+        <picker-view v-if="rounds.length > 0" class="round-picker-view" :value="[pickerSelectedIndex]" @change="onPickerChange">
+          <picker-view-column>
+            <view class="round-picker-item" v-for="(round, index) in rounds" :key="index">
+              <text class="round-picker-item-text">{{ getRoundDisplayText(round) }}</text>
+            </view>
+          </picker-view-column>
+        </picker-view>
+      </view>
+      <view class="modal-actions">
+        <view class="modal-btn modal-btn-cancel" @click="onPickerCancel">
+          <text class="modal-btn-text modal-btn-text-cancel">取消</text>
+        </view>
+        <view class="modal-btn modal-btn-confirm" @click="onPickerConfirm">
+          <text class="modal-btn-text modal-btn-text-confirm">确定</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<script lang="uts">
+  import { loadRounds, getCurrentClassNo } from '../../domain/stores/AppStore.uts'
+
+  export default {
+    props: {
+      selectedRoundId: {
+        type: Number,
+        default: null
+      }
+    },
+    emits: ['change'],
+    data() {
+      return {
+        rounds: [] as UTSJSONObject[],
+        showPicker: false as boolean,
+        tempSelectedRoundId: null as number | null,
+        pickerSelectedIndex: 0 as number
+      }
+    },
+    computed: {
+      selectedRoundText(): string {
+        if (this.selectedRoundId == null) {
+          return '请选择轮次'
+        }
+        for (let i = 0; i < this.rounds.length; i++) {
+          const round = this.rounds[i]
+          if ((round['id'] as number) == this.selectedRoundId) {
+            return this.getRoundDisplayText(round)
+          }
+        }
+        return '请选择轮次'
+      }
+    },
+    created() {
+      this.loadRoundList()
+      // 默认选中最新轮次，通知父组件
+      if (this.rounds.length > 0) {
+        const latestId = this.rounds[0]['id'] as number
+        this.$emit('change', latestId)
+      }
+    },
+    methods: {
+      /** 加载当前班级的轮次列表（降序） */
+      loadRoundList() {
+        const classNo = getCurrentClassNo()
+        const allRounds = loadRounds()
+        const filtered: UTSJSONObject[] = []
+        for (let i = 0; i < allRounds.length; i++) {
+          const round = allRounds[i]
+          if ((round['class_no'] as number) == classNo) {
+            filtered.push(round)
+          }
+        }
+        filtered.sort((a: UTSJSONObject, b: UTSJSONObject): number => {
+          return (b['id'] as number) - (a['id'] as number)
+        })
+        this.rounds = filtered
+      },
+      /** 返回默认选中的最新轮次 ID，供父组件初始化 */
+      getDefaultRoundId(): number | null {
+        if (this.rounds.length > 0) {
+          return this.rounds[0]['id'] as number
+        }
+        return null
+      },
+      getRoundDisplayText(round: UTSJSONObject): string {
+        const year = round['year'] as number
+        const roundNo = round['round_no'] as number
+        const microEnabled = round['micro_enabled'] as number
+        let text = `${year}年 第${roundNo}轮`
+        if (microEnabled == 1) {
+          text += ' (有微机)'
+        }
+        return text
+      },
+      onShowPicker() {
+        if (this.rounds.length == 0) {
+          uni.showToast({ title: '暂无可选轮次', icon: 'none' })
+          return
+        }
+        this.tempSelectedRoundId = this.selectedRoundId
+        for (let i = 0; i < this.rounds.length; i++) {
+          if ((this.rounds[i]['id'] as number) == this.selectedRoundId) {
+            this.pickerSelectedIndex = i
+            break
+          }
+        }
+        this.showPicker = true
+      },
+      onPickerChange(e: UniPickerViewChangeEvent) {
+        const index = e.detail.value[0]
+        this.pickerSelectedIndex = index
+        if (index >= 0 && index < this.rounds.length) {
+          this.tempSelectedRoundId = this.rounds[index]['id'] as number
+        }
+      },
+      onPickerCancel() {
+        this.tempSelectedRoundId = this.selectedRoundId
+        this.showPicker = false
+      },
+      onPickerConfirm() {
+        this.showPicker = false
+        this.$emit('change', this.tempSelectedRoundId)
+      }
+    }
+  }
+</script>
+
+<style>
+  /* ===== 共享 Modal 样式（.picker-mask / .modal-* / .modal-btn-*） ===== */
+  .picker-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    align-items: center;
+    justify-content: center;
+    z-index: 999;
+  }
+
+  .modal-container {
+    background-color: #ffffff;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .modal-header {
+    padding: 16px;
+    align-items: center;
+    border-bottom-width: 1px;
+    border-bottom-color: #e8e8e8;
+    border-bottom-style: solid;
+  }
+
+  .modal-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #333333;
+  }
+
+  .modal-actions {
+    flex-direction: row;
+    border-top-width: 1px;
+    border-top-color: #e8e8e8;
+    border-top-style: solid;
+  }
+
+  .modal-btn {
+    flex: 1;
+    padding: 14px;
+    align-items: center;
+  }
+
+  .modal-btn-cancel {
+    border-right-width: 1px;
+    border-right-color: #e8e8e8;
+    border-right-style: solid;
+  }
+
+  .modal-btn-confirm {
+    background-color: #007aff;
+  }
+
+  .modal-btn-text {
+    font-size: 16px;
+    font-weight: bold;
+  }
+
+  .modal-btn-text-cancel {
+    color: #333333;
+  }
+
+  .modal-btn-text-confirm {
+    color: #ffffff;
+  }
+
+  /* ===== 组件特定样式（仅触发器 + picker 内容区域） ===== */
+  .round-picker-trigger {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px;
+    background-color: #f8f8f8;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: #e0e0e0;
+    border-style: solid;
+  }
+
+  .round-picker-trigger-text {
+    font-size: 16px;
+    color: #333333;
+  }
+
+  .round-picker-trigger-arrow {
+    font-size: 24px;
+    color: #999999;
+  }
+
+  /* 弹窗特定样式（仅宽度和内容区域） */
+  .round-picker-container {
+    width: 320px;
+  }
+
+  .round-picker-body {
+    height: 200px;
+  }
+
+  .round-picker-view {
+    width: 100%;
+    height: 100%;
+  }
+
+  .round-picker-item {
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .round-picker-item-text {
+    font-size: 16px;
+    color: #333333;
+  }
+</style>

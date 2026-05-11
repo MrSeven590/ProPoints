@@ -1,5 +1,14 @@
 <template>
   <view class="page-container">
+    <!-- #ifdef APP -->
+    <scroll-view style="flex:1">
+    <!-- #endif -->
+    <!-- 轮次选择区域 -->
+    <view class="section">
+      <text class="section-title">选择轮次</text>
+      <biz-round-picker :selectedRoundId="selectedRoundId" @change="onRoundChange" />
+    </view>
+
     <!-- 人员选择区域 -->
     <view class="section">
       <text class="section-title">选择人员</text>
@@ -12,7 +21,6 @@
     </view>
 
     <!-- 工分记录 -->
-    <scroll-view class="content" scroll-y="true">
       <view v-if="selectedPersonId != null" class="records-section">
         <!-- 汇总信息 -->
         <view class="summary-card">
@@ -78,17 +86,20 @@
       <view v-else class="empty-hint">
         <text class="empty-hint-text">请选择人员查看工分记录</text>
       </view>
+
+    <!-- #ifdef APP -->
     </scroll-view>
+    <!-- #endif -->
   </view>
 </template>
 
 <script lang="uts">
-  import { getTodayDateString, addDaysToDate, formatPointsUnits, LIANG_TANG_ROLES } from '../../domain/models/types.uts'
+  import { formatPointsUnits, LIANG_TANG_ROLES } from '../../domain/models/types.uts'
   import type { PointsUnits, StageCode } from '../../domain/models/types.uts'
   import type { SessionWorkerStorageData } from '../../domain/models/session.uts'
   import { calcFinalPoints, getRoleName, type PersonSelectPayload } from '../../domain/models/assignment.uts'
   import { getStageName } from '../../domain/models/stage-session.uts'
-  import { getSessionsByDate } from '../../domain/stores/AppStore.uts'
+  import { getSessionsByRoundId } from '../../domain/stores/AppStore.uts'
 
   type PointsRecord = {
     date: string
@@ -117,7 +128,8 @@
         selectedPersonName: '' as string,
         dateGroups: [] as DateGroup[],
         totalOriginal: 0 as PointsUnits,
-        totalDeducted: 0 as PointsUnits
+        totalDeducted: 0 as PointsUnits,
+        selectedRoundId: null as number | null,
       }
     },
     computed: {
@@ -130,6 +142,9 @@
       formatFinalTotal(): string {
         return formatPointsUnits(calcFinalPoints(this.totalOriginal, this.totalDeducted))
       }
+    },
+    onLoad() {
+      // 轮次由 biz-round-picker 组件内部加载，默认选择最新轮次
     },
     methods: {
       onPersonSelect(payload: PersonSelectPayload) {
@@ -145,78 +160,137 @@
         this.totalDeducted = 0
       },
       /**
-       * 加载人员工分记录
-       * 查询最近30天的数据
+       * 加载人员工分记录（按轮次查询）
        */
       loadPersonRecords() {
-        if (this.selectedPersonId == null) {
+        if (this.selectedPersonId == null || this.selectedRoundId == null) {
+          this.dateGroups = []
+          this.totalOriginal = 0
+          this.totalDeducted = 0
           return
         }
         const personId = this.selectedPersonId as number
 
-        const today = getTodayDateString()
+        const sessions = getSessionsByRoundId(this.selectedRoundId!)
         const groups: DateGroup[] = []
         let totalOriginal = 0
         let totalDeducted = 0
-
-        // 查询最近30天
-        for (let d = 0; d < 30; d++) {
-          const date = addDaysToDate(today, -d)
-          const sessions = getSessionsByDate(date)
+        for (let i = 0; i < sessions.length; i++) {
+          const session = sessions[i]
+          const stageCode = session.stage_code
+          const roundId = session.round_id
+          const date = session.session_date
           const dayRecords: PointsRecord[] = []
 
-          for (let i = 0; i < sessions.length; i++) {
-            const session = sessions[i]
-            if (session.status == 'draft') {
-              continue
-            }
+          for (let j = 0; j < session.bins.length; j++) {
+            const bin = session.bins[j]
+            const binCode = bin.bin_code
 
-            const stageCode = session.stage_code
-            const roundId = session.round_id
-
-            for (let j = 0; j < session.bins.length; j++) {
-              const bin = session.bins[j]
-              const binCode = bin.bin_code
-
-              for (let k = 0; k < bin.workers.length; k++) {
-                const worker = bin.workers[k]
-                const workerId = worker.person_id
-                if (workerId == personId) {
-                  const original = worker.points_units
-                  const deducted = worker.deducted_units
-
-                  dayRecords.push({
-                    date: date,
-                    stageCode: stageCode,
-                    stageName: getStageName(stageCode as StageCode),
-                    roundId: roundId,
-                    binCode: binCode,
-                    positionIndex: worker.position_index,
-                    originalUnits: original,
-                    deductedUnits: deducted,
-                    penaltyReason: worker.penalty_reason,
-                    expanded: false
-                  } as PointsRecord)
-
-                  totalOriginal = totalOriginal + original
-                  totalDeducted = totalDeducted + deducted
-                }
-              }
-            }
-
-            const crossBin = session.cross_bin
-            if (crossBin != null && crossBin.enabled == true) {
-              const crossPersonId = crossBin.person_id
-              if (crossPersonId == personId) {
-                const original = crossBin.points_units
+            for (let k = 0; k < bin.workers.length; k++) {
+              const worker = bin.workers[k]
+              const workerId = worker.person_id
+              if (workerId == personId) {
+                const original = worker.points_units
+                const deducted = worker.deducted_units
 
                 dayRecords.push({
                   date: date,
                   stageCode: stageCode,
                   stageName: getStageName(stageCode as StageCode),
                   roundId: roundId,
-                  binCode: crossBin.role_name != '' ? crossBin.role_name : '跨仓',
-                  positionIndex: 0,
+                  binCode: binCode,
+                  positionIndex: worker.position_index,
+                  originalUnits: original,
+                  deductedUnits: deducted,
+                  penaltyReason: worker.penalty_reason,
+                  expanded: false
+                } as PointsRecord)
+
+                totalOriginal = totalOriginal + original
+                totalDeducted = totalDeducted + deducted
+              }
+            }
+          }
+
+          const crossBin = session.cross_bin
+          if (crossBin != null && crossBin.enabled == true) {
+            const crossPersonId = crossBin.person_id
+            if (crossPersonId == personId) {
+              const original = crossBin.points_units
+
+              dayRecords.push({
+                date: date,
+                stageCode: stageCode,
+                stageName: getStageName(stageCode as StageCode),
+                roundId: roundId,
+                binCode: crossBin.role_name != '' ? crossBin.role_name : '跨仓',
+                positionIndex: 0,
+                originalUnits: original,
+                deductedUnits: 0,
+                penaltyReason: '',
+                expanded: false
+              } as PointsRecord)
+
+              totalOriginal = totalOriginal + original
+            }
+          }
+
+          const liangTang = session.liang_tang
+          if (liangTang != null) {
+            for (let r = 0; r < LIANG_TANG_ROLES.length; r++) {
+              const roleCode = LIANG_TANG_ROLES[r]
+              let roleWorkers = null as SessionWorkerStorageData[] | null
+              if (roleCode == 'WHEAT_MATERIAL') {
+                roleWorkers = liangTang.WHEAT_MATERIAL
+              } else if (roleCode == 'MACHINE_GUARD') {
+                roleWorkers = liangTang.MACHINE_GUARD
+              } else if (roleCode == 'KOJI_UNLOADER') {
+                roleWorkers = liangTang.KOJI_UNLOADER
+              } else if (roleCode == 'MICRO_OPERATOR') {
+                roleWorkers = liangTang.MICRO_OPERATOR
+              }
+              if (roleWorkers != null) {
+                for (let k = 0; k < roleWorkers.length; k++) {
+                  const worker = roleWorkers[k]
+                  const workerId = worker.person_id
+                  if (workerId == personId) {
+                    const original = worker.points_units
+
+                    dayRecords.push({
+                      date: date,
+                      stageCode: stageCode,
+                      stageName: getStageName(stageCode as StageCode),
+                      roundId: roundId,
+                      binCode: getRoleName(roleCode),
+                      positionIndex: k + 1,
+                      originalUnits: original,
+                      deductedUnits: 0,
+                      penaltyReason: '',
+                      expanded: false
+                    } as PointsRecord)
+
+                    totalOriginal = totalOriginal + original
+                  }
+                }
+              }
+            }
+          }
+
+          const duiQu = session.dui_qu
+          if (duiQu != null) {
+            for (let k = 0; k < duiQu.workers.length; k++) {
+              const worker = duiQu.workers[k]
+              const workerId = worker.person_id
+              if (workerId == personId) {
+                const original = worker.points_units
+
+                dayRecords.push({
+                  date: date,
+                  stageCode: stageCode,
+                  stageName: getStageName(stageCode as StageCode),
+                  roundId: roundId,
+                  binCode: '堆曲',
+                  positionIndex: k + 1,
                   originalUnits: original,
                   deductedUnits: 0,
                   penaltyReason: '',
@@ -226,90 +300,39 @@
                 totalOriginal = totalOriginal + original
               }
             }
-
-            const liangTang = session.liang_tang
-            if (liangTang != null) {
-              for (let r = 0; r < LIANG_TANG_ROLES.length; r++) {
-                const roleCode = LIANG_TANG_ROLES[r]
-                let roleWorkers = null as SessionWorkerStorageData[] | null
-                if (roleCode == 'WHEAT_MATERIAL') {
-                  roleWorkers = liangTang.WHEAT_MATERIAL
-                } else if (roleCode == 'MACHINE_GUARD') {
-                  roleWorkers = liangTang.MACHINE_GUARD
-                } else if (roleCode == 'KOJI_UNLOADER') {
-                  roleWorkers = liangTang.KOJI_UNLOADER
-                } else if (roleCode == 'MICRO_OPERATOR') {
-                  roleWorkers = liangTang.MICRO_OPERATOR
-                }
-                if (roleWorkers != null) {
-                  for (let k = 0; k < roleWorkers.length; k++) {
-                    const worker = roleWorkers[k]
-                    const workerId = worker.person_id
-                    if (workerId == personId) {
-                      const original = worker.points_units
-
-                      dayRecords.push({
-                        date: date,
-                        stageCode: stageCode,
-                        stageName: getStageName(stageCode as StageCode),
-                        roundId: roundId,
-                        binCode: getRoleName(roleCode),
-                        positionIndex: k + 1,
-                        originalUnits: original,
-                        deductedUnits: 0,
-                        penaltyReason: '',
-                        expanded: false
-                      } as PointsRecord)
-
-                      totalOriginal = totalOriginal + original
-                    }
-                  }
-                }
-              }
-            }
-
-            const duiQu = session.dui_qu
-            if (duiQu != null) {
-              for (let k = 0; k < duiQu.workers.length; k++) {
-                const worker = duiQu.workers[k]
-                const workerId = worker.person_id
-                if (workerId == personId) {
-                  const original = worker.points_units
-
-                  dayRecords.push({
-                    date: date,
-                    stageCode: stageCode,
-                    stageName: getStageName(stageCode as StageCode),
-                    roundId: roundId,
-                    binCode: '堆曲',
-                    positionIndex: k + 1,
-                    originalUnits: original,
-                    deductedUnits: 0,
-                    penaltyReason: '',
-                    expanded: false
-                  } as PointsRecord)
-
-                  totalOriginal = totalOriginal + original
-                }
-              }
-            }
           }
 
-          // 如果当天有记录，添加到分组
+          // 如果当天有记录，按日期分组
           if (dayRecords.length > 0) {
+            let existingGroup: DateGroup | null = null
+            for (let g = 0; g < groups.length; g++) {
+              if (groups[g].date == date) {
+                existingGroup = groups[g]
+                break
+              }
+            }
+            if (existingGroup == null) {
+              const newGroup: DateGroup = {
+                date: date,
+                records: dayRecords,
+                totalOriginal: 0,
+                totalDeducted: 0
+              }
+              groups.push(newGroup)
+              existingGroup = newGroup
+            } else {
+              for (let r = 0; r < dayRecords.length; r++) {
+                existingGroup!.records.push(dayRecords[r])
+              }
+            }
             let dayOriginal = 0
             let dayDeducted = 0
             for (let r = 0; r < dayRecords.length; r++) {
               dayOriginal = dayOriginal + dayRecords[r].originalUnits
               dayDeducted = dayDeducted + dayRecords[r].deductedUnits
             }
-
-            groups.push({
-              date: date,
-              records: dayRecords,
-              totalOriginal: dayOriginal,
-              totalDeducted: dayDeducted
-            } as DateGroup)
+            existingGroup!.totalOriginal = existingGroup!.totalOriginal + dayOriginal
+            existingGroup!.totalDeducted = existingGroup!.totalDeducted + dayDeducted
           }
         }
 
@@ -341,7 +364,11 @@
         uni.navigateTo({
           url: `/pages/work/entry?stage=${record.stageCode}&date=${record.date}${roundIdParam}`
         })
-      }
+      },
+      onRoundChange(roundId: number | null) {
+        this.selectedRoundId = roundId
+        this.loadPersonRecords()
+      },
     }
   }
 </script>
@@ -349,7 +376,6 @@
 <style>
   .page-container {
     flex: 1;
-    flex-direction: column;
     background-color: #f5f5f5;
   }
 
@@ -365,10 +391,6 @@
     font-weight: bold;
     color: #333333;
     margin-bottom: 12px;
-  }
-
-  .content {
-    flex: 1;
   }
 
   .records-section {
@@ -551,4 +573,5 @@
     font-size: 14px;
     color: #999999;
   }
+
 </style>
