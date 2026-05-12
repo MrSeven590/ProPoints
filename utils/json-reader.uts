@@ -90,23 +90,25 @@ export function readOptionalString(obj: UTSJSONObject, key: string): string | nu
 }
 
 /**
- * 必填字段校验：读取 number，类型不匹配时抛出错误
+ * 必填字段校验：读取 number，类型不匹配时记录错误并返回默认值
  */
 export function requireNumber(obj: UTSJSONObject, key: string): number {
   const value = obj[key]
   if (typeof value !== 'number') {
-    throw new Error(`Invalid field '${key}': expected number, got ${typeof value}`)
+    console.error(`[json-reader] Invalid field '${key}': expected number, got ${typeof value}`)
+    return 0
   }
   return value
 }
 
 /**
- * 必填字段校验：读取 string，类型不匹配时抛出错误
+ * 必填字段校验：读取 string，类型不匹配时记录错误并返回默认值
  */
 export function requireString(obj: UTSJSONObject, key: string): string {
   const value = obj[key]
   if (typeof value !== 'string') {
-    throw new Error(`Invalid field '${key}': expected string, got ${typeof value}`)
+    console.error(`[json-reader] Invalid field '${key}': expected string, got ${typeof value}`)
+    return ''
   }
   return value
 }
