@@ -145,6 +145,29 @@ export function isMicroEnabled(round: FermentRound): boolean {
   return round.micro_enabled == 1
 }
 
+/**
+ * 从 UTSJSONObject 构造 FermentRound（工厂函数）
+ * 用于从 storage 读取数据后的类型转换
+ * @param raw JSON对象（通常来自 storage）
+ * @returns FermentRound 实体
+ */
+export function createFermentRoundFromJSON(raw: UTSJSONObject): FermentRound {
+  return {
+    id: raw['id'] as number,
+    uuid: raw['uuid'] as string,
+    class_no: raw['class_no'] as number,
+    year: raw['year'] as number,
+    round_no: raw['round_no'] as number,
+    micro_enabled: raw['micro_enabled'] as number,
+    started_at: raw['started_at'] as Timestamp,
+    ended_at: raw['ended_at'] as Timestamp | null,
+    created_at: raw['created_at'] as Timestamp,
+    updated_at: raw['updated_at'] as Timestamp,
+    version: raw['version'] as number,
+    sync_status: raw['sync_status'] as SyncStatus
+  } as FermentRound
+}
+
 // ============================================
 // 仓工人和卡片数据类型
 // ============================================
