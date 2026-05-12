@@ -51,6 +51,13 @@ import {
   ParsedAnQuItem
 } from './AnQuDataService.uts'
 
+import {
+  readNumber,
+  readString,
+  readObject,
+  isUTSObject
+} from '../../utils/json-reader.uts'
+
 // ============================================
 // 常量定义
 // ============================================
@@ -643,7 +650,17 @@ export function validateBundlePayload(payload: UTSJSONObject, prefix: string = '
     }
   }
 
-  const anquPayload = payload['anqu'] as UTSJSONObject
+  // 校验 anqu 是否为对象类型
+  const anquRaw = payload['anqu']
+  if (typeof anquRaw != 'object' || anquRaw == null) {
+    return {
+      code: 'INVALID_PAYLOAD',
+      message: `${prefix}字段类型错误: anqu`,
+      details: '期望类型: object'
+    }
+  }
+
+  const anquPayload = anquRaw as UTSJSONObject
   const anquError = validateAnQuPayload(anquPayload, `${prefix}anqu: `)
   if (anquError != null) {
     return anquError
@@ -673,8 +690,15 @@ export function validateBundlePayload(payload: UTSJSONObject, prefix: string = '
  */
 export function seal(payload: TransferPayload): string {
   const payloadStr = serializeToBase64Url(payload)
-  const payloadObj = payload as UTSJSONObject
-  const kind = payloadObj['kind'] as string
+  // 通过下标访问字段判断 payload 类型（避免运行时类型转换）
+  let kind: string
+  if (payload['anqu'] != null) {
+    kind = 'BUNDLE'
+  } else if (payload['bins'] != null) {
+    kind = 'ANQ'
+  } else {
+    kind = 'CONFIG'
+  }
   return `PPX1|${PPX1_VERSION}|${PPX1_ENCODING}|${kind}|${payloadStr}`
 }
 
@@ -744,7 +768,7 @@ export function unseal(envelope: string): UnsealResult {
     const payload = deserializeFromBase64Url(payloadStr)
     const payloadObj = payload as UTSJSONObject
 
-    // 验证 payload.kind 与 envelope kind 一致
+    // 通过字段判断读取 kind，避免运行时类型转换
     const payloadKind = payloadObj['kind'] as string | null
     if (payloadKind != kind) {
       return {
@@ -875,9 +899,9 @@ export function toTransferPersonData(persons: UTSJSONObject[]): PersonData[] {
   for (let i = 0; i < persons.length; i++) {
     const person = persons[i]
     result.push({
-      id: person['id'] as number,
-      name: person['name'] as string,
-      skill: person['skill_level'] as number
+      id: readNumber(person, 'id'),
+      name: readString(person, 'name'),
+      skill: readNumber(person, 'skill_level', 0)
     })
   }
   return result
@@ -903,44 +927,60 @@ export function fromTransferPersonData(persons: PersonData[]): UTSJSONObject[] {
  * 系数数据转换为传输格式
  */
 export function toTransferCoefData(activeCoefSet: UTSJSONObject): CoefData {
-  const rawStages = activeCoefSet['stages'] as UTSJSONObject[]
-  const rawDuiQu = activeCoefSet['duiQu'] as UTSJSONObject
-  const rawLiangTang = activeCoefSet['liangTang'] as UTSJSONObject
+  const rawStagesObj = readObject(activeCoefSet, 'stages')
+  const rawDuiQu = readObject(activeCoefSet, 'duiQu')
+  const rawLiangTang = readObject(activeCoefSet, 'liangTang')
 
   const stages: StageCoefData[] = []
   const duiQu: DuiQuCoefItem[] = []
   const liangTang: LiangTangCoefItem[] = []
 
-  for (let i = 0; i < rawStages.length; i++) {
-    const stage = rawStages[i]
-    stages.push({
-      code: stage['stage_code'] as string,
-      name: stage['stage_name'] as string,
-      coef: stage['coef'] as number
-    })
+  // stages 在存储层是以对象形式存储的 { [code]: {stage_code, stage_name, coef} }
+  if (rawStagesObj != null) {
+    for (const key in rawStagesObj) {
+      const stage = rawStagesObj[key]
+      if (isUTSObject(stage)) {
+        const stageObj = stage as UTSJSONObject
+        stages.push({
+          code: readString(stageObj, 'stage_code'),
+          name: readString(stageObj, 'stage_name'),
+          coef: readNumber(stageObj, 'coef', 1.0)
+        })
+      }
+    }
   }
 
   // 使用 for-in 遍历 duiQu
-  for (const key in rawDuiQu) {
-    duiQu.push({ key, value: rawDuiQu[key] as number })
+  if (rawDuiQu != null) {
+    for (const key in rawDuiQu) {
+      const value = rawDuiQu[key]
+      if (typeof value === 'number') {
+        duiQu.push({ key, value: value as number })
+      }
+   }
+    // 按 key 排序（使用简单比较，UTS 不支持 localeCompare）
+    duiQu.sort((a, b) => {
+      if (a.key < b.key) return -1
+      if (a.key > b.key) return 1
+      return 0
+    })
   }
-  // 按 key 排序（使用简单比较，UTS 不支持 localeCompare）
-  duiQu.sort((a, b) => {
-    if (a.key < b.key) return -1
-    if (a.key > b.key) return 1
-    return 0
-  })
 
   // 使用 for-in 遍历 liangTang
-  for (const key in rawLiangTang) {
-    liangTang.push({ key, value: rawLiangTang[key] as number })
+  if (rawLiangTang != null) {
+    for (const key in rawLiangTang) {
+      const value = rawLiangTang[key]
+      if (typeof value === 'number') {
+        liangTang.push({ key, value: value as number })
+      }
+    }
+    // 按 key 排序
+    liangTang.sort((a, b) => {
+      if (a.key < b.key) return -1
+      if (a.key > b.key) return 1
+      return 0
+    })
   }
-  // 按 key 排序
-  liangTang.sort((a, b) => {
-    if (a.key < b.key) return -1
-    if (a.key > b.key) return 1
-    return 0
-  })
 
   return { stages, duiQu, liangTang }
 }
@@ -1045,17 +1085,8 @@ export function buildAnQuSnapshotItems(bins: AnQuBinData[]): ParsedAnQuItem[] {
  * 提取 payload 的班次号
  */
 export function extractPayloadClassNo(payload: TransferPayload): number | null {
-  const payloadObj = payload as UTSJSONObject
-  const kind = payloadObj['kind'] as string
-
-  if (kind == 'ANQ') {
-    return payloadObj['c'] as number
-  } else if (kind == 'CONFIG') {
-    return payloadObj['c'] as number
-  } else if (kind == 'BUNDLE') {
-    return payloadObj['c'] as number
-  }
-  return null
+  // 直接通过动态字段访问，避免整包类型转换
+  return payload['c'] as number | null
 }
 
 /**
@@ -1240,8 +1271,8 @@ export function detectImportConflicts(
   activeCoefSet: UTSJSONObject | null
 ): ImportConflictSummary | null {
   const items: ImportConflictItem[] = []
-  const payloadObj = payload as UTSJSONObject
-  const kind = payloadObj['kind'] as string
+  // 通过字段判断类型，避免运行时类型转换
+  const kind = payload['kind'] as string
 
   if (kind == 'ANQ') {
     const anqPayload = payload as AnQuPayload
