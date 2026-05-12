@@ -1,0 +1,112 @@
+/**
+ * JSON 动态字段安全读取工具
+ *
+ * 用于安全地从 UTSJSONObject 中读取字段值，避免运行时类型转换错误。
+ * 核心原则：不在业务层直接使用 obj['field'] as Type，而是通过这些辅助函数读取。
+ */
+
+/**
+ * 判断值是否为 UTSJSONObject（非数组的对象）
+ */
+export function isUTSObject(value: any | null): boolean {
+  return value != null && typeof value === 'object' && !Array.isArray(value)
+}
+
+/**
+ * 安全读取 number 类型字段
+ * @param obj 目标对象
+ * @param key 字段名
+ * @param defaultValue 默认值（字段不存在或类型不匹配时返回）
+ */
+export function readNumber(
+  obj: UTSJSONObject,
+  key: string,
+  defaultValue: number = 0
+): number {
+  const value = obj[key]
+  return typeof value === 'number' ? value : defaultValue
+}
+
+/**
+ * 安全读取 string 类型字段
+ */
+export function readString(
+  obj: UTSJSONObject,
+  key: string,
+  defaultValue: string = ''
+): string {
+  const value = obj[key]
+  return typeof value === 'string' ? value : defaultValue
+}
+
+/**
+ * 安全读取 boolean 类型字段
+ */
+export function readBoolean(
+  obj: UTSJSONObject,
+  key: string,
+  defaultValue: boolean = false
+): boolean {
+  const value = obj[key]
+  return typeof value === 'boolean' ? value : defaultValue
+}
+
+/**
+ * 安全读取对象类型字段
+ * @returns 返回 UTSJSONObject 或 null
+ */
+export function readObject(
+  obj: UTSJSONObject,
+  key: string
+): UTSJSONObject | null {
+  const value = obj[key]
+  return isUTSObject(value) ? value as UTSJSONObject : null
+}
+
+/**
+ * 安全读取数组类型字段
+ * @returns 返回数组，如果字段不存在或不是数组则返回空数组
+ */
+export function readArray(obj: UTSJSONObject, key: string): any[] {
+  const value = obj[key]
+  return Array.isArray(value) ? value : []
+}
+
+/**
+ * 读取可选的 number 字段
+ * @returns 返回 number 或 null
+ */
+export function readOptionalNumber(obj: UTSJSONObject, key: string): number | null {
+  const value = obj[key]
+  return typeof value === 'number' ? value : null
+}
+
+/**
+ * 读取可选的 string 字段
+ */
+export function readOptionalString(obj: UTSJSONObject, key: string): string | null {
+  const value = obj[key]
+  return typeof value === 'string' ? value : null
+}
+
+/**
+ * 必填字段校验：读取 number，类型不匹配时抛出错误
+ */
+export function requireNumber(obj: UTSJSONObject, key: string): number {
+  const value = obj[key]
+  if (typeof value !== 'number') {
+    throw new Error(`Invalid field '${key}': expected number, got ${typeof value}`)
+  }
+  return value
+}
+
+/**
+ * 必填字段校验：读取 string，类型不匹配时抛出错误
+ */
+export function requireString(obj: UTSJSONObject, key: string): string {
+  const value = obj[key]
+  if (typeof value !== 'string') {
+    throw new Error(`Invalid field '${key}': expected string, got ${typeof value}`)
+  }
+  return value
+}
