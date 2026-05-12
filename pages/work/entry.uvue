@@ -31,7 +31,7 @@
       <view class="scroll-body">
         <!-- 轮次横幅 -->
         <view class="round-banner" @click="onShowRoundPicker" v-if="!isSwitching">
-          <text class="round-banner-text">当前轮次: 第{{ currentRoundNo }}轮 ({{ stageName }})</text>
+          <text class="round-banner-text">{{ currentYear }}年第{{ currentRoundNo }}轮次 ({{ stageName }})</text>
           <text class="round-banner-switch">[切换]</text>
         </view>
 
@@ -66,6 +66,7 @@
         <biz-bin-selector
           :selectedBins="selectedBins"
           :stageCode="stageCode"
+          :defaultFloor="defaultBinFloor"
           :disabled="viewMode == 'view' || isRestoring == true"
           @changeMeta="onBinsChangeMeta"
           @change="onBinsChange"
@@ -577,6 +578,7 @@ export default {
       roundOptions: [] as string[],
       roundIds: [] as number[],
       currentRoundNo: 0 as number,
+      currentYear: 0 as number,
       pickerViewIndex: 0 as number,
       tempSelectedRoundIndex: 0 as number,
     };
@@ -704,6 +706,15 @@ export default {
     },
     bonusDisplay(): string {
       return formatPointsUnits(this.sessionBonusUnits)
+    },
+    /**
+     * 默认发酵仓楼层（优先使用已选仓的楼层，否则默认为3楼）
+     */
+    defaultBinFloor(): number {
+      if (this.selectedBins.length > 0) {
+        return this.selectedBins[0].floor_no
+      }
+      return 3
     },
   },
   methods: {
@@ -2003,13 +2014,15 @@ export default {
         if (roundClassNo == classNo) {
           const roundId = round.id;
           const roundNo = round.round_no;
+          const roundYear = round.year;
           options.push(`第${roundNo}轮`);
           ids.push(roundId);
           roundNoMap.set(roundId, roundNo);
 
-          // 设置当前轮次号
+          // 设置当前轮次号和年份
           if (this.roundId == roundId) {
             this.currentRoundNo = roundNo;
+            this.currentYear = roundYear;
           }
         }
       }
@@ -2017,11 +2030,16 @@ export default {
       this.roundOptions = options;
       this.roundIds = ids;
 
-      // 如果当前轮次号未设置，从映射中获取
+      // 如果当前轮次号未设置，从 rounds 中查找
       if (this.currentRoundNo == 0 && this.roundId != null) {
-        const roundNo = roundNoMap.get(this.roundId);
-        if (roundNo != null) {
-          this.currentRoundNo = roundNo;
+        const allRounds = loadRoundsData();
+        for (let k = 0; k < allRounds.length; k++) {
+          const r = allRounds[k];
+          if (r.id == this.roundId) {
+            this.currentRoundNo = r.round_no;
+            this.currentYear = r.year;
+            break;
+          }
         }
       }
     },
@@ -2132,6 +2150,7 @@ export default {
                 const round = allRounds[j];
                 if (round.id == targetRoundId) {
                   this.currentRoundNo = round.round_no;
+                  this.currentYear = round.year;
                   break;
                 }
               }
@@ -2148,7 +2167,7 @@ export default {
           this.applyState(nextState);
 
           uni.showToast({
-            title: `已切换到第${this.currentRoundNo}轮`,
+            title: `已切换到${this.currentYear}年第${this.currentRoundNo}轮次`,
             icon: 'success'
           });
         } catch (e) {
