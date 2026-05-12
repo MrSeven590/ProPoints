@@ -229,9 +229,10 @@ export function calcFinalPoints(originalUnits: PointsUnits, deductedUnits: Point
  * 获取站位标签
  * @param stageCode 环节代码
  * @param positionIndex 站位序号 (1-N)
+ * @param totalWorkers 该仓工人总数（用于判断首尾固定岗位），非 AN_QU 环节有效
  * @returns 站位标签
  */
-export function getPositionLabel(stageCode: StageCode, positionIndex: number): string {
+export function getPositionLabel(stageCode: StageCode, positionIndex: number, totalWorkers: number | null = null): string {
   // 边界检查：positionIndex 必须 >= 1
   if (positionIndex < 1) {
     return `未知岗位(${positionIndex})`
@@ -246,22 +247,32 @@ export function getPositionLabel(stageCode: StageCode, positionIndex: number): s
     } else if (positionIndex == 3) {
       return '铺草'
     } else if (positionIndex >= 4) {
-      // positionIndex >= 4: 辅助、辅助1、辅助2...
+      // positionIndex >= 4: 辅助、辅1、辅2...
       if (positionIndex == 4) {
         return '辅助'
       }
-      return `辅助${positionIndex - 4}`
+      return `辅${positionIndex - 4}`
     }
   }
 
-  // 其他环节使用通用站位标签
+  // 其他环节：门口、中1、中2...、靠窗（totalWorkers 已知时）
+  if (totalWorkers != null && totalWorkers >= 1) {
+    if (positionIndex == 1) {
+      return '门口'
+    }
+    if (positionIndex == totalWorkers) {
+      return '靠窗'
+    }
+    // 中间位置：中1, 中2, 中3...
+    return `中${positionIndex - 1}`
+  }
+
+  // totalWorkers 未知时回退
   if (positionIndex == 1) {
     return '门口'
-  } else if (positionIndex == 4) {
-    return '里面'
-  } else if (positionIndex > 4) {
-    // positionIndex > 4: 辅助1、辅助2...
-    return `辅助${positionIndex - 4}`
+  }
+  if (positionIndex == 2) {
+    return '中1'
   }
   return `中${positionIndex - 1}`
 }
