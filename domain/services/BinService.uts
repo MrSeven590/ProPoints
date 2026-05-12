@@ -11,6 +11,11 @@ import {
   getSessionsByDateAndStage
 } from '../stores/AppStore.uts'
 
+/**
+ * 发酵仓最大楼层
+ */
+const MAX_BIN_FLOOR = 5
+
 // ============================================
 // 历史记录查询
 // ============================================
@@ -185,30 +190,30 @@ export function inferNextBins(
     }
   }
 
-  // 按楼层和序号排序（降序）
-  const sortedBins = [...lastBins].sort((a: BinCode, b: BinCode): number => {
-    if (b.floor_no != a.floor_no) {
-      return b.floor_no - a.floor_no
+  // 取上一日中编号最大的仓位，下一日应从其后续接
+  let anchorFloor = lastBins[0].floor_no
+  let anchorSeq = lastBins[0].seq_no
+  for (let i = 1; i < lastBins.length; i++) {
+    const bin = lastBins[i]
+    if (bin.floor_no > anchorFloor || (bin.floor_no == anchorFloor && bin.seq_no > anchorSeq)) {
+      anchorFloor = bin.floor_no
+      anchorSeq = bin.seq_no
     }
-    return b.seq_no - a.seq_no
-  })
-
-  // 取最后一个仓（floor 最小，seq 最小）
-  const lastBin = sortedBins[sortedBins.length - 1]
-  const lastFloor = lastBin.floor_no
-  const lastSeq = lastBin.seq_no
-
-  // 获取该楼层的最大容量
-  const floorCapacity = getBinSeqMax(lastFloor)
+  }
 
   // 推断下一组
   const inferredBins: BinCode[] = []
-  let currentFloor = lastFloor
-  let currentSeq = lastSeq
+  let currentFloor = anchorFloor
+  let currentSeq = anchorSeq
 
   for (let i = 0; i < count; i++) {
+    const floorCapacity = getBinSeqMax(currentFloor)
     currentSeq++
     if (currentSeq > floorCapacity) {
+      if (currentFloor >= MAX_BIN_FLOOR) {
+        // 已达最大楼层且超容，停止推断
+        break
+      }
       // 当前楼层已满，跳到下一层
       currentFloor--
       currentSeq = 1
@@ -237,16 +242,16 @@ export function inferNextBins(
     3: '3楼'
   } as FloorNamesType
 
-  const lastFloorName = floorNames[lastFloor] != null ? floorNames[lastFloor] : `${lastFloor}楼`
+  const anchorFloorName = floorNames[anchorFloor] != null ? floorNames[anchorFloor] : `${anchorFloor}楼`
   const suggestedFloorName = floorNames[currentFloor] != null ? floorNames[currentFloor] : `${currentFloor}楼`
 
   let suggestedText: string
   if (inferredBins.length < count) {
-    suggestedText = `上次提交: ${lastFloorName}${lastSeq}号（储量可能不足）`
-  } else if (lastFloor != currentFloor) {
-    suggestedText = `上次提交: ${lastFloorName}${lastSeq}号 → 建议从 ${suggestedFloorName}开始`
+    suggestedText = `上次提交最大仓号: ${anchorFloorName}${anchorSeq}号（储量可能不足）`
+  } else if (anchorFloor != currentFloor) {
+    suggestedText = `上次提交最大仓号: ${anchorFloorName}${anchorSeq}号 → 建议从 ${suggestedFloorName}开始`
   } else {
-    suggestedText = `上次提交: ${lastFloorName}${lastSeq}号 → 建议续接 ${currentSeq}号`
+    suggestedText = `上次提交最大仓号: ${anchorFloorName}${anchorSeq}号 → 建议续接 ${currentSeq}号`
   }
 
   return {
