@@ -30,10 +30,10 @@
       </view>
 
       <view class="section">
-        <text class="section-title">本月概览</text>
+        <text class="section-title">本轮次概览</text>
         <view class="stats-row">
           <view class="stats-item">
-            <text class="stats-value">{{ monthStats.entryCount }}</text>
+            <text class="stats-value">{{ roundStats.entryCount }}</text>
             <text class="stats-label">录入次数</text>
           </view>
           <view class="stats-item">
@@ -41,7 +41,7 @@
             <text class="stats-label">总工分</text>
           </view>
           <view class="stats-item">
-            <text class="stats-value">{{ monthStats.personCount }}</text>
+            <text class="stats-value">{{ roundStats.personCount }}</text>
             <text class="stats-label">参与人数</text>
           </view>
         </view>
@@ -80,9 +80,9 @@
   import type { SessionWorkerStorageData } from '../../domain/models/session.uts'
   import { calcFinalPoints } from '../../domain/models/assignment.uts'
   import { getStageName } from '../../domain/models/stage-session.uts'
-  import { getSessionsByDate, getAllDraftSessions, loadRoundsData } from '../../domain/stores/AppStore.uts'
+  import { getSessionsByDate, getAllDraftSessions, loadRoundsData, getSessionsByRoundId } from '../../domain/stores/AppStore.uts'
 
-  type MonthStats = {
+  type RoundStats = {
     entryCount: number
     totalPointsUnits: PointsUnits
     personCount: number
@@ -99,23 +99,26 @@
   export default {
     data() {
       return {
-        monthStats: {
+        roundStats: {
           entryCount: 0,
           totalPointsUnits: 0,
           personCount: 0
-        } as MonthStats,
+        } as RoundStats,
         recentSessions: [] as RecentSession[],
-        rounds: [] as FermentRound[]
+        rounds: [] as FermentRound[],
+        currentRoundId: null as number | null,
+        currentRoundNo: 0 as number
       }
     },
     computed: {
       formatTotalPoints(): string {
-        return formatPointsUnits(this.monthStats.totalPointsUnits)
+        return formatPointsUnits(this.roundStats.totalPointsUnits)
       }
     },
     onShow() {
       this.loadRounds()
-      this.loadStats()
+      this.findCurrentRound()
+      this.loadRoundStats()
       this.loadRecentSessions()
     },
     methods: {
@@ -124,6 +127,58 @@
        */
       loadRounds() {
         this.rounds = loadRoundsData()
+      },
+
+      /**
+       * 确定当前轮次（最新开始的未结束轮次）
+       */
+      findCurrentRound() {
+        const today = getTodayDateString()
+        let currentRound: FermentRound | null = null
+        for (let i = 0; i < this.rounds.length; i++) {
+          const round = this.rounds[i]
+          const startDate = this.timestampToDateString(round.started_at)
+          // 判断轮次是否覆盖今天：started_at <= today && (ended_at == null || ended_at > today)
+          if (startDate <= today) {
+            if (round.ended_at == null) {
+              // 取 started_at 最大的（最新的）
+              if (currentRound == null || round.started_at > currentRound.started_at) {
+                currentRound = round
+              }
+            } else {
+              const endDate = this.timestampToDateString(round.ended_at)
+              if (endDate > today) {
+                if (currentRound == null || round.started_at > currentRound.started_at) {
+                  currentRound = round
+                }
+              }
+            }
+          }
+        }
+        // 如果没有活跃轮次，取最新开始的轮次
+        if (currentRound == null && this.rounds.length > 0) {
+          let latestRound: FermentRound | null = null
+          for (let i = 0; i < this.rounds.length; i++) {
+            const round = this.rounds[i]
+            if (latestRound == null || round.started_at > latestRound.started_at) {
+              latestRound = round
+            }
+          }
+          currentRound = latestRound
+        }
+        this.currentRoundId = currentRound != null ? currentRound.id : null
+        this.currentRoundNo = currentRound != null ? currentRound.round_no : 0
+      },
+
+      /**
+       * 将 Unix 毫秒时间戳转换为 YYYY-MM-DD 格式字符串
+       */
+      timestampToDateString(ts: number): string {
+        const d = new Date(ts)
+        const year = d.getFullYear().toString()
+        const month = (d.getMonth() + 1).toString().padStart(2, '0')
+        const day = d.getDate().toString().padStart(2, '0')
+        return `${year}-${month}-${day}`
       },
 
       /**
@@ -142,108 +197,101 @@
       },
 
       /**
-       * 加载本月统计数据
-       * 从日期索引聚合，避免全量扫描
+       * 加载本轮次统计数据
+       * 按轮次 ID 聚合已提交的会话数据
        */
-      loadStats() {
-        const today = getTodayDateString()
-        // 获取当月第一天
-        const parts = today.split('-')
-        if (parts.length != 3) {
+      loadRoundStats() {
+        if (this.currentRoundId == null) {
+          this.roundStats = {
+            entryCount: 0,
+            totalPointsUnits: 0,
+            personCount: 0
+          } as RoundStats
           return
         }
-        const year = parts[0]
-        const month = parts[1]
-        const firstDay = `${year}-${month}-01`
+
+        const sessions = getSessionsByRoundId(this.currentRoundId)
 
         let entryCount = 0
         let totalPointsUnits = 0
         const personIdSet = new Map<number, boolean>()
 
-        // 遍历当月每一天
-        let currentDate = firstDay
-        while (currentDate <= today) {
-          const sessions = getSessionsByDate(currentDate)
-          for (let i = 0; i < sessions.length; i++) {
-            const session = sessions[i]
-            if (session.status == 'draft') {
-              continue
-            }
+        for (let i = 0; i < sessions.length; i++) {
+          const session = sessions[i]
+          if (session.status == 'draft') {
+            continue
+          }
 
-            entryCount = entryCount + 1
+          entryCount = entryCount + 1
 
-            for (let j = 0; j < session.bins.length; j++) {
-              const bin = session.bins[j]
-              for (let k = 0; k < bin.workers.length; k++) {
-                const worker = bin.workers[k]
-                const personId = worker.person_id
-                const pointsUnits = worker.points_units
-                const deductedUnits = worker.deducted_units
-                if (personId != null) {
-                  personIdSet.set(personId, true)
-                }
-                totalPointsUnits = totalPointsUnits + calcFinalPoints(pointsUnits, deductedUnits)
-              }
-            }
-
-            const crossBin = session.cross_bin
-            if (crossBin != null && crossBin.enabled == true) {
-              const personId = crossBin.person_id
+          for (let j = 0; j < session.bins.length; j++) {
+            const bin = session.bins[j]
+            for (let k = 0; k < bin.workers.length; k++) {
+              const worker = bin.workers[k]
+              const personId = worker.person_id
+              const pointsUnits = worker.points_units
+              const deductedUnits = worker.deducted_units
               if (personId != null) {
                 personIdSet.set(personId, true)
               }
-              totalPointsUnits = totalPointsUnits + calcFinalPoints(crossBin.points_units, 0)
+              totalPointsUnits = totalPointsUnits + calcFinalPoints(pointsUnits, deductedUnits)
             }
+          }
 
-            const liangTang = session.liang_tang
-            if (liangTang != null) {
-              for (let r = 0; r < LIANG_TANG_ROLES.length; r++) {
-                const roleCode = LIANG_TANG_ROLES[r]
-                let roleWorkers = null as SessionWorkerStorageData[] | null
-                if (roleCode == 'WHEAT_MATERIAL') {
-                  roleWorkers = liangTang.WHEAT_MATERIAL
-                } else if (roleCode == 'MACHINE_GUARD') {
-                  roleWorkers = liangTang.MACHINE_GUARD
-                } else if (roleCode == 'KOJI_UNLOADER') {
-                  roleWorkers = liangTang.KOJI_UNLOADER
-                } else if (roleCode == 'MICRO_OPERATOR') {
-                  roleWorkers = liangTang.MICRO_OPERATOR
-                }
-                if (roleWorkers != null) {
-                  for (let k = 0; k < roleWorkers.length; k++) {
-                    const worker = roleWorkers[k]
-                    const personId = worker.person_id
-                    if (personId != null) {
-                      personIdSet.set(personId, true)
-                    }
-                    totalPointsUnits = totalPointsUnits + calcFinalPoints(worker.points_units, 0)
-                  }
-                }
+          const crossBin = session.cross_bin
+          if (crossBin != null && crossBin.enabled == true) {
+            const personId = crossBin.person_id
+            if (personId != null) {
+              personIdSet.set(personId, true)
+            }
+            totalPointsUnits = totalPointsUnits + calcFinalPoints(crossBin.points_units, 0)
+          }
+
+          const liangTang = session.liang_tang
+          if (liangTang != null) {
+            for (let r = 0; r < LIANG_TANG_ROLES.length; r++) {
+              const roleCode = LIANG_TANG_ROLES[r]
+              let roleWorkers = null as SessionWorkerStorageData[] | null
+              if (roleCode == 'WHEAT_MATERIAL') {
+                roleWorkers = liangTang.WHEAT_MATERIAL
+              } else if (roleCode == 'MACHINE_GUARD') {
+                roleWorkers = liangTang.MACHINE_GUARD
+              } else if (roleCode == 'KOJI_UNLOADER') {
+                roleWorkers = liangTang.KOJI_UNLOADER
+              } else if (roleCode == 'MICRO_OPERATOR') {
+                roleWorkers = liangTang.MICRO_OPERATOR
               }
-            }
-
-            const duiQu = session.dui_qu
-            if (duiQu != null) {
-              for (let k = 0; k < duiQu.workers.length; k++) {
-                const worker = duiQu.workers[k]
-                const personId = worker.person_id
-                if (personId != null) {
-                  personIdSet.set(personId, true)
+              if (roleWorkers != null) {
+                for (let k = 0; k < roleWorkers.length; k++) {
+                  const worker = roleWorkers[k]
+                  const personId = worker.person_id
+                  if (personId != null) {
+                    personIdSet.set(personId, true)
+                  }
+                  totalPointsUnits = totalPointsUnits + calcFinalPoints(worker.points_units, 0)
                 }
-                totalPointsUnits = totalPointsUnits + calcFinalPoints(worker.points_units, 0)
               }
             }
           }
 
-          // 下一天
-          currentDate = addDaysToDate(currentDate, 1)
+          const duiQu = session.dui_qu
+          if (duiQu != null) {
+            for (let k = 0; k < duiQu.workers.length; k++) {
+              const worker = duiQu.workers[k]
+              const personId = worker.person_id
+              if (personId != null) {
+                personIdSet.set(personId, true)
+              }
+              totalPointsUnits = totalPointsUnits + calcFinalPoints(worker.points_units, 0)
+            }
+          }
         }
 
-        this.monthStats = {
+        this.roundStats = {
           entryCount: entryCount,
           totalPointsUnits: totalPointsUnits,
           personCount: personIdSet.size
-        } as MonthStats
+        } as RoundStats
       },
 
       /**
