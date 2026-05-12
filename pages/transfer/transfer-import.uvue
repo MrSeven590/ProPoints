@@ -452,12 +452,12 @@
 
         for (let i = 0; i < items.length; i++) {
           const item = items[i]
-          const itemObj = item as UTSJSONObject
-          const type = itemObj['type'] as string
+          const conflictItem = item as ConflictItem
+          const type = conflictItem.type
 
           // 基础字段
-          const title = this.getConflictTitle(item)
-          const summary = this.getConflictSummary(item)
+          const title = conflictItem.title
+          const summary = conflictItem.summary
 
           // 楼层冲突专用字段
           let localFloorsText: string[] = []
@@ -467,14 +467,12 @@
           if (type == 'FLOOR_CONFIG') {
             const floorItem = item as FloorConflictItem
             // 预处理本地楼层数据
-            localFloorsText = []
             const localFloors = floorItem.localFloors
             for (let j = 0; j < localFloors.length; j++) {
               const floor = localFloors[j]
               localFloorsText.push(`${floor.floorNo}楼: ${floor.maxSeqNo}仓`)
             }
             // 预处理导入楼层数据
-            importedFloorsText = []
             const importedFloors = floorItem.importedFloors
             for (let j = 0; j < importedFloors.length; j++) {
               const floor = importedFloors[j]
@@ -497,39 +495,6 @@
         }
 
         return displays
-      },
-
-      // ===== 保留这些函数用于脚本内部调用，但模板不再直接调用 =====
-      getConflictItemType(conflict: UTSObject): string {
-        const conflictObj = conflict as UTSJSONObject
-        return conflictObj['type'] as string
-      },
-
-      getConflictSummary(conflict: UTSObject): string {
-        const conflictObj = conflict as UTSJSONObject
-        return conflictObj['summary'] as string
-      },
-
-      getFloorConflictLocal(conflict: UTSObject): string[] {
-        const result: string[] = []
-        const floorConflict = conflict as FloorConflictItem
-        const floors = floorConflict.localFloors
-        for (let j = 0; j < floors.length; j++) {
-          const floor = floors[j]
-          result.push(`${floor.floorNo}楼: ${floor.maxSeqNo}仓`)
-        }
-        return result
-      },
-
-      getFloorConflictImport(conflict: UTSObject): string[] {
-        const result: string[] = []
-        const floorConflict = conflict as FloorConflictItem
-        const floors = floorConflict.importedFloors
-        for (let j = 0; j < floors.length; j++) {
-          const floor = floors[j]
-          result.push(`${floor.floorNo}楼: ${floor.maxSeqNo}仓`)
-        }
-        return result
       },
 
       onBackToInput() {
@@ -680,19 +645,6 @@
           return (this.parsedPayload as BundlePayload).anqu.skip.length
         }
         return 0
-      },
-
-      getConflictTitle(conflict: UTSObject): string {
-        const conflictObj = conflict as UTSJSONObject
-        const type = conflictObj['type'] as string
-        if (type == 'FLOOR_CONFIG') {
-          return '楼层配置冲突'
-        } else if (type == 'ROSTER') {
-          return '花名册冲突'
-        } else if (type == 'COEF') {
-          return '系数配置冲突'
-        }
-        return '配置冲突'
       },
 
       getPayloadKindText(): string {
