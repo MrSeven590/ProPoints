@@ -3,7 +3,7 @@
     {
       "path": "pages/index/index",
       "style": {
-        "navigationBarTitleText": "工作台"
+        "navigationBarTitleText": "数据导出"
       }
     },
     {
@@ -73,27 +73,15 @@
       }
     },
     {
-      "path": "pages/work/anqu-export",
-      "style": {
-        "navigationBarTitleText": "安曲数据导出"
-      }
-    },
-    {
-      "path": "pages/work/anqu-import",
-      "style": {
-        "navigationBarTitleText": "安曲数据导入"
-      }
-    },
-    {
       "path": "pages/transfer/transfer-export",
       "style": {
-        "navigationBarTitleText": "PPX1 数据导出"
+        "navigationBarTitleText": "数据导出"
       }
     },
     {
       "path": "pages/transfer/transfer-import",
       "style": {
-        "navigationBarTitleText": "PPX1 数据导入"
+        "navigationBarTitleText": "数据导入"
       }
     }
   ],
