@@ -14,6 +14,7 @@ import type {
 } from '../models/assignment.uts'
 import type { RoleCode, PointsUnits } from '../models/types.uts'
 import type { LiangTangRoleData, DuiQuWorkerData } from '../models/session.uts'
+import { DEFAULT_PENALTY_UNITS, DEFAULT_PENALTY_REASON, DEFAULT_PENALTY_ID } from '../models/session.uts'
 import { LIANG_TANG_ROLES } from '../models/types.uts'
 
 /**
@@ -71,7 +72,10 @@ export function parseWorkerData(raw: UTSJSONObject): SessionWorkerData {
   return {
     personId: personIdTmp != null ? personIdTmp as number : null,
     personName: personNameTmp != null ? personNameTmp as string : '',
-    pointsUnits: 0
+    pointsUnits: 0,
+    deductedUnits: DEFAULT_PENALTY_UNITS,
+    penaltyReason: DEFAULT_PENALTY_REASON,
+    penaltyId: DEFAULT_PENALTY_ID
   } as SessionWorkerData
 }
 
@@ -160,7 +164,10 @@ export function parseDuiQuWorkerData(raw: UTSJSONObject): DuiQuWorkerData {
     personId: personIdTmp != null ? personIdTmp as number : null,
     personName: personNameTmp != null ? personNameTmp as string : '',
     pointsUnits: pointsUnitsTmp != null ? pointsUnitsTmp as number : 0,
-    positionIndex: positionIndexTmp != null ? positionIndexTmp as number : 0
+    positionIndex: positionIndexTmp != null ? positionIndexTmp as number : 0,
+    deductedUnits: DEFAULT_PENALTY_UNITS,
+    penaltyReason: DEFAULT_PENALTY_REASON,
+    penaltyId: DEFAULT_PENALTY_ID
   } as DuiQuWorkerData
 }
 
@@ -185,9 +192,9 @@ export function parseDuiQuWorkerDataArray(rawWorkers: UTSJSONObject[] | null): D
 export function parseDuiQuDefaults(raw: UTSJSONObject[] | null): DuiQuWorkerData[] {
   if (raw == null) {
     return [
-      { personId: null, personName: '', pointsUnits: 0, positionIndex: 1 } as DuiQuWorkerData,
-      { personId: null, personName: '', pointsUnits: 0, positionIndex: 2 } as DuiQuWorkerData,
-      { personId: null, personName: '', pointsUnits: 0, positionIndex: 3 } as DuiQuWorkerData
+      { personId: null, personName: '', pointsUnits: 0, positionIndex: 1, deductedUnits: DEFAULT_PENALTY_UNITS, penaltyReason: DEFAULT_PENALTY_REASON, penaltyId: DEFAULT_PENALTY_ID } as DuiQuWorkerData,
+      { personId: null, personName: '', pointsUnits: 0, positionIndex: 2, deductedUnits: DEFAULT_PENALTY_UNITS, penaltyReason: DEFAULT_PENALTY_REASON, penaltyId: DEFAULT_PENALTY_ID } as DuiQuWorkerData,
+      { personId: null, personName: '', pointsUnits: 0, positionIndex: 3, deductedUnits: DEFAULT_PENALTY_UNITS, penaltyReason: DEFAULT_PENALTY_REASON, penaltyId: DEFAULT_PENALTY_ID } as DuiQuWorkerData
     ]
   }
 

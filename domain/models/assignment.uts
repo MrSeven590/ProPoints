@@ -305,6 +305,9 @@ export type CrossBinChangePayload = {
   personId: number | null
   personName: string
   pointsUnits: PointsUnits
+  deductedUnits: PointsUnits  // 考核扣分
+  penaltyReason: string       // 扣分原因
+  penaltyId: number | null    // 扣分记录ID
   sources: AssignmentSourceCreateParams[]
 }
 
@@ -323,6 +326,9 @@ export type SessionWorkerData = {
   personId: number | null
   personName: string
   pointsUnits: PointsUnits
+  deductedUnits: PointsUnits
+  penaltyReason: string
+  penaltyId: number | null
 }
 
 /**

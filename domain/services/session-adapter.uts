@@ -163,6 +163,9 @@ function parseCrossBin(crossBinRaw: UTSJSONObject | null): SessionCrossBinData |
     person_id: crossBinRaw['person_id'] != null ? (crossBinRaw['person_id'] as number) : (crossBinRaw['personId'] != null ? (crossBinRaw['personId'] as number) : null),
     person_name: crossBinRaw['person_name'] != null ? (crossBinRaw['person_name'] as string) : (crossBinRaw['personName'] != null ? (crossBinRaw['personName'] as string) : ''),
     points_units: crossBinRaw['points_units'] != null ? (crossBinRaw['points_units'] as number) : (crossBinRaw['pointsUnits'] != null ? (crossBinRaw['pointsUnits'] as number) : 0),
+    deducted_units: crossBinRaw['deducted_units'] != null ? (crossBinRaw['deducted_units'] as number) : (crossBinRaw['deductedUnits'] != null ? (crossBinRaw['deductedUnits'] as number) : 0),
+    penalty_reason: crossBinRaw['penalty_reason'] != null ? (crossBinRaw['penalty_reason'] as string) : (crossBinRaw['penaltyReason'] != null ? (crossBinRaw['penaltyReason'] as string) : ''),
+    penalty_id: crossBinRaw['penalty_id'] != null ? (crossBinRaw['penalty_id'] as number) : (crossBinRaw['penaltyId'] != null ? (crossBinRaw['penaltyId'] as number) : null),
     sources: sources
   } as SessionCrossBinData
 }
@@ -194,7 +197,10 @@ function parseLiangTang(liangTangRaw: UTSJSONObject | null): SessionLiangTangDat
         workers.push({
           person_id: w['person_id'] != null ? (w['person_id'] as number) : (w['personId'] != null ? (w['personId'] as number) : null),
           person_name: w['person_name'] != null ? (w['person_name'] as string) : (w['personName'] != null ? (w['personName'] as string) : ''),
-          points_units: w['points_units'] != null ? (w['points_units'] as number) : (w['pointsUnits'] != null ? (w['pointsUnits'] as number) : 0)
+          points_units: w['points_units'] != null ? (w['points_units'] as number) : (w['pointsUnits'] != null ? (w['pointsUnits'] as number) : 0),
+          deducted_units: w['deducted_units'] != null ? (w['deducted_units'] as number) : (w['deductedUnits'] != null ? (w['deductedUnits'] as number) : 0),
+          penalty_reason: w['penalty_reason'] != null ? (w['penalty_reason'] as string) : (w['penaltyReason'] != null ? (w['penaltyReason'] as string) : ''),
+          penalty_id: w['penalty_id'] != null ? (w['penalty_id'] as number) : (w['penaltyId'] != null ? (w['penaltyId'] as number) : null)
         } as SessionWorkerStorageData)
       }
       // 使用下标赋值，因为 roleKey 是动态的
@@ -230,7 +236,10 @@ function parseDuiQu(duiQuRaw: UTSJSONObject | null): SessionDuiQuData | null {
         person_id: w['person_id'] != null ? (w['person_id'] as number) : (w['personId'] != null ? (w['personId'] as number) : null),
         person_name: w['person_name'] != null ? (w['person_name'] as string) : (w['personName'] != null ? (w['personName'] as string) : ''),
         points_units: w['points_units'] != null ? (w['points_units'] as number) : (w['pointsUnits'] != null ? (w['pointsUnits'] as number) : 0),
-        position_index: w['position_index'] != null ? (w['position_index'] as number) : (w['positionIndex'] != null ? (w['positionIndex'] as number) : i + 1)
+        position_index: w['position_index'] != null ? (w['position_index'] as number) : (w['positionIndex'] != null ? (w['positionIndex'] as number) : i + 1),
+        deducted_units: w['deducted_units'] != null ? (w['deducted_units'] as number) : (w['deductedUnits'] != null ? (w['deductedUnits'] as number) : 0),
+        penalty_reason: w['penalty_reason'] != null ? (w['penalty_reason'] as string) : (w['penaltyReason'] != null ? (w['penaltyReason'] as string) : ''),
+        penalty_id: w['penalty_id'] != null ? (w['penalty_id'] as number) : (w['penaltyId'] != null ? (w['penaltyId'] as number) : null)
       } as DuiQuStorageWorkerData)
     }
   }
@@ -341,6 +350,9 @@ export function sessionDataToStorageJson(data: SessionData): UTSJSONObject {
       person_id: data.cross_bin.person_id,
       person_name: data.cross_bin.person_name,
       points_units: data.cross_bin.points_units,
+      deducted_units: data.cross_bin.deducted_units,
+      penalty_reason: data.cross_bin.penalty_reason,
+      penalty_id: data.cross_bin.penalty_id,
       sources: sourcesRaw
     } as UTSJSONObject
   }
@@ -354,7 +366,10 @@ export function sessionDataToStorageJson(data: SessionData): UTSJSONObject {
         result.push({
           person_id: worker.person_id,
           person_name: worker.person_name,
-          points_units: worker.points_units
+          points_units: worker.points_units,
+          deducted_units: worker.deducted_units,
+          penalty_reason: worker.penalty_reason,
+          penalty_id: worker.penalty_id
         } as UTSJSONObject)
       }
       return result
@@ -377,7 +392,10 @@ export function sessionDataToStorageJson(data: SessionData): UTSJSONObject {
         person_id: worker.person_id,
         person_name: worker.person_name,
         points_units: worker.points_units,
-        position_index: worker.position_index
+        position_index: worker.position_index,
+        deducted_units: worker.deducted_units,
+        penalty_reason: worker.penalty_reason,
+        penalty_id: worker.penalty_id
       } as UTSJSONObject)
     }
 
@@ -457,6 +475,9 @@ export function sessionDataToEntryPageState(
   let crossBinPersonId: number | null = null
   let crossBinPersonName = ''
   let crossBinPointsUnits: PointsUnits = 0
+  let crossBinDeductedUnits: PointsUnits = 0
+  let crossBinPenaltyReason = ''
+  let crossBinPenaltyId: number | null = null
   let crossBinSources: AssignmentSourceCreateParams[] = []
 
   if (data.cross_bin != null) {
@@ -469,6 +490,9 @@ export function sessionDataToEntryPageState(
       crossBinPersonId = data.cross_bin.person_id
       crossBinPersonName = data.cross_bin.person_name
       crossBinPointsUnits = data.cross_bin.points_units
+      crossBinDeductedUnits = data.cross_bin.deducted_units
+      crossBinPenaltyReason = data.cross_bin.penalty_reason
+      crossBinPenaltyId = data.cross_bin.penalty_id
       crossBinSources = data.cross_bin.sources
     }
     // enabled == null 时保持默认值
@@ -486,7 +510,10 @@ export function sessionDataToEntryPageState(
         const worker = {
           personId: w.person_id,
           personName: w.person_name,
-          pointsUnits: w.points_units
+          pointsUnits: w.points_units,
+          deductedUnits: w.deducted_units,
+          penaltyReason: w.penalty_reason,
+          penaltyId: w.penalty_id
         } as SessionWorkerData
         workers.push(worker)
       }
@@ -504,7 +531,10 @@ export function sessionDataToEntryPageState(
         const worker = {
           personId: w.person_id,
           personName: w.person_name,
-          pointsUnits: w.points_units
+          pointsUnits: w.points_units,
+          deductedUnits: w.deducted_units,
+          penaltyReason: w.penalty_reason,
+          penaltyId: w.penalty_id
         } as SessionWorkerData
         workers.push(worker)
       }
@@ -522,7 +552,10 @@ export function sessionDataToEntryPageState(
         const worker = {
           personId: w.person_id,
           personName: w.person_name,
-          pointsUnits: w.points_units
+          pointsUnits: w.points_units,
+          deductedUnits: w.deducted_units,
+          penaltyReason: w.penalty_reason,
+          penaltyId: w.penalty_id
         } as SessionWorkerData
         workers.push(worker)
       }
@@ -540,7 +573,10 @@ export function sessionDataToEntryPageState(
         const worker = {
           personId: w.person_id,
           personName: w.person_name,
-          pointsUnits: w.points_units
+          pointsUnits: w.points_units,
+          deductedUnits: w.deducted_units,
+          penaltyReason: w.penalty_reason,
+          penaltyId: w.penalty_id
         } as SessionWorkerData
         workers.push(worker)
       }
@@ -566,7 +602,10 @@ export function sessionDataToEntryPageState(
         personId: w.person_id,
         personName: w.person_name,
         pointsUnits: w.points_units,
-        positionIndex: w.position_index
+        positionIndex: w.position_index,
+        deductedUnits: w.deducted_units,
+        penaltyReason: w.penalty_reason,
+        penaltyId: w.penalty_id
       } as DuiQuWorkerData)
     }
   }
@@ -612,6 +651,9 @@ export function sessionDataToEntryPageState(
     crossBinPersonId: crossBinPersonId,
     crossBinPersonName: crossBinPersonName,
     crossBinPointsUnits: crossBinPointsUnits,
+    crossBinDeductedUnits: crossBinDeductedUnits,
+    crossBinPenaltyReason: crossBinPenaltyReason,
+    crossBinPenaltyId: crossBinPenaltyId,
     crossBinSources: crossBinSources,
     liangTangRolesData: liangTangRolesData,
     duiQuWorkers: duiQuWorkers,
@@ -706,6 +748,9 @@ export function entryPageStateToSessionData(
       person_id: state.crossBinPersonId,
       person_name: state.crossBinPersonName,
       points_units: state.crossBinPointsUnits,
+      deducted_units: state.crossBinDeductedUnits,
+      penalty_reason: state.crossBinPenaltyReason,
+      penalty_id: state.crossBinPenaltyId,
       sources: sources
     } as SessionCrossBinData
   } else {
@@ -716,6 +761,9 @@ export function entryPageStateToSessionData(
       person_id: null,
       person_name: '',
       points_units: 0,
+      deducted_units: 0,
+      penalty_reason: '',
+      penalty_id: null,
       sources: []
     } as SessionCrossBinData
   }
@@ -736,7 +784,10 @@ export function entryPageStateToSessionData(
         workers.push({
           person_id: worker.personId,
           person_name: worker.personName,
-          points_units: worker.pointsUnits
+          points_units: worker.pointsUnits,
+          deducted_units: worker.deductedUnits,
+          penalty_reason: worker.penaltyReason,
+          penalty_id: worker.penaltyId
         } as SessionWorkerStorageData)
       }
       return workers
@@ -759,7 +810,10 @@ export function entryPageStateToSessionData(
         person_id: worker.personId,
         person_name: worker.personName,
         points_units: worker.pointsUnits,
-        position_index: worker.positionIndex
+        position_index: worker.positionIndex,
+        deducted_units: worker.deductedUnits,
+        penalty_reason: worker.penaltyReason,
+        penalty_id: worker.penaltyId
       } as DuiQuStorageWorkerData)
     }
 

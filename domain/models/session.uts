@@ -63,6 +63,9 @@ export type SessionCrossBinData = {
   person_id: number | null
   person_name: string
   points_units: PointsUnits
+  deducted_units: PointsUnits  // 考核扣分
+  penalty_reason: string       // 扣分原因
+  penalty_id: number | null    // 扣分记录ID
   sources: AssignmentSourceCreateParams[]
 }
 
@@ -90,6 +93,9 @@ export type SessionWorkerStorageData = {
   person_id: number | null
   person_name: string
   points_units: PointsUnits
+  deducted_units: PointsUnits
+  penalty_reason: string
+  penalty_id: number | null
 }
 
 /**
@@ -125,6 +131,9 @@ export type DuiQuStorageWorkerData = {
   person_name: string
   points_units: PointsUnits
   position_index: number
+  deducted_units: PointsUnits
+  penalty_reason: string
+  penalty_id: number | null
 }
 
 /**
@@ -136,6 +145,9 @@ export type DuiQuWorkerData = {
   personName: string
   pointsUnits: PointsUnits
   positionIndex: number
+  deductedUnits: PointsUnits
+  penaltyReason: string
+  penaltyId: number | null
 }
 
 /**
@@ -219,6 +231,9 @@ export type EntryPageState = {
   crossBinPersonId: number | null
   crossBinPersonName: string
   crossBinPointsUnits: PointsUnits
+  crossBinDeductedUnits: PointsUnits  // 跨仓考核扣分
+  crossBinPenaltyReason: string       // 跨仓扣分原因
+  crossBinPenaltyId: number | null    // 跨仓扣分记录ID
   crossBinSources: AssignmentSourceCreateParams[]
   liangTangRolesData: Map<string, LiangTangRoleData>
   duiQuWorkers: DuiQuWorkerData[]
@@ -239,3 +254,13 @@ export type EntryPageState = {
  * @deprecated 请直接使用 EntryPageState
  */
 export type SessionEntryPageState = EntryPageState
+
+// ============================================
+// 扣分默认值常量
+// 符合 Code Reuse Thinking Guide：单一数据源
+// ============================================
+
+/** 扣分字段默认值（snake_case，存储层） */
+export const DEFAULT_PENALTY_UNITS: PointsUnits = 0
+export const DEFAULT_PENALTY_REASON: string = ''
+export const DEFAULT_PENALTY_ID: number | null = null

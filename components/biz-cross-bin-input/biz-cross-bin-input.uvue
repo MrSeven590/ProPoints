@@ -44,6 +44,79 @@
       <text class="hint-text">工分将从所选发酵仓按曲坯比例扣减</text>
     </view>
 
+    <!-- 考核区域 -->
+    <view class="input-row">
+      <text class="row-label">考核</text>
+      <view
+        :class="['penalty-btn', deductedUnits > 0 ? 'penalty-btn-active' : '']"
+        @click="onTogglePenalty"
+      >
+        <text :class="['penalty-btn-text', deductedUnits > 0 ? 'penalty-btn-text-active' : '']">考核</text>
+      </view>
+    </view>
+
+    <!-- 考核摘要（保存后显示，面板未展开时） -->
+    <view v-if="deductedUnits > 0 && !expandedPenaltyIndex" class="penalty-summary">
+      <text class="penalty-summary-text">原始 {{ displayPoints }}</text>
+      <text class="penalty-summary-text penalty-summary-deducted">-{{ formatPoints(deductedUnits) }}</text>
+      <text class="penalty-summary-text penalty-summary-final">= {{ getDraftFinalPoints(pointsUnits) }}</text>
+    </view>
+
+    <!-- 考核输入区域（展开时显示） -->
+    <view v-if="expandedPenaltyIndex" class="penalty-panel">
+      <view class="penalty-points-row">
+        <!-- 原始工分 -->
+        <view class="penalty-points-item">
+          <text class="penalty-points-label">原始</text>
+          <text class="penalty-points-value penalty-original">{{ displayPoints }}</text>
+        </view>
+        <!-- 扣分（使用草稿值） -->
+        <view class="penalty-points-item">
+          <text class="penalty-points-label">扣分</text>
+          <biz-score-input
+            :modelValue="penaltyDraft.deductedUnits"
+            :min="0"
+            :max="pointsUnits"
+            :step="1"
+            size="small"
+            @update:modelValue="onDraftDeductedChange"
+          />
+        </view>
+        <!-- 最终工分（使用草稿值计算） -->
+        <view class="penalty-points-item">
+          <text class="penalty-points-label">最终</text>
+          <text class="penalty-points-value penalty-final">{{ getDraftFinalPoints(pointsUnits) }}</text>
+        </view>
+      </view>
+      <!-- 扣分原因（使用草稿值） -->
+      <view class="penalty-reason-row">
+        <text class="penalty-reason-label">原因</text>
+        <input
+          class="penalty-reason-input"
+          type="text"
+          placeholder="请输入扣分原因"
+          :value="penaltyDraft.reason"
+          @input="onDraftReasonInput"
+        />
+      </view>
+      <!-- 错误提示 -->
+      <view v-if="penaltyDraft.deductedUnits > 0 && penaltyDraft.reason.trim().length == 0" class="penalty-error">
+        <text class="penalty-error-text">扣分时原因必填</text>
+      </view>
+      <!-- 操作按钮 -->
+      <view class="penalty-actions">
+        <view class="penalty-cancel-btn" @click="onCancelPenalty">
+          <text class="penalty-cancel-text">取消</text>
+        </view>
+        <view
+          :class="['penalty-save-btn', canSavePenaltyDraft() ? '' : 'penalty-save-btn-disabled']"
+          @click="onSavePenalty"
+        >
+          <text :class="['penalty-save-text', canSavePenaltyDraft() ? '' : 'penalty-save-text-disabled']">保存</text>
+        </view>
+      </view>
+    </view>
+
     <!-- 来源预览（直接展示） -->
     <view v-if="sources.length > 0" class="source-preview">
       <view class="source-header">
@@ -82,6 +155,7 @@
 <script lang="uts">
 	  import { PointsUnits, formatPointsUnits, pointsToUnits } from '../../domain/models/types.uts'
 	  import type { AssignmentSourceCreateParams, CrossBinChangePayload, PersonSelectPayload } from '../../domain/models/assignment.uts'
+	  import { calcFinalPoints } from '../../domain/models/assignment.uts'
 	  import { StageBinInfo } from '../../domain/models/ferment.uts'
 
   /**
@@ -91,6 +165,17 @@
     binCode: string
     displayPoints: string
     percent: string
+  }
+
+  /**
+   * 考核草稿类型（含初始值用于判断变更）
+   */
+  type LocalPenaltyDraft = {
+    deductedUnits: PointsUnits
+    reason: string
+    // 记录初始值，用于判断是否有变更
+    initialDeductedUnits: PointsUnits
+    initialReason: string
   }
 
   export default {
@@ -137,6 +222,18 @@
           return [] as AssignmentSourceCreateParams[]
         }
       },
+      initialDeductedUnits: {
+        type: Number,
+        default: 0
+      },
+      initialPenaltyReason: {
+        type: String,
+        default: ''
+      },
+      initialPenaltyId: {
+        type: Number,
+        default: null
+      },
       readonly: {
         type: Boolean,
         default: false
@@ -149,12 +246,24 @@
         selectedPersonName: '' as string,
         pointsUnits: 0 as PointsUnits,
         displayPoints: '' as string,
+        deductedUnits: 0 as PointsUnits,
+        penaltyReason: '' as string,
+        penaltyId: null as number | null,
         sources: [] as AssignmentSourceCreateParams[],
         showPersonPicker: false as boolean,
         // 来源显示列表（预计算）
         sourceDisplayList: [] as SourceDisplayItem[],
         // bin_id -> bin_code 映射
-        binCodeMap: new Map<number, string>()
+        binCodeMap: new Map<number, string>(),
+        // 考核相关（使用 false 表示面板收起）
+        expandedPenaltyIndex: false as boolean,
+        // 草稿模式：编辑时使用临时变量
+        penaltyDraft: {
+          deductedUnits: 0,
+          reason: '',
+          initialDeductedUnits: 0,
+          initialReason: ''
+        } as LocalPenaltyDraft
       }
     },
     watch: {
@@ -190,12 +299,37 @@
           this.buildSourceDisplayListFromSources()
         },
         immediate: true
+      },
+      initialDeductedUnits: {
+        handler(newVal: number) {
+          this.deductedUnits = newVal
+        },
+        immediate: true
+      },
+      initialPenaltyReason: {
+        handler(newVal: string) {
+          this.penaltyReason = newVal
+        },
+        immediate: true
+      },
+      initialPenaltyId: {
+        handler(newVal: number | null) {
+          this.penaltyId = newVal
+        },
+        immediate: true
       }
     },
     mounted() {
       // 所有初始化由 watchers 处理，无需手动初始化
     },
     methods: {
+
+      /**
+       * 格式化工分显示（模板辅助方法）
+       */
+      formatPoints(units: PointsUnits): string {
+        return formatPointsUnits(units)
+      },
 
       rebuildBinCodeMap(bins: StageBinInfo[]) {
         const map = new Map<number, string>()
@@ -307,11 +441,153 @@
         this.sourceDisplayList = displayList
       },
 
+      // ============================================
+      // 考核操作（草稿模式）
+      // ============================================
+
+      /**
+       * 切换考核面板展开/收起
+       */
+      onTogglePenalty() {
+        // 只读模式下禁止考核
+        if (this.readonly == true) {
+          return
+        }
+        // 未选择人员时禁止考核
+        if (this.selectedPersonId == null) {
+          uni.showToast({
+            title: '请先选择人员',
+            icon: 'none'
+          })
+          return
+        }
+
+        if (this.expandedPenaltyIndex) {
+          // 收起当前面板
+          this.expandedPenaltyIndex = false
+        } else {
+          // 展开面板
+          this.expandedPenaltyIndex = true
+          // 初始化草稿：复制当前值，并记录初始值
+          this.penaltyDraft.deductedUnits = this.deductedUnits
+          this.penaltyDraft.reason = this.penaltyReason
+          this.penaltyDraft.initialDeductedUnits = this.deductedUnits
+          this.penaltyDraft.initialReason = this.penaltyReason
+        }
+      },
+
+      /**
+       * 草稿：扣分值变化（biz-score-input）
+       */
+      onDraftDeductedChange(value: PointsUnits) {
+        this.penaltyDraft.deductedUnits = value
+      },
+
+      /**
+       * 草稿：扣分原因输入
+       */
+      onDraftReasonInput(e: UniInputEvent) {
+        this.penaltyDraft.reason = e.detail.value
+      },
+
+      /**
+       * 计算草稿的最终工分显示值
+       */
+      getDraftFinalPoints(originalUnits: PointsUnits): string {
+        const finalUnits = calcFinalPoints(originalUnits, this.penaltyDraft.deductedUnits)
+        return formatPointsUnits(finalUnits)
+      },
+
+      /**
+       * 判断草稿是否有变更
+       */
+      hasPenaltyDraftChanged(): boolean {
+        // 检查扣分值是否变化
+        if (this.penaltyDraft.deductedUnits != this.penaltyDraft.initialDeductedUnits) {
+          return true
+        }
+        // 检查原因是否变化（trim 后比较）
+        if (this.penaltyDraft.reason.trim() != this.penaltyDraft.initialReason.trim()) {
+          return true
+        }
+        return false
+      },
+
+      /**
+       * 判断保存按钮是否可用
+       * 当且仅当分数和原因同时存在时才可点击
+       */
+      canSavePenaltyDraft(): boolean {
+        // 扣分 > 0 且原因不为空时才可保存
+        if (this.penaltyDraft.deductedUnits > 0 && this.penaltyDraft.reason.trim().length > 0) {
+          return true
+        }
+        return false
+      },
+
+      /**
+       * 取消考核编辑（真正取消，丢弃草稿）
+       */
+      onCancelPenalty() {
+        // 收起面板，丢弃草稿
+        this.expandedPenaltyIndex = false
+        this.penaltyDraft.deductedUnits = 0
+        this.penaltyDraft.reason = ''
+        this.penaltyDraft.initialDeductedUnits = 0
+        this.penaltyDraft.initialReason = ''
+      },
+
+      /**
+       * 保存考核（提交草稿到组件数据）
+       */
+      onSavePenalty() {
+        if (this.canSavePenaltyDraft() == false) {
+          // 根据不同情况显示不同提示
+          if (this.hasPenaltyDraftChanged() == false) {
+            // 没有变更，不做任何操作
+            return
+          }
+          // 有变更但原因未填写
+          uni.showToast({
+            title: '请输入扣分原因',
+            icon: 'none'
+          })
+          return
+        }
+        // 提交草稿到组件数据
+        this.deductedUnits = this.penaltyDraft.deductedUnits
+        this.penaltyReason = this.penaltyDraft.reason.trim()
+
+        // 如果扣分为 0，清除原因和 ID（表示删除扣分）
+        if (this.deductedUnits == 0) {
+          this.penaltyReason = ''
+          // penaltyId 保留，用于通知父组件删除
+        }
+
+        // 收起面板
+        this.expandedPenaltyIndex = false
+        // 清空草稿
+        this.penaltyDraft.deductedUnits = 0
+        this.penaltyDraft.reason = ''
+        this.penaltyDraft.initialDeductedUnits = 0
+        this.penaltyDraft.initialReason = ''
+        // 发送变更事件
+        this.emitChange()
+        // 显示保存成功提示
+        uni.showToast({
+          title: '考核已保存',
+          icon: 'success'
+        })
+      },
+
       emitChange() {
         const payload: CrossBinChangePayload = {
           personId: this.selectedPersonId,
           personName: this.selectedPersonName,
           pointsUnits: this.pointsUnits,
+          deductedUnits: this.deductedUnits,
+          penaltyReason: this.penaltyReason,
+          penaltyId: this.penaltyId,
           sources: this.sources
         }
         this.$emit('change', payload)
@@ -537,5 +813,227 @@
   .picker-close-text {
     font-size: 14px;
     color: #666666;
+  }
+
+  /* 考核扣分区域 */
+  .penalty-input-area {
+    flex: 1;
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .penalty-reason-input {
+    flex: 1;
+    height: 36px;
+    padding: 0 12px;
+    background-color: #f5f7fa;
+    border-radius: 6px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+    font-size: 14px;
+    color: #333333;
+  }
+
+  .error-row {
+    margin-bottom: 8px;
+    padding-left: 50px;
+  }
+
+  .error-text {
+    font-size: 12px;
+    color: #ff4d4f;
+  }
+
+  /* ============================================ */
+  /* 考核面板相关样式 */
+  /* ============================================ */
+
+  .penalty-btn {
+    margin-left: 8px;
+    padding: 4px 8px;
+    background-color: #f5f7fa;
+    border-radius: 4px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+  }
+
+  .penalty-btn-active {
+    background-color: #fff0f0;
+    border-color: #ffccc7;
+  }
+
+  .penalty-btn-text {
+    font-size: 12px;
+    color: #666666;
+  }
+
+  .penalty-btn-text-active {
+    color: #f56c6c;
+  }
+
+  .penalty-panel {
+    margin-top: 8px;
+    margin-left: 50px;
+    padding: 12px;
+    background-color: #fafafa;
+    border-radius: 8px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #f0f0f0;
+  }
+
+  .penalty-points-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .penalty-points-item {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .penalty-points-label {
+    font-size: 11px;
+    color: #999999;
+    margin-bottom: 4px;
+  }
+
+  .penalty-points-value {
+    font-size: 16px;
+    font-weight: bold;
+  }
+
+  .penalty-original {
+    color: #666666;
+  }
+
+  .penalty-final {
+    color: #007aff;
+  }
+
+  .penalty-stepper-area {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .stepper-btn-small {
+    width: 28px;
+    height: 28px;
+    justify-content: center;
+    align-items: center;
+    background-color: #f0f2f5;
+    border-radius: 4px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+  }
+
+  .stepper-btn-text-small {
+    font-size: 14px;
+    color: #333333;
+  }
+
+  .penalty-draft-input {
+    width: 50px;
+    height: 28px;
+    margin-left: 4px;
+    margin-right: 4px;
+    padding: 0 4px;
+    background-color: #f5f7fa;
+    border-radius: 4px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+    font-size: 13px;
+    color: #333333;
+    text-align: center;
+  }
+
+  .penalty-reason-row {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .penalty-reason-label {
+    font-size: 12px;
+    color: #666666;
+    margin-right: 8px;
+    width: 32px;
+  }
+
+  .penalty-error {
+    margin-bottom: 8px;
+  }
+
+  .penalty-error-text {
+    font-size: 11px;
+    color: #f56c6c;
+  }
+
+  .penalty-actions {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+
+  .penalty-cancel-btn {
+    padding: 6px 16px;
+    background-color: #f5f5f5;
+    border-radius: 4px;
+    margin-right: 8px;
+  }
+
+  .penalty-cancel-text {
+    font-size: 13px;
+    color: #666666;
+  }
+
+  .penalty-save-btn {
+    padding: 6px 16px;
+    background-color: #007aff;
+    border-radius: 4px;
+  }
+
+  .penalty-save-btn-disabled {
+    background-color: #e0e0e0;
+  }
+
+  .penalty-save-text {
+    font-size: 13px;
+    color: #ffffff;
+  }
+
+  .penalty-save-text-disabled {
+    color: #999999;
+  }
+
+  /* 考核摘要样式 */
+  .penalty-summary {
+    flex-direction: row;
+    align-items: center;
+    margin-top: 4px;
+    margin-left: 50px;
+    padding: 4px 8px;
+    background-color: #fff7e6;
+    border-radius: 4px;
+  }
+
+  .penalty-summary-text {
+    font-size: 11px;
+    color: #666666;
+    margin-right: 8px;
+  }
+
+  .penalty-summary-deducted {
+    color: #f56c6c;
+  }
+
+  .penalty-summary-final {
+    color: #007aff;
+    font-weight: bold;
   }
 </style>

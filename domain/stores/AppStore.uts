@@ -48,7 +48,7 @@ import { resetAllStorage as resetAllStorageFromInit } from '../../storage/init.u
 
 import { getCurrentTimestamp } from '../models/types.uts'
 import type { DateString, SyncStatus } from '../models/types.uts'
-import type { SessionData } from '../models/session.uts'
+import type { SessionData, SessionWorkerStorageData } from '../models/session.uts'
 import { createFermentRoundFromJSON, type FermentRound } from '../models/ferment.uts'
 import {
   storageJsonToSessionData,
@@ -859,7 +859,7 @@ export function exportSessionCSV(roundId: number, stageCode: string | null = nul
 
   // CSV 表头
   const lines: string[] = []
-  lines.push('\uFEFF日期,姓名,工分') // BOM + 表头（Excel 兼容中文）
+  lines.push('\uFEFF日期,姓名,原始工分,扣分,扣分原因,实发工分') // BOM + 表头（Excel 兼容中文）
 
   let hasData = false
 
@@ -887,11 +887,14 @@ export function exportSessionCSV(roundId: number, stageCode: string | null = nul
         const personName = worker.person_name
         const pointsUnits = worker.points_units
         const deductedUnits = worker.deducted_units
+        const penaltyReason = worker.penalty_reason
         // 最终工分 = 原始 - 扣分（存储值为×10单位，导出时÷10转小数）
         const finalUnits = pointsUnits - deductedUnits
         if (finalUnits > 0) {
-          const displayPoints = (finalUnits / 10).toFixed(1)
-          lines.push(`${dateFormatted},${personName},${displayPoints}`)
+          const displayPoints = (pointsUnits / 10).toFixed(1)
+          const displayDeducted = (deductedUnits / 10).toFixed(1)
+          const displayFinal = (finalUnits / 10).toFixed(1)
+          lines.push(`${dateFormatted},${personName},${displayPoints},${displayDeducted},${penaltyReason},${displayFinal}`)
           hasData = true
         }
       }
@@ -903,9 +906,74 @@ export function exportSessionCSV(roundId: number, stageCode: string | null = nul
       const personName = crossBin.person_name
       const pointsUnits = crossBin.points_units
       if (pointsUnits > 0 && personName != '') {
+        const deductedUnits = crossBin.deducted_units
+        const penaltyReason = crossBin.penalty_reason
+        const finalUnits = pointsUnits - deductedUnits
         const displayPoints = (pointsUnits / 10).toFixed(1)
-        lines.push(`${dateFormatted},${personName},${displayPoints}`)
+        const displayDeducted = (deductedUnits / 10).toFixed(1)
+        const displayFinal = (finalUnits / 10).toFixed(1)
+        lines.push(`${dateFormatted},${personName},${displayPoints},${displayDeducted},${penaltyReason},${displayFinal}`)
         hasData = true
+      }
+    }
+
+    // 晾堂人员（属于安曲工序 AN_QU，仅在未指定工序或指定安曲工序时导出）
+    if (stageCode == null || stageCode == 'AN_QU') {
+      const liangTang = session.liang_tang
+      if (liangTang != null) {
+        const roleCodes: string[] = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER', 'MICRO_OPERATOR']
+        for (let r = 0; r < roleCodes.length; r++) {
+          const roleCode = roleCodes[r]
+          let roleWorkers: SessionWorkerStorageData[] | null = null
+          if (roleCode == 'WHEAT_MATERIAL') {
+            roleWorkers = liangTang.WHEAT_MATERIAL
+          } else if (roleCode == 'MACHINE_GUARD') {
+            roleWorkers = liangTang.MACHINE_GUARD
+          } else if (roleCode == 'KOJI_UNLOADER') {
+            roleWorkers = liangTang.KOJI_UNLOADER
+          } else if (roleCode == 'MICRO_OPERATOR') {
+            roleWorkers = liangTang.MICRO_OPERATOR
+          }
+          if (roleWorkers != null) {
+            for (let k = 0; k < roleWorkers.length; k++) {
+              const worker = roleWorkers[k]
+              const personName = worker.person_name
+              if (personName != '') {
+                const pointsUnits = worker.points_units
+                const deductedUnits = worker.deducted_units
+                const penaltyReason = worker.penalty_reason
+                const finalUnits = pointsUnits - deductedUnits
+                const displayPoints = (pointsUnits / 10).toFixed(1)
+                const displayDeducted = (deductedUnits / 10).toFixed(1)
+                const displayFinal = (finalUnits / 10).toFixed(1)
+                lines.push(`${dateFormatted},${personName},${displayPoints},${displayDeducted},${penaltyReason},${displayFinal}`)
+                hasData = true
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 堆曲人员（属于拆曲工序 CHAI_QU，仅在未指定工序或指定拆曲工序时导出）
+    if (stageCode == null || stageCode == 'CHAI_QU') {
+      const duiQu = session.dui_qu
+      if (duiQu != null) {
+        for (let k = 0; k < duiQu.workers.length; k++) {
+          const worker = duiQu.workers[k]
+          const personName = worker.person_name
+          if (personName != '') {
+            const pointsUnits = worker.points_units
+            const deductedUnits = worker.deducted_units
+            const penaltyReason = worker.penalty_reason
+            const finalUnits = pointsUnits - deductedUnits
+            const displayPoints = (pointsUnits / 10).toFixed(1)
+            const displayDeducted = (deductedUnits / 10).toFixed(1)
+            const displayFinal = (finalUnits / 10).toFixed(1)
+            lines.push(`${dateFormatted},${personName},${displayPoints},${displayDeducted},${penaltyReason},${displayFinal}`)
+            hasData = true
+          }
+        }
       }
     }
   }
