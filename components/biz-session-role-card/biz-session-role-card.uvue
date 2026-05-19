@@ -45,6 +45,40 @@
           <text class="remove-worker-text">×</text>
         </view>
       </view>
+      <!-- 扣分区域（仅正常模式且有人员时显示） -->
+      <view v-if="!simpleMode && workers.length > 0" class="penalty-section">
+        <view class="penalty-header">
+          <text class="penalty-title">考核扣分</text>
+        </view>
+        <view v-for="(worker, index) in workers" :key="'penalty-'+index" class="penalty-row">
+          <text class="penalty-worker-name">{{ worker.personName != '' ? worker.personName : '未选择' }}：</text>
+          <view class="penalty-input-area">
+            <view class="penalty-stepper">
+              <view class="stepper-btn" @click="onPenaltyDecrease(index)">
+                <text class="stepper-btn-text">-</text>
+              </view>
+              <input
+                class="penalty-input"
+                type="number"
+                :value="getPenaltyDisplay(worker.deductedUnits)"
+                @input="onPenaltyInput(index, $event)"
+                @blur="onPenaltyBlur(index)"
+                placeholder="0.0"
+              />
+              <view class="stepper-btn" @click="onPenaltyIncrease(index)">
+                <text class="stepper-btn-text">+</text>
+              </view>
+            </view>
+            <input
+              class="penalty-reason-input"
+              type="text"
+              :value="worker.penaltyReason"
+              @input="onPenaltyReasonInput(index, $event)"
+              placeholder="扣分原因"
+            />
+          </view>
+        </view>
+      </view>
     </view>
 
     <!-- 添加人员按钮（非严格1人岗位时显示） -->
@@ -246,7 +280,10 @@
           list.push({
             personId: w.personId,
             personName: w.personName,
-            pointsUnits: w.pointsUnits
+            pointsUnits: w.pointsUnits,
+            deductedUnits: w.deductedUnits,
+            penaltyReason: w.penaltyReason,
+            penaltyId: w.penaltyId
           } as SessionWorkerData)
         }
         this.workers = list
@@ -257,7 +294,10 @@
         this.workers = [{
           personId: null,
           personName: '',
-          pointsUnits: pool
+          pointsUnits: pool,
+          deductedUnits: 0,
+          penaltyReason: '',
+          penaltyId: null
         } as SessionWorkerData]
       },
 
@@ -318,7 +358,10 @@
         this.workers.push({
           personId: null,
           personName: '',
-          pointsUnits: 0
+          pointsUnits: 0,
+          deductedUnits: 0,
+          penaltyReason: '',
+          penaltyId: null
         } as SessionWorkerData)
 
         // 如果从1人变为2人，清空第一个人的自动填满的工分
@@ -344,6 +387,51 @@
         }
       },
 
+      getPenaltyDisplay(units: PointsUnits): string {
+        return (units / 10).toFixed(1)
+      },
+
+      onPenaltyInput(index: number, e: UniInputEvent) {
+        const value = e.detail.value
+        if (value == '') {
+          this.workers[index].deductedUnits = 0
+          return
+        }
+        const numValue = parseFloat(value)
+        if (!isNaN(numValue)) {
+          this.workers[index].deductedUnits = Math.round(numValue * 10) as PointsUnits
+        }
+      },
+
+      onPenaltyBlur(index: number) {
+        // 确保扣分不超过原始工分
+        const maxUnits = this.workers[index].pointsUnits
+        if (this.workers[index].deductedUnits > maxUnits) {
+          this.workers[index].deductedUnits = maxUnits
+        }
+        this.emitChange('user')
+      },
+
+      onPenaltyIncrease(index: number) {
+        const maxUnits = this.workers[index].pointsUnits
+        if (this.workers[index].deductedUnits < maxUnits) {
+          this.workers[index].deductedUnits = this.workers[index].deductedUnits + 1
+          this.emitChange('user')
+        }
+      },
+
+      onPenaltyDecrease(index: number) {
+        if (this.workers[index].deductedUnits > 0) {
+          this.workers[index].deductedUnits = this.workers[index].deductedUnits - 1
+          this.emitChange('user')
+        }
+      },
+
+      onPenaltyReasonInput(index: number, e: UniInputEvent) {
+        this.workers[index].penaltyReason = e.detail.value
+        this.emitChange('user')
+      },
+
       emitChange(source: 'user' | 'system' = 'user') {
         const workersData: SessionWorkerData[] = []
         for (let i = 0; i < this.workers.length; i++) {
@@ -351,7 +439,10 @@
           workersData.push({
             personId: w.personId,
             personName: w.personName,
-            pointsUnits: w.pointsUnits
+            pointsUnits: w.pointsUnits,
+            deductedUnits: w.deductedUnits,
+            penaltyReason: w.penaltyReason,
+            penaltyId: w.penaltyId
           } as SessionWorkerData)
         }
         const payload: SessionRoleCardChangePayload = {
@@ -596,5 +687,83 @@
   .session-picker-close-text {
     font-size: 14px;
     color: #666666;
+  }
+
+  .penalty-section {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top-width: 1px;
+    border-top-style: solid;
+    border-top-color: #e8e8e8;
+  }
+
+  .penalty-header {
+    margin-bottom: 8px;
+  }
+
+  .penalty-title {
+    font-size: 13px;
+    font-weight: bold;
+    color: #666666;
+  }
+
+  .penalty-row {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .penalty-worker-name {
+    font-size: 12px;
+    color: #666666;
+    width: 60px;
+  }
+
+  .penalty-input-area {
+    flex: 1;
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .penalty-stepper {
+    flex-direction: row;
+    align-items: center;
+    margin-right: 8px;
+  }
+
+  .stepper-btn {
+    width: 28px;
+    height: 28px;
+    background-color: #f5f5f5;
+    border-radius: 4px;
+    justify-content: center;
+    align-items: center;
+  }
+  .stepper-btn-text {
+    font-size: 16px;
+    color: #333333;
+  }
+
+  .penalty-input {
+    width: 60px;
+    height: 28px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 13px;
+    margin: 0 4px;
+  }
+
+  .penalty-reason-input {
+    flex: 1;
+    height: 28px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+    border-radius: 4px;
+    padding: 0 8px;
+    font-size: 12px;
   }
 </style>

@@ -243,7 +243,7 @@
           :strictSingle="false"
           :simpleMode="false"
           :occupiedPersonIds="occupiedIds"
-          :initialWorkers="duiQuWorkers"
+          :initialWorkers="duiQuWorkersForCard"
           :readonly="viewMode == 'view' || isRestoring == true"
           @change="onDuiQuRoleChange"
         />
@@ -476,7 +476,7 @@ import {
   loadAnQuImportSnapshot,
   lookupKojiCount,
   lookupKojiCountBatch,
-} from "../../domain/services/AnQuDataService.uts";
+} from "../../domain/services/AnQuSnapshotService.uts";
 import {
   storageJsonToSessionData,
   sessionDataToEntryPageState,
@@ -518,6 +518,9 @@ export default {
       crossBinPersonId: null as number | null,
       crossBinPersonName: "" as string,
       crossBinPointsUnits: 0 as PointsUnits,
+      crossBinDeductedUnits: 0 as PointsUnits,
+      crossBinPenaltyReason: "" as string,
+      crossBinPenaltyId: null as number | null,
       crossBinSources: [] as AssignmentSourceCreateParams[],
       // 人员互斥列表
       occupiedIds: [] as number[],
@@ -715,6 +718,25 @@ export default {
         return this.selectedBins[0].floor_no
       }
       return 3
+    },
+    /**
+     * 将 DuiQuWorkerData[] 转换为 SessionWorkerData[] 供 biz-session-role-card 使用
+     * 修复 ClassCastException：DuiQuWorkerData 不能直接转为 SessionWorkerData
+     */
+    duiQuWorkersForCard(): SessionWorkerData[] {
+      const result: SessionWorkerData[] = []
+      for (let i = 0; i < this.duiQuWorkers.length; i++) {
+        const w = this.duiQuWorkers[i]
+        result.push({
+          personId: w.personId,
+          personName: w.personName,
+          pointsUnits: w.pointsUnits,
+          deductedUnits: w.deductedUnits,
+          penaltyReason: w.penaltyReason,
+          penaltyId: w.penaltyId
+        } as SessionWorkerData)
+      }
+      return result
     },
   },
   methods: {
@@ -964,6 +986,9 @@ export default {
           personId: worker.personId,
           personName: worker.personName,
           pointsUnits: worker.pointsUnits,
+          deductedUnits: worker.deductedUnits,
+          penaltyReason: worker.penaltyReason,
+          penaltyId: worker.penaltyId,
         } as SessionWorkerData);
       }
       return workers;
@@ -1101,7 +1126,10 @@ export default {
           personId: w.personId,
           personName: w.personName,
           pointsUnits: w.pointsUnits,
-          positionIndex: i + 1
+          positionIndex: i + 1,
+          deductedUnits: w.deductedUnits,
+          penaltyReason: w.penaltyReason,
+          penaltyId: w.penaltyId
         } as DuiQuWorkerData)
       }
 
@@ -1764,6 +1792,9 @@ export default {
         crossBinPersonId: null,
         crossBinPersonName: '',
         crossBinPointsUnits: 0,
+        crossBinDeductedUnits: 0,
+        crossBinPenaltyReason: '',
+        crossBinPenaltyId: null,
         crossBinSources: [] as AssignmentSourceCreateParams[],
         liangTangRolesData: defaultLiangTangData.rolesData,
         duiQuWorkers: defaultDuiQuWorkers,
@@ -2223,6 +2254,9 @@ export default {
         crossBinPersonId: this.crossBinPersonId,
         crossBinPersonName: this.crossBinPersonName,
         crossBinPointsUnits: this.crossBinPointsUnits,
+        crossBinDeductedUnits: this.crossBinDeductedUnits,
+        crossBinPenaltyReason: this.crossBinPenaltyReason,
+        crossBinPenaltyId: this.crossBinPenaltyId,
         crossBinSources: this.crossBinSources,
         liangTangRolesData: this.liangTangRolesData,
         duiQuWorkers: this.duiQuWorkers,
