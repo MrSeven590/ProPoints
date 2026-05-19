@@ -16,70 +16,103 @@
     </view>
 
     <!-- 人员列表 -->
-    <view class="workers-list">
-      <view v-for="(worker, index) in workers" :key="index" class="worker-row">
-        <view class="worker-index">
-          <text class="worker-index-text">{{ index + 1 }}</text>
+    <view v-for="(worker, index) in workers" :key="index" class="worker-item-wrapper">
+        <view class="worker-row">
+          <view class="worker-index">
+            <text class="worker-index-text">{{ index + 1 }}</text>
+          </view>
+          <view class="session-role-worker-selector" @click="onOpenPersonSelector(index)">
+            <text v-if="worker.personId == null" class="placeholder-text">点击选择人员</text>
+            <text v-else class="person-name-text">{{ worker.personName }}</text>
+            <text class="arrow-icon">></text>
+          </view>
+          <!-- 简化模式：只读文本显示工分 -->
+          <view v-if="simpleMode" class="worker-points-readonly">
+            <text class="points-readonly-text">{{ getFormattedPoints(worker.pointsUnits) }}</text>
+          </view>
+          <!-- 正常模式：可编辑输入框 -->
+          <view v-else class="worker-points">
+            <biz-score-input
+              :modelValue="worker.pointsUnits as number"
+              :max="poolUnits"
+              :disabled="isSingleWorker"
+              size="small"
+              @update:modelValue="onWorkerPointsChange(index, $event as number)"
+            />
+          </view>
+          <!-- 考核按钮（所有模式都显示） -->
+          <view
+            :class="['penalty-btn', worker.deductedUnits > 0 ? 'penalty-btn-active' : '']"
+            @click="onTogglePenalty(index)"
+          >
+            <text :class="['penalty-btn-text', worker.deductedUnits > 0 ? 'penalty-btn-text-active' : '']">考核</text>
+          </view>
+          <!-- 删除按钮（非严格1人岗位且人数>1时显示） -->
+          <view v-if="!strictSingle && workers.length > 1" class="remove-worker-btn" @click="onRemoveWorker(index)">
+            <text class="remove-worker-text">×</text>
+          </view>
         </view>
-        <view class="session-role-worker-selector" @click="onOpenPersonSelector(index)">
-          <text v-if="worker.personId == null" class="placeholder-text">点击选择人员</text>
-          <text v-else class="person-name-text">{{ worker.personName }}</text>
-          <text class="arrow-icon">></text>
+        <!-- 考核摘要（保存后显示，面板未展开时） -->
+        <view v-if="worker.deductedUnits > 0 && expandedPenaltyIndex != index" class="penalty-summary">
+          <text class="penalty-summary-text">原始 {{ formatPoints(worker.pointsUnits) }}</text>
+          <text class="penalty-summary-text penalty-summary-deducted">-{{ formatPoints(worker.deductedUnits) }}</text>
+          <text class="penalty-summary-text penalty-summary-final">= {{ formatPoints(calcFinalPointsForWorker(worker.pointsUnits, worker.deductedUnits)) }}</text>
         </view>
-        <!-- 简化模式：只读文本显示工分 -->
-        <view v-if="simpleMode" class="worker-points-readonly">
-          <text class="points-readonly-text">{{ getFormattedPoints(worker.pointsUnits) }}</text>
-        </view>
-        <!-- 正常模式：可编辑输入框 -->
-        <view v-else class="worker-points">
-          <biz-score-input
-            :modelValue="worker.pointsUnits as number"
-            :max="poolUnits"
-            :disabled="isSingleWorker"
-            size="small"
-            @update:modelValue="onWorkerPointsChange(index, $event as number)"
-          />
-        </view>
-        <!-- 删除按钮（非严格1人岗位且人数>1时显示） -->
-        <view v-if="!strictSingle && workers.length > 1" class="remove-worker-btn" @click="onRemoveWorker(index)">
-          <text class="remove-worker-text">×</text>
-        </view>
-      </view>
-      <!-- 扣分区域（仅正常模式且有人员时显示） -->
-      <view v-if="!simpleMode && workers.length > 0" class="penalty-section">
-        <view class="penalty-header">
-          <text class="penalty-title">考核扣分</text>
-        </view>
-        <view v-for="(worker, index) in workers" :key="'penalty-'+index" class="penalty-row">
-          <text class="penalty-worker-name">{{ worker.personName != '' ? worker.personName : '未选择' }}：</text>
-          <view class="penalty-input-area">
-            <view class="penalty-stepper">
-              <view class="stepper-btn" @click="onPenaltyDecrease(index)">
-                <text class="stepper-btn-text">-</text>
-              </view>
-              <input
-                class="penalty-input"
-                type="number"
-                :value="getPenaltyDisplay(worker.deductedUnits)"
-                @input="onPenaltyInput(index, $event)"
-                @blur="onPenaltyBlur(index)"
-                placeholder="0.0"
-              />
-              <view class="stepper-btn" @click="onPenaltyIncrease(index)">
-                <text class="stepper-btn-text">+</text>
-              </view>
+        <!-- 考核输入区域（展开时显示） -->
+        <view v-if="expandedPenaltyIndex == index" class="penalty-panel">
+          <view class="penalty-points-row">
+            <!-- 原始工分 -->
+            <view class="penalty-points-item">
+              <text class="penalty-points-label">原始</text>
+              <text class="penalty-points-value penalty-original">{{ formatPoints(worker.pointsUnits) }}</text>
             </view>
+            <!-- 扣分（使用草稿值） -->
+            <view class="penalty-points-item">
+              <text class="penalty-points-label">扣分</text>
+              <biz-score-input
+                :modelValue="penaltyDraft.deductedUnits"
+                :min="0"
+                :max="worker.pointsUnits"
+                :step="1"
+                size="small"
+                @update:modelValue="onDraftDeductedChange"
+              />
+            </view>
+            <!-- 最终工分（使用草稿值计算） -->
+            <view class="penalty-points-item">
+              <text class="penalty-points-label">最终</text>
+              <text class="penalty-points-value penalty-final">{{ getDraftFinalPoints(worker.pointsUnits) }}</text>
+            </view>
+          </view>
+          <!-- 扣分原因（使用草稿值） -->
+          <view class="penalty-reason-row">
+            <text class="penalty-reason-label">原因</text>
             <input
               class="penalty-reason-input"
               type="text"
-              :value="worker.penaltyReason"
-              @input="onPenaltyReasonInput(index, $event)"
-              placeholder="扣分原因"
+              placeholder="请输入扣分原因"
+              :value="penaltyDraft.reason"
+              @input="onDraftReasonInput"
             />
+          </view>
+          <!-- 错误提示 -->
+          <view v-if="penaltyDraft.deductedUnits > 0 && penaltyDraft.reason.trim().length == 0" class="penalty-error">
+            <text class="penalty-error-text">扣分时原因必填</text>
+          </view>
+          <!-- 操作按钮 -->
+          <view class="penalty-actions">
+            <view class="penalty-cancel-btn" @click="onCancelPenalty">
+              <text class="penalty-cancel-text">取消</text>
+            </view>
+            <view
+              :class="['penalty-save-btn', canSavePenaltyDraft() ? '' : 'penalty-save-btn-disabled']"
+              @click="onSavePenalty(index)"
+            >
+              <text :class="['penalty-save-text', canSavePenaltyDraft() ? '' : 'penalty-save-text-disabled']">保存</text>
+            </view>
           </view>
         </view>
       </view>
-    </view>
 
     <!-- 添加人员按钮（非严格1人岗位时显示） -->
     <view v-if="!strictSingle" class="add-worker-row" @click="onAddWorker">
@@ -116,6 +149,17 @@
   import { formatPointsUnits } from '../../domain/models/types.uts'
   import type { PointsUnits, RoleCode } from '../../domain/models/types.uts'
   import type { SessionWorkerData, SessionRoleCardChangePayload, PersonSelectPayload } from '../../domain/models/assignment.uts'
+  import { calcFinalPoints } from '../../domain/models/assignment.uts'
+
+  /**
+   * 考核草稿类型（含初始值用于判断变更）
+   */
+  type LocalPenaltyDraft = {
+    deductedUnits: PointsUnits
+    reason: string
+    initialDeductedUnits: PointsUnits
+    initialReason: string
+  }
 
   export default {
     props: {
@@ -166,7 +210,14 @@
         workers: [] as SessionWorkerData[],
         showPersonPicker: false as boolean,
         currentEditingIndex: -1 as number,
-        currentEditingPersonId: null as number | null
+        currentEditingPersonId: null as number | null,
+        expandedPenaltyIndex: null as number | null,
+        penaltyDraft: {
+          deductedUnits: 0,
+          reason: '',
+          initialDeductedUnits: 0,
+          initialReason: ''
+        } as LocalPenaltyDraft
       }
     },
     computed: {
@@ -387,49 +438,160 @@
         }
       },
 
-      getPenaltyDisplay(units: PointsUnits): string {
-        return (units / 10).toFixed(1)
+      /**
+       * 将 PointsUnits 转换为显示用的分数字符串
+       */
+      formatPoints(units: PointsUnits): string {
+        return formatPointsUnits(units)
       },
 
-      onPenaltyInput(index: number, e: UniInputEvent) {
-        const value = e.detail.value
-        if (value == '') {
-          this.workers[index].deductedUnits = 0
+      /**
+       * 计算工人的最终工分（用于模板调用）
+       */
+      calcFinalPointsForWorker(originalUnits: PointsUnits, deductedUnits: PointsUnits): PointsUnits {
+        return calcFinalPoints(originalUnits, deductedUnits)
+      },
+
+      /**
+       * 切换考核面板展开/收起
+       */
+      onTogglePenalty(index: number) {
+        // 只读模式下禁止考核
+        if (this.readonly == true) {
           return
         }
-        const numValue = parseFloat(value)
-        if (!isNaN(numValue)) {
-          this.workers[index].deductedUnits = Math.round(numValue * 10) as PointsUnits
+        if (index < 0 || index >= this.workers.length) {
+          return
+        }
+        const worker = this.workers[index]
+        // 未选择人员时禁止考核
+        if (worker.personId == null) {
+          uni.showToast({
+            title: '请先选择人员',
+            icon: 'none'
+          })
+          return
+        }
+
+        if (this.expandedPenaltyIndex == index) {
+          // 收起当前面板
+          this.expandedPenaltyIndex = null
+        } else {
+          // 展开新面板（同时收起其他）
+          this.expandedPenaltyIndex = index
+          // 初始化草稿：复制当前值，并记录初始值
+          this.penaltyDraft.deductedUnits = worker.deductedUnits
+          this.penaltyDraft.reason = worker.penaltyReason
+          this.penaltyDraft.initialDeductedUnits = worker.deductedUnits
+          this.penaltyDraft.initialReason = worker.penaltyReason
         }
       },
 
-      onPenaltyBlur(index: number) {
-        // 确保扣分不超过原始工分
-        const maxUnits = this.workers[index].pointsUnits
-        if (this.workers[index].deductedUnits > maxUnits) {
-          this.workers[index].deductedUnits = maxUnits
-        }
-        this.emitChange('user')
+      /**
+       * 草稿：扣分值变化
+       */
+      onDraftDeductedChange(value: PointsUnits) {
+        this.penaltyDraft.deductedUnits = value
       },
 
-      onPenaltyIncrease(index: number) {
-        const maxUnits = this.workers[index].pointsUnits
-        if (this.workers[index].deductedUnits < maxUnits) {
-          this.workers[index].deductedUnits = this.workers[index].deductedUnits + 1
+      /**
+       * 草稿：扣分原因输入
+       */
+      onDraftReasonInput(e: UniInputEvent) {
+        this.penaltyDraft.reason = e.detail.value
+      },
+
+      /**
+       * 计算草稿的最终工分显示值
+       */
+      getDraftFinalPoints(originalUnits: PointsUnits): string {
+        const finalUnits = calcFinalPoints(originalUnits, this.penaltyDraft.deductedUnits)
+        return formatPointsUnits(finalUnits)
+      },
+
+      /**
+       * 判断草稿是否有变更
+       */
+      hasPenaltyDraftChanged(): boolean {
+        // 检查扣分值是否变化
+        if (this.penaltyDraft.deductedUnits != this.penaltyDraft.initialDeductedUnits) {
+          return true
+        }
+        // 检查原因是否变化（trim 后比较）
+        if (this.penaltyDraft.reason.trim() != this.penaltyDraft.initialReason.trim()) {
+          return true
+        }
+        return false
+      },
+
+      /**
+       * 判断保存按钮是否可用
+       * 当且仅当分数和原因同时存在时才可点击
+       */
+      canSavePenaltyDraft(): boolean {
+        // 扣分 > 0 且原因不为空时才可保存
+        if (this.penaltyDraft.deductedUnits > 0 && this.penaltyDraft.reason.trim().length > 0) {
+          return true
+        }
+        return false
+      },
+
+      /**
+       * 取消考核编辑（真正取消，丢弃草稿）
+       */
+      onCancelPenalty() {
+        // 收起面板，丢弃草稿
+        this.expandedPenaltyIndex = null
+        this.penaltyDraft.deductedUnits = 0
+        this.penaltyDraft.reason = ''
+        this.penaltyDraft.initialDeductedUnits = 0
+        this.penaltyDraft.initialReason = ''
+      },
+
+      /**
+       * 保存考核（提交草稿到 worker）
+       */
+      onSavePenalty(index: number) {
+        if (this.canSavePenaltyDraft() == false) {
+          // 根据不同情况显示不同提示
+          if (this.hasPenaltyDraftChanged() == false) {
+            // 没有变更，不做任何操作
+            return
+          }
+          // 有变更但原因未填写
+          uni.showToast({
+            title: '请输入扣分原因',
+            icon: 'none'
+          })
+          return
+        }
+        if (index >= 0 && index < this.workers.length) {
+          const worker = this.workers[index]
+          // 提交草稿到 worker
+          worker.deductedUnits = this.penaltyDraft.deductedUnits
+          worker.penaltyReason = this.penaltyDraft.reason.trim()
+
+          // 如果扣分为 0，清除原因和 ID（表示删除扣分）
+          if (worker.deductedUnits == 0) {
+            worker.penaltyReason = ''
+            // penaltyId 保留，用于通知父组件删除
+          }
+
+          // 收起面板
+          this.expandedPenaltyIndex = null
+          // 清空草稿
+          this.penaltyDraft.deductedUnits = 0
+          this.penaltyDraft.reason = ''
+          this.penaltyDraft.initialDeductedUnits = 0
+          this.penaltyDraft.initialReason = ''
+          // 发送变更事件
           this.emitChange('user')
+          // 显示保存成功提示
+          uni.showToast({
+            title: '考核已保存',
+            icon: 'success'
+          })
         }
-      },
-
-      onPenaltyDecrease(index: number) {
-        if (this.workers[index].deductedUnits > 0) {
-          this.workers[index].deductedUnits = this.workers[index].deductedUnits - 1
-          this.emitChange('user')
-        }
-      },
-
-      onPenaltyReasonInput(index: number, e: UniInputEvent) {
-        this.workers[index].penaltyReason = e.detail.value
-        this.emitChange('user')
       },
 
       emitChange(source: 'user' | 'system' = 'user') {
@@ -526,9 +688,6 @@
     flex-direction: row;
     align-items: center;
     padding: 8px 0;
-    border-bottom-width: 1px;
-    border-bottom-style: solid;
-    border-bottom-color: #f0f0f0;
   }
 
   .worker-index {
@@ -689,81 +848,179 @@
     color: #666666;
   }
 
-  .penalty-section {
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top-width: 1px;
-    border-top-style: solid;
-    border-top-color: #e8e8e8;
+  /* ============================================ */
+  /* 考核相关样式 */
+  /* ============================================ */
+
+  .worker-item-wrapper {
+    flex-direction: column;
+    margin-bottom: 4px;
+    border-bottom-width: 1px;
+    border-bottom-style: solid;
+    border-bottom-color: #f0f0f0;
+    padding-bottom: 4px;
   }
 
-  .penalty-header {
-    margin-bottom: 8px;
-  }
-
-  .penalty-title {
-    font-size: 13px;
-    font-weight: bold;
-    color: #666666;
-  }
-
-  .penalty-row {
-    flex-direction: row;
-    align-items: center;
-    margin-bottom: 8px;
-  }
-
-  .penalty-worker-name {
-    font-size: 12px;
-    color: #666666;
-    width: 60px;
-  }
-
-  .penalty-input-area {
-    flex: 1;
-    flex-direction: row;
-    align-items: center;
-  }
-
-  .penalty-stepper {
-    flex-direction: row;
-    align-items: center;
-    margin-right: 8px;
-  }
-
-  .stepper-btn {
-    width: 28px;
-    height: 28px;
-    background-color: #f5f5f5;
+  .penalty-btn {
+    margin-left: 8px;
+    padding: 4px 8px;
+    background-color: #f5f7fa;
     border-radius: 4px;
-    justify-content: center;
-    align-items: center;
-  }
-  .stepper-btn-text {
-    font-size: 16px;
-    color: #333333;
-  }
-
-  .penalty-input {
-    width: 60px;
-    height: 28px;
     border-width: 1px;
     border-style: solid;
     border-color: #e8e8e8;
-    border-radius: 4px;
-    text-align: center;
-    font-size: 13px;
-    margin: 0 4px;
+  }
+
+  .penalty-btn-active {
+    background-color: #fff0f0;
+    border-color: #ffccc7;
+  }
+
+  .penalty-btn-text {
+    font-size: 12px;
+    color: #666666;
+  }
+
+  .penalty-btn-text-active {
+    color: #f56c6c;
+  }
+
+  .penalty-panel {
+    margin-top: 8px;
+    margin-left: 32px;
+    padding: 12px;
+    background-color: #fafafa;
+    border-radius: 8px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #f0f0f0;
+  }
+
+  .penalty-points-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .penalty-points-item {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .penalty-points-label {
+    font-size: 11px;
+    color: #999999;
+    margin-bottom: 4px;
+  }
+
+  .penalty-points-value {
+    font-size: 16px;
+    font-weight: bold;
+  }
+
+  .penalty-original {
+    color: #666666;
+  }
+
+  .penalty-final {
+    color: #007aff;
+  }
+
+  .penalty-reason-row {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .penalty-reason-label {
+    font-size: 12px;
+    color: #666666;
+    margin-right: 8px;
+    width: 32px;
   }
 
   .penalty-reason-input {
     flex: 1;
-    height: 28px;
+    height: 32px;
+    padding: 0 10px;
+    background-color: #ffffff;
+    border-radius: 4px;
     border-width: 1px;
     border-style: solid;
     border-color: #e8e8e8;
+    font-size: 13px;
+    color: #333333;
+  }
+
+  .penalty-error {
+    margin-bottom: 8px;
+  }
+
+  .penalty-error-text {
+    font-size: 11px;
+    color: #f56c6c;
+  }
+
+  .penalty-actions {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+
+  .penalty-cancel-btn {
+    padding: 6px 16px;
+    background-color: #f5f5f5;
     border-radius: 4px;
-    padding: 0 8px;
-    font-size: 12px;
+    margin-right: 8px;
+  }
+
+  .penalty-cancel-text {
+    font-size: 13px;
+    color: #666666;
+  }
+
+  .penalty-save-btn {
+    padding: 6px 16px;
+    background-color: #007aff;
+    border-radius: 4px;
+  }
+
+  .penalty-save-btn-disabled {
+    background-color: #e0e0e0;
+  }
+
+  .penalty-save-text {
+    font-size: 13px;
+    color: #ffffff;
+  }
+
+  .penalty-save-text-disabled {
+    color: #999999;
+  }
+
+  /* 考核摘要样式 */
+  .penalty-summary {
+    flex-direction: row;
+    align-items: center;
+    margin-top: 4px;
+    margin-left: 32px;
+    padding: 4px 8px;
+    background-color: #fff7e6;
+    border-radius: 4px;
+  }
+
+  .penalty-summary-text {
+    font-size: 11px;
+    color: #666666;
+    margin-right: 8px;
+  }
+
+  .penalty-summary-deducted {
+    color: #f56c6c;
+  }
+
+  .penalty-summary-final {
+    color: #007aff;
+    font-weight: bold;
   }
 </style>
