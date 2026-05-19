@@ -1,8 +1,8 @@
 /**
  * 数据传输服务
- * 负责 PPX1 格式的数据封装、解封和处理
+ /**
+ * 负责数据传输的封装、解封和处理
  **/
-
 import {
   AnQuPayload,
   AnQuBinData,
@@ -32,10 +32,7 @@ import {
   FloorConfigPair
 } from '../models/transfer.uts'
 
-import {
-  serializeToBase64Url,
-  deserializeFromBase64Url
-} from '../../utils/codec.uts'
+// Base64URL 编码已移除，改用纯 JSON 格式
 
 // 移除对 AppStore 的依赖，改为接受数据作为参数
 
@@ -49,7 +46,7 @@ import {
 
 import {
   ParsedAnQuItem
-} from './AnQuDataService.uts'
+} from './AnQuSnapshotService.uts'
 
 import {
   readNumber,
@@ -62,8 +59,6 @@ import {
 // 常量定义
 // ============================================
 
-const PPX1_VERSION = 1
-const PPX1_ENCODING = 'base64url'
 const PAYLOAD_KIND_ANQ = 'ANQ'
 const PAYLOAD_KIND_CONFIG = 'CONFIG'
 const PAYLOAD_KIND_BUNDLE = 'BUNDLE'
@@ -190,7 +185,7 @@ export function collectAnQuPayload(
   }
 
   return {
-    v: PPX1_VERSION,
+    v: 1,
     kind: PAYLOAD_KIND_ANQ,
     ts: getCurrentTimestamp(),
     c: classNo,
@@ -230,7 +225,7 @@ export function assembleConfigPayload(
   }
 
   return {
-    v: PPX1_VERSION,
+    v: 1,
     kind: PAYLOAD_KIND_CONFIG,
     ts: getCurrentTimestamp(),
     c: classNo,
@@ -280,7 +275,7 @@ export function assembleBundlePayload(
   }
 
   return {
-    v: PPX1_VERSION,
+    v: 1,
     kind: PAYLOAD_KIND_BUNDLE,
     ts: getCurrentTimestamp(),
     c: classNo,
@@ -291,7 +286,7 @@ export function assembleBundlePayload(
 }
 
 // ============================================
-// PPX1 信封封装/解封
+// 数据封装/解封
 // ============================================
 
 /**
@@ -684,103 +679,23 @@ export function validateBundlePayload(payload: UTSJSONObject, prefix: string = '
 }
 
 /**
- * 封装载荷为 PPX1 信封格式
+ * 封装载荷为 JSON 字符串（用于剪切板传输）
  * @param payload 载荷对象（AnQuPayload、ConfigPayload 或 BundlePayload）
- * @returns PPX1 格式字符串
+ * @returns JSON 格式字符串
  */
 export function seal(payload: TransferPayload): string {
-  const payloadStr = serializeToBase64Url(payload)
-  // 通过下标访问字段判断 payload 类型（避免运行时类型转换）
-  let kind: string
-  if (payload['anqu'] != null) {
-    kind = 'BUNDLE'
-  } else if (payload['bins'] != null) {
-    kind = 'ANQ'
-  } else {
-    kind = 'CONFIG'
-  }
-  return `PPX1|${PPX1_VERSION}|${PPX1_ENCODING}|${kind}|${payloadStr}`
+  return JSON.stringify(payload)
 }
 
 /**
- * 解封 PPX1 信封格式
- * @param envelope PPX1 格式字符串
+ * 解封 JSON 格式数据（用于剪切板传输）
+ * @param text JSON 格式字符串
  * @returns 解封结果，包含载荷或错误
  */
-export function unseal(envelope: string): UnsealResult {
-  const parts = envelope.split('|')
-
-  if (parts.length != 5) {
-    return {
-      success: false,
-      payload: null,
-      error: {
-        code: 'INVALID_FORMAT',
-        message: 'PPX1 格式错误：应为 5 段',
-        details: `实际段数: ${parts.length}`
-      }
-    }
-  }
-
-  const magic = parts[0]
-  const version = parseInt(parts[1])
-  const encoding = parts[2]
-  const kind = parts[3]
-  const payloadStr = parts[4]
-
-  if (magic != 'PPX1') {
-    return {
-      success: false,
-      payload: null,
-      error: {
-        code: 'INVALID_FORMAT',
-        message: 'PPX1 魔数错误',
-        details: `期望: PPX1, 实际: ${magic}`
-      }
-    }
-  }
-
-  if (version != PPX1_VERSION) {
-    return {
-      success: false,
-      payload: null,
-      error: {
-        code: 'UNSUPPORTED_VERSION',
-        message: '不支持的版本',
-        details: `期望: ${PPX1_VERSION}, 实际: ${version}`
-      }
-    }
-  }
-
-  if (encoding != PPX1_ENCODING) {
-    return {
-      success: false,
-      payload: null,
-      error: {
-        code: 'INVALID_ENCODING',
-        message: '不支持的编码',
-        details: `期望: ${PPX1_ENCODING}, 实际: ${encoding}`
-      }
-    }
-  }
-
+export function unseal(text: string): UnsealResult {
   try {
-    const payload = deserializeFromBase64Url(payloadStr)
+    const payload = JSON.parse(text)
     const payloadObj = payload as UTSJSONObject
-
-    // 通过字段判断读取 kind，避免运行时类型转换
-    const payloadKind = payloadObj['kind'] as string | null
-    if (payloadKind != kind) {
-      return {
-        success: false,
-        payload: null,
-        error: {
-          code: 'INVALID_PAYLOAD',
-          message: 'Payload kind 与信封 kind 不一致',
-          details: `信封: ${kind}, Payload: ${payloadKind}`
-        }
-      }
-    }
 
     // 验证必需字段
     const requiredFields = ['v', 'kind', 'ts']
@@ -799,7 +714,9 @@ export function unseal(envelope: string): UnsealResult {
       }
     }
 
-    // 根据 kind 验证特定字段
+    // 获取 kind 并验证特定字段
+    const kind = payloadObj['kind'] as string
+
     if (kind == PAYLOAD_KIND_ANQ) {
       const validationError = validateAnQuPayload(payloadObj, '')
       if (validationError != null) {
@@ -827,6 +744,16 @@ export function unseal(envelope: string): UnsealResult {
           error: validationError
         }
       }
+    } else {
+      return {
+        success: false,
+        payload: null,
+        error: {
+          code: 'INVALID_PAYLOAD',
+          message: `未知的数据类型: ${kind}`,
+          details: '期望: ANQ, CONFIG 或 BUNDLE'
+        }
+      }
     }
 
     return {
@@ -840,7 +767,7 @@ export function unseal(envelope: string): UnsealResult {
       payload: null,
       error: {
         code: 'DECODE_FAILED',
-        message: '解码失败',
+        message: 'JSON 解析失败',
         details: e != null ? ((e as UTSJSONObject)['message'] as string | null) : null
       }
     }

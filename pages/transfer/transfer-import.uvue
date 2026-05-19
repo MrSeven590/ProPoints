@@ -1,7 +1,7 @@
 <template>
   <view class="page-container">
     <view class="header">
-      <text class="header-title">PPX1 数据导入</text>
+      <text class="header-title">数据导入</text>
     </view>
 
     <!-- #ifdef APP -->
@@ -9,17 +9,17 @@
     <!-- #endif -->
       <!-- 输入区 -->
       <view class="section" v-if="step == 1">
-        <text class="section-title">粘贴 PPX1 文本</text>
+        <text class="section-title">粘贴 JSON 数据</text>
         <view class="input-box">
           <textarea
             class="input-textarea"
-            placeholder="请粘贴 PPX1 格式数据&#10;格式: PPX1|1|base64url|ANQ|..."
+            placeholder="请粘贴 JSON 格式数据&#10;格式: {&quot;kind&quot;:&quot;ANQ&quot;, ...}"
             v-model="inputText"
             :maxlength="-1"
           />
         </view>
         <view class="hint-row">
-          <text class="hint-text">支持 PPX1 信封格式</text>
+          <text class="hint-text">支持 JSON 格式数据</text>
         </view>
       </view>
 
@@ -112,7 +112,7 @@
 
       <!-- 空状态 -->
       <view class="section hint-section" v-if="step == 1 && inputText == ''">
-        <text class="hint-text">请粘贴 PPX1 格式数据</text>
+        <text class="hint-text">请粘贴 JSON 格式数据</text>
       </view>
     <!-- #ifdef APP -->
     </scroll-view>

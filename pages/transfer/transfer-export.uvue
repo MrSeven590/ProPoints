@@ -1,7 +1,7 @@
 <template>
   <view class="page-container">
     <view class="header">
-      <text class="header-title">PPX1 数据导出</text>
+      <text class="header-title">数据导出</text>
     </view>
 
     <!-- #ifdef APP -->
@@ -74,7 +74,7 @@
       <!-- 数据输出区（非 CSV 模式） -->
       <view class="section" v-if="ppx1Text != '' && exportMode != 'csv'">
         <view class="section-header">
-          <text class="section-title">PPX1 文本</text>
+          <text class="section-title">JSON 数据</text>
           <text class="size-text">{{ getDataSize() }}</text>
         </view>
         <view class="ppx-box">
@@ -84,14 +84,6 @@
             :disabled="true"
             :maxlength="-1"
           />
-        </view>
-      </view>
-
-      <!-- 二维码占位区 -->
-      <view class="section" v-if="ppx1Text != '' && exportMode != 'csv'">
-        <text class="section-title">二维码</text>
-        <view class="qr-placeholder">
-          <text class="qr-text">二维码功能开发中...</text>
         </view>
       </view>
 
@@ -533,23 +525,6 @@
     color: #ffffff;
     margin-left: 8px;
     opacity: 0.8;
-  }
-
-  .qr-placeholder {
-    height: 120px;
-    border-width: 2px;
-    border-color: #cccccc;
-    border-style: dashed;
-    border-radius: 8px;
-    align-items: center;
-    justify-content: center;
-    background-color: #fafafa;
-    margin-top: 8px;
-  }
-
-  .qr-text {
-    color: #999999;
-    font-size: 14px;
   }
 
   .hint-section {
