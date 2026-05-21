@@ -1,0 +1,49 @@
+/**
+ * 考核扣分草稿纯逻辑工具
+ *
+ * 组件仍负责面板展开、人员校验、事件发送等 UI 行为；
+ * 本模块只收口三处组件重复的扣分草稿计算和判断规则。
+ */
+import type { PointsUnits } from '../models/types.uts'
+import { formatPointsUnits } from '../models/types.uts'
+import { calcFinalPoints } from '../models/assignment.uts'
+
+/**
+ * 计算扣分草稿对应的最终工分单位
+ */
+export function calcPenaltyDraftFinalUnits(originalUnits: PointsUnits, deductedUnits: PointsUnits): PointsUnits {
+  return calcFinalPoints(originalUnits, deductedUnits)
+}
+
+/**
+ * 格式化扣分草稿对应的最终工分显示值
+ */
+export function formatPenaltyDraftFinalPoints(originalUnits: PointsUnits, deductedUnits: PointsUnits): string {
+  return formatPointsUnits(calcPenaltyDraftFinalUnits(originalUnits, deductedUnits))
+}
+
+/**
+ * 判断扣分草稿是否相对初始值发生变化
+ *
+ * 原因文本按 trim 后比较，避免仅输入首尾空白导致误判。
+ */
+export function hasPenaltyDraftChanged(
+  deductedUnits: PointsUnits,
+  reason: string,
+  initialDeductedUnits: PointsUnits,
+  initialReason: string
+): boolean {
+  if (deductedUnits != initialDeductedUnits) {
+    return true
+  }
+  return reason.trim() != initialReason.trim()
+}
+
+/**
+ * 判断扣分草稿是否满足保存条件
+ *
+ * 统一规则：扣分 > 0 时必须填写原因。
+ */
+export function canSavePenaltyDraft(deductedUnits: PointsUnits, reason: string): boolean {
+  return deductedUnits > 0 && reason.trim().length > 0
+}
