@@ -1,0 +1,50 @@
+/**
+ * Entry 页面组件输入映射 helper
+ *
+ * 仅负责把页面事实源转换成子组件 initialWorkers 等输入结构，
+ * 不修改页面状态，避免 entry.uvue 继续承载重复的组件映射职责。
+ */
+
+import type { RoleCode } from '../models/types.uts'
+import type { SessionWorkerData } from '../models/assignment.uts'
+import type { LiangTangRoleData, DuiQuWorkerData } from '../models/session.uts'
+
+export function mapLiangTangInitialWorkers(
+  rolesData: Map<string, LiangTangRoleData>,
+  roleCode: RoleCode
+): SessionWorkerData[] {
+  const roleData = rolesData.get(roleCode)
+  if (roleData == null) {
+    return [] as SessionWorkerData[]
+  }
+
+  const workers: SessionWorkerData[] = []
+  for (let i = 0; i < roleData.workers.length; i++) {
+    const worker = roleData.workers[i]
+    workers.push({
+      personId: worker.personId,
+      personName: worker.personName,
+      pointsUnits: worker.pointsUnits,
+      deductedUnits: worker.deductedUnits,
+      penaltyReason: worker.penaltyReason,
+      penaltyId: worker.penaltyId
+    } as SessionWorkerData)
+  }
+  return workers
+}
+
+export function mapDuiQuWorkersForRoleCard(workersRaw: DuiQuWorkerData[]): SessionWorkerData[] {
+  const workers: SessionWorkerData[] = []
+  for (let i = 0; i < workersRaw.length; i++) {
+    const worker = workersRaw[i]
+    workers.push({
+      personId: worker.personId,
+      personName: worker.personName,
+      pointsUnits: worker.pointsUnits,
+      deductedUnits: worker.deductedUnits,
+      penaltyReason: worker.penaltyReason,
+      penaltyId: worker.penaltyId
+    } as SessionWorkerData)
+  }
+  return workers
+}
