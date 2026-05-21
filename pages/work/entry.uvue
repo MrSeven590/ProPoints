@@ -1154,10 +1154,18 @@ export default {
     },
 
     /**
+     * 页面业务状态是否允许被用户交互修改。
+     * 统一收口编辑态守卫，避免各 handler 重复判断恢复中/只读态。
+     */
+    canMutateEntryState(): boolean {
+      return this.isRestoring != true && this.viewMode == "edit";
+    },
+
+    /**
      * 晾堂岗位数据变更
      */
     onLiangTangRoleChange(payload: SessionRoleCardChangePayload) {
-      if (this.isRestoring == true || this.viewMode != "edit") {
+      if (this.canMutateEntryState() == false) {
         return;
       }
 
@@ -1198,7 +1206,7 @@ export default {
      * 手动添加跨仓岗位
      */
     onAddCrossBin() {
-      if (this.isRestoring == true || this.viewMode != "edit") {
+      if (this.canMutateEntryState() == false) {
         return;
       }
       this.showCrossBinSection = true;
@@ -1217,7 +1225,7 @@ export default {
      * 移除跨仓岗位
      */
     onRemoveCrossBin() {
-      if (this.isRestoring == true || this.viewMode != "edit") {
+      if (this.canMutateEntryState() == false) {
         return;
       }
       // 重置跨仓岗位数据
@@ -1241,7 +1249,7 @@ export default {
       const changeSource = this.lastBinsChangeSource;
       this.lastBinsChangeSource = "";
 
-      if (this.isRestoring == true || this.viewMode != "edit") {
+      if (this.canMutateEntryState() == false) {
         return;
       }
       // 立即排序并存储，确保全局顺序一致
@@ -1395,7 +1403,7 @@ export default {
      * 最终仍由 afterCrossBinStateChanged/recalculateCrossBinSources 与页面事实源保持一致。
      */
     onCrossBinChange(payload: CrossBinChangePayload) {
-      if (this.isRestoring == true || this.viewMode != "edit") {
+      if (this.canMutateEntryState() == false) {
         return;
       }
 
@@ -1448,7 +1456,7 @@ export default {
      * 仓卡片数据变更
      */
     onBinCardChange(payload: BinCardChangePayload) {
-      if (this.isRestoring == true || this.viewMode != "edit") {
+      if (this.canMutateEntryState() == false) {
         return;
       }
 
