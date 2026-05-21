@@ -1135,9 +1135,7 @@ export default {
 
       if (workers.length > 0) {
         this.duiQuWorkers = workers;
-        if (payload.source != "system") {
-          this.scheduleAutoSave();
-        }
+        this.afterAssignmentStateChanged(payload.source != "system");
       }
     },
 
@@ -1167,12 +1165,7 @@ export default {
         workers: payload.workers,
       } as LiangTangRoleData);
 
-      // 更新人员互斥列表
-      this.updateOccupiedIds();
-      // 触发自动保存
-      if (payload.source != "system") {
-        this.scheduleAutoSave();
-      }
+      this.afterAssignmentStateChanged(payload.source != "system");
     },
 
     /**
@@ -1215,8 +1208,7 @@ export default {
       this.crossBinPersonName = "";
       this.crossBinPointsUnits = 0;
       this.crossBinSources = [] as AssignmentSourceCreateParams[];
-      // 触发自动保存
-      this.scheduleAutoSave();
+      this.afterCrossBinStateChanged(true);
     },
 
     /**
@@ -1226,21 +1218,13 @@ export default {
       if (this.isRestoring == true || this.viewMode != "edit") {
         return;
       }
-      // 从互斥列表移除跨仓人员
-      if (this.crossBinPersonId != null) {
-        const idx = this.occupiedIds.indexOf(this.crossBinPersonId as number);
-        if (idx != -1) {
-          this.occupiedIds.splice(idx, 1);
-        }
-      }
       // 重置跨仓岗位数据
       this.showCrossBinSection = false;
       this.crossBinPersonId = null;
       this.crossBinPersonName = "";
       this.crossBinPointsUnits = 0;
       this.crossBinSources = [] as AssignmentSourceCreateParams[];
-      // 触发自动保存
-      this.scheduleAutoSave();
+      this.afterCrossBinStateChanged(true);
     },
 
     /**
@@ -1270,22 +1254,7 @@ export default {
       });
       // 更新 stageBinInfos（用于跨仓组件）
       this.updateStageBinInfos(this.selectedBins);
-      // 更新人员互斥列表（移除仓后需要更新）
-      this.updateOccupiedIds();
-      // 更新晾堂池子总分缓存（仅安曲环节）
-      if (this.showLiangTangSection == true) {
-        this.updateLiangTangPoolCache();
-      }
-      // 更新堆曲池子总分缓存（仅拆曲环节）
-      if (this.showDuiQuSection == true) {
-        this.updateDuiQuPoolCache();
-      }
-      // 仓集合变更后重新计算跨仓工分分配
-      this.recalculateCrossBinSources();
-      // 触发自动保存
-      if (changeSource != "autoInfer") {
-        this.scheduleAutoSave();
-      }
+      this.afterBinStateChanged(changeSource != "autoInfer");
     },
 
     /**
@@ -1426,24 +1395,9 @@ export default {
         return;
       }
 
-      // 更新人员互斥列表
-      if (this.crossBinPersonId != null) {
-        // 移除旧的人员
-        const oldIdx = this.occupiedIds.indexOf(
-          this.crossBinPersonId as number,
-        );
-        if (oldIdx != -1) {
-          this.occupiedIds.splice(oldIdx, 1);
-        }
-      }
-
       if (payload.personId != null) {
         this.crossBinPersonId = payload.personId;
         this.crossBinPersonName = payload.personName;
-        // 添加新人员到互斥列表
-        if (this.occupiedIds.indexOf(this.crossBinPersonId as number) == -1) {
-          this.occupiedIds.push(this.crossBinPersonId as number);
-        }
       } else {
         this.crossBinPersonId = null;
         this.crossBinPersonName = "";
@@ -1451,10 +1405,7 @@ export default {
 
       this.crossBinPointsUnits = payload.pointsUnits;
       this.crossBinSources = payload.sources;
-      // 跨仓工分变更后重新计算分配
-      this.recalculateCrossBinSources();
-      // 触发自动保存
-      this.scheduleAutoSave();
+      this.afterCrossBinStateChanged(true);
     },
 
     /**
@@ -1508,10 +1459,7 @@ export default {
         workers: payload.workers,
       } as EntryBinCardState);
 
-      // 更新人员互斥列表
-      this.updateOccupiedIds();
-      // 触发自动保存
-      this.scheduleAutoSave();
+      this.afterAssignmentStateChanged(true);
     },
 
     /**
@@ -1539,18 +1487,8 @@ export default {
         cardData.totalPointsUnits = totalPointsUnits;
       }
 
-      // 更新晾堂池子总分缓存（仅安曲环节）
-      if (this.showLiangTangSection == true) {
-        this.updateLiangTangPoolCache();
-      }
-      // 更新堆曲池子总分缓存（仅拆曲环节）
-      if (this.showDuiQuSection == true) {
-        this.updateDuiQuPoolCache();
-      }
-
-      // 曲坯数变更后重新计算跨仓工分分配
-      this.recalculateCrossBinSources();
-      // 不在此处调用 scheduleAutoSave()，避免重复调度
+      this.afterBinStateChanged(false);
+      // 不在此处调度自动保存，避免重复调度
       // biz-bin-card 会同时触发 change 事件，已在 onBinCardChange 中调度
     },
 
@@ -1576,10 +1514,61 @@ export default {
         // finalUnits = pointsUnits - deductedUnits，由调用方计算即可
       }
 
-      // 扣分变更后重新计算跨仓工分分配（因为扣分会影响池子总分）
-      this.recalculateCrossBinSources();
-      // 不在此处调用 scheduleAutoSave()，避免重复调度
+      this.afterCrossBinStateChanged(false);
+      // 不在此处调度自动保存，避免重复调度
       // biz-bin-card 会同时触发 change 事件，已在 onBinCardChange 中调度
+    },
+
+    /**
+     * 仓位/曲坯数等仓相关事实源变更后的统一后处理入口
+     */
+    afterBinStateChanged(shouldScheduleSave: boolean) {
+      this.updateOccupiedIds();
+      if (this.showLiangTangSection == true) {
+        this.updateLiangTangPoolCache();
+      }
+      if (this.showDuiQuSection == true) {
+        this.updateDuiQuPoolCache();
+      }
+      this.recalculateCrossBinSources();
+      if (shouldScheduleSave == true) {
+        this.scheduleAutoSave();
+      }
+    },
+
+    /**
+     * 人员分配事实源变更后的统一后处理入口
+     */
+    afterAssignmentStateChanged(shouldScheduleSave: boolean) {
+      this.updateOccupiedIds();
+      if (shouldScheduleSave == true) {
+        this.scheduleAutoSave();
+      }
+    },
+
+    /**
+     * 跨仓事实源变更后的统一后处理入口
+     */
+    afterCrossBinStateChanged(shouldScheduleSave: boolean) {
+      this.updateOccupiedIds();
+      this.recalculateCrossBinSources();
+      if (shouldScheduleSave == true) {
+        this.scheduleAutoSave();
+      }
+    },
+
+    /**
+     * 还原页面状态后的派生态统一刷新入口，不触发自动保存
+     */
+    refreshDerivedStateAfterApply() {
+      this.updateOccupiedIds();
+      this.recalculateCrossBinSources();
+      if (this.showLiangTangSection == true) {
+        this.updateLiangTangPoolCache();
+      }
+      if (this.showDuiQuSection == true) {
+        this.updateDuiQuPoolCache();
+      }
     },
 
     /**
@@ -1923,18 +1912,7 @@ export default {
           this.microEnabled = isMicroEnabledByRoundId(this.roundId);
         }
 
-        // 重新计算派生数据
-        this.updateOccupiedIds();
-        this.recalculateCrossBinSources();
-
-        // 更新晾堂池子总分缓存（仅安曲环节）
-        if (this.showLiangTangSection == true) {
-          this.updateLiangTangPoolCache();
-        }
-        // 更新堆曲池子总分缓存（仅拆曲环节）
-        if (this.showDuiQuSection == true) {
-          this.updateDuiQuPoolCache();
-        }
+        this.refreshDerivedStateAfterApply();
 
         // 重置自动保存状态
         this.draftRevision = 0;
