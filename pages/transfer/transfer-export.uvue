@@ -96,8 +96,8 @@
     <!-- #endif -->
 
     <!-- 轮次选择器 -->
-    <view class="modal-mask" v-show="showRoundPickerModal" @click="onRoundPickerCancel">
-      <view class="modal-content" @click.stop="">
+    <view class="picker-mask" v-show="showRoundPickerModal" @click="onRoundPickerCancel">
+      <view class="modal-container transfer-round-modal" @click.stop="">
         <view class="modal-header">
           <text class="modal-title">选择轮次</text>
         </view>
@@ -110,12 +110,12 @@
             </picker-view-column>
           </picker-view>
         </view>
-        <view class="modal-footer">
-          <view class="modal-btn cancel-btn" @click="onRoundPickerCancel">
-            <text class="modal-btn-text">取消</text>
+        <view class="modal-actions">
+          <view class="modal-btn modal-btn-cancel" @click="onRoundPickerCancel">
+            <text class="modal-btn-text modal-btn-text-cancel">取消</text>
           </view>
-          <view class="modal-btn confirm-btn" @click="onRoundPickerConfirm">
-            <text class="modal-btn-text">确定</text>
+          <view class="modal-btn modal-btn-confirm" @click="onRoundPickerConfirm">
+            <text class="modal-btn-text modal-btn-text-confirm">确定</text>
           </view>
         </view>
       </view>
@@ -537,36 +537,8 @@
     color: #999999;
   }
 
-  .modal-mask {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5);
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-  }
-
-  .modal-content {
+  .transfer-round-modal {
     width: 320px;
-    background-color: #ffffff;
-    border-radius: 12px;
-    overflow: hidden;
-  }
-
-  .modal-header {
-    padding: 16px;
-    border-bottom-width: 1px;
-    border-bottom-color: #f0f0f0;
-    border-bottom-style: solid;
-  }
-
-  .modal-title {
-    font-size: 18px;
-    font-weight: bold;
-    color: #333333;
   }
 
   .picker-body {
@@ -587,34 +559,5 @@
   .picker-item-text {
     font-size: 16px;
     color: #333333;
-  }
-
-  .modal-footer {
-    flex-direction: row;
-    border-top-width: 1px;
-    border-top-color: #f0f0f0;
-    border-top-style: solid;
-  }
-
-  .modal-btn {
-    flex: 1;
-    padding: 14px;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .cancel-btn {
-    border-right-width: 1px;
-    border-right-color: #f0f0f0;
-    border-right-style: solid;
-  }
-
-  .modal-btn-text {
-    font-size: 16px;
-    color: #007aff;
-  }
-
-  .cancel-btn .modal-btn-text {
-    color: #999999;
   }
 </style>
