@@ -119,8 +119,8 @@
     <!-- #endif -->
 
     <!-- 轮次选择器 Modal -->
-    <view class="modal-mask" v-show="showRoundPicker" @click="onRoundPickerCancel">
-      <view class="modal-content" @click.stop="">
+    <view class="picker-mask" v-show="showRoundPicker" @click="onRoundPickerCancel">
+      <view class="modal-container transfer-round-modal" @click.stop="">
         <view class="modal-header">
           <text class="modal-title">选择轮次</text>
         </view>
@@ -133,12 +133,12 @@
             </picker-view-column>
           </picker-view>
         </view>
-        <view class="modal-footer">
-          <view class="modal-btn cancel-btn" @click="onRoundPickerCancel">
-            <text class="modal-btn-text">取消</text>
+        <view class="modal-actions">
+          <view class="modal-btn modal-btn-cancel" @click="onRoundPickerCancel">
+            <text class="modal-btn-text modal-btn-text-cancel">取消</text>
           </view>
-          <view class="modal-btn confirm-btn" @click="onRoundPickerConfirm">
-            <text class="modal-btn-text">确定</text>
+          <view class="modal-btn modal-btn-confirm" @click="onRoundPickerConfirm">
+            <text class="modal-btn-text modal-btn-text-confirm">确定</text>
           </view>
         </view>
       </view>
@@ -938,6 +938,54 @@
   .hint-section {
     align-items: center;
     padding: 40px 16px;
+  }
+
+  /* ===== 轮次选择器共享 Modal 样式（对齐 biz-round-picker；冲突弹窗仍保留旧 modal-*） ===== */
+  .picker-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    align-items: center;
+    justify-content: center;
+    z-index: 999;
+  }
+
+  .modal-container {
+    background-color: #ffffff;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .modal-actions {
+    flex-direction: row;
+    border-top-width: 1px;
+    border-top-color: #e8e8e8;
+    border-top-style: solid;
+  }
+
+  .modal-btn-cancel {
+    border-right-width: 1px;
+    border-right-color: #e8e8e8;
+    border-right-style: solid;
+  }
+
+  .modal-btn-confirm {
+    background-color: #007aff;
+  }
+
+  .modal-btn-text-cancel {
+    color: #333333;
+  }
+
+  .modal-btn-text-confirm {
+    color: #ffffff;
+  }
+
+  .transfer-round-modal {
+    width: 320px;
   }
 
   .modal-mask {
