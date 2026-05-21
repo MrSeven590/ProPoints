@@ -141,6 +141,19 @@ function setLiangTangStorageRole(target: SessionLiangTangData, roleCode: RoleCod
   }
 }
 
+function getLiangTangStorageRole(source: SessionLiangTangData, roleCode: RoleCode): SessionWorkerStorageData[] {
+  if (roleCode == 'WHEAT_MATERIAL') {
+    return source.WHEAT_MATERIAL
+  } else if (roleCode == 'MACHINE_GUARD') {
+    return source.MACHINE_GUARD
+  } else if (roleCode == 'KOJI_UNLOADER') {
+    return source.KOJI_UNLOADER
+  } else if (roleCode == 'MICRO_OPERATOR') {
+    return source.MICRO_OPERATOR
+  }
+  return []
+}
+
 function readLiangTangRole(target: Map<string, LiangTangRoleData>, roleCode: RoleCode, storageWorkers: SessionWorkerStorageData[]) {
   if (storageWorkers.length == 0) {
     return
@@ -562,10 +575,10 @@ export function sessionDataToEntryPageState(
   const liangTangRolesData = new Map<string, LiangTangRoleData>()
 
   if (data.liang_tang != null) {
-    readLiangTangRole(liangTangRolesData, 'WHEAT_MATERIAL', data.liang_tang.WHEAT_MATERIAL)
-    readLiangTangRole(liangTangRolesData, 'MACHINE_GUARD', data.liang_tang.MACHINE_GUARD)
-    readLiangTangRole(liangTangRolesData, 'KOJI_UNLOADER', data.liang_tang.KOJI_UNLOADER)
-    readLiangTangRole(liangTangRolesData, 'MICRO_OPERATOR', data.liang_tang.MICRO_OPERATOR)
+    for (let i = 0; i < LIANG_TANG_ROLE_CODES.length; i++) {
+      const roleCode = LIANG_TANG_ROLE_CODES[i]
+      readLiangTangRole(liangTangRolesData, roleCode, getLiangTangStorageRole(data.liang_tang, roleCode))
+    }
   }
 
   // 构建 duiQuWorkers
