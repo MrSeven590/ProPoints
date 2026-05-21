@@ -445,9 +445,13 @@ import type {
 } from "../../domain/models/session.uts";
 import { getRoleName as _getRoleName } from "../../domain/models/assignment.uts";
 import type { SessionStatus } from "../../domain/models/types.uts";
-import type { BinInfo } from "../../domain/services/ScoreAllocator.uts";
-import { allocateCrossBinPoints } from "../../domain/services/ScoreAllocator.uts";
 import {
+  deriveCrossBinSources,
+  deriveOccupiedPersonIds,
+  mapDuiQuWorkersForCard,
+  mapLiangTangInitialWorkers,
+} from "../../domain/services/entry-component-mappers.uts";
+
   saveDraftSession,
   saveSubmittedSession,
   loadSessionForEdit,
@@ -722,23 +726,10 @@ export default {
       return 3
     },
     /**
-     * 将 DuiQuWorkerData[] 转换为 SessionWorkerData[] 供 biz-session-role-card 使用
-     * 修复 ClassCastException：DuiQuWorkerData 不能直接转为 SessionWorkerData
+     * 将堆曲事实源映射为 biz-session-role-card 输入，具体字段转换收口到 helper。
      */
     duiQuWorkersForCard(): SessionWorkerData[] {
-      const result: SessionWorkerData[] = []
-      for (let i = 0; i < this.duiQuWorkers.length; i++) {
-        const w = this.duiQuWorkers[i]
-        result.push({
-          personId: w.personId,
-          personName: w.personName,
-          pointsUnits: w.pointsUnits,
-          deductedUnits: w.deductedUnits,
-          penaltyReason: w.penaltyReason,
-          penaltyId: w.penaltyId
-        } as SessionWorkerData)
-      }
-      return result
+      return mapDuiQuWorkersForCard(this.duiQuWorkers)
     },
   },
   methods: {
@@ -976,24 +967,7 @@ export default {
     },
 
     getLiangTangInitialWorkers(roleCode: RoleCode): SessionWorkerData[] {
-      const roleData = this.liangTangRolesData.get(roleCode);
-      if (roleData == null) {
-        return [] as SessionWorkerData[];
-      }
-
-      const workers: SessionWorkerData[] = [];
-      for (let i = 0; i < roleData.workers.length; i++) {
-        const worker = roleData.workers[i];
-        workers.push({
-          personId: worker.personId,
-          personName: worker.personName,
-          pointsUnits: worker.pointsUnits,
-          deductedUnits: worker.deductedUnits,
-          penaltyReason: worker.penaltyReason,
-          penaltyId: worker.penaltyId,
-        } as SessionWorkerData);
-      }
-      return workers;
+      return mapLiangTangInitialWorkers(this.liangTangRolesData, roleCode);
     },
 
     /**
@@ -1584,53 +1558,15 @@ export default {
     },
 
     /**
-     * 更新人员互斥列表
+     * 更新人员互斥列表：occupiedIds 是从跨仓/仓内/晾堂/堆曲事实源统一重建的派生态。
      */
     updateOccupiedIds() {
-      const idsSet = new Set<number>();
-
-      // 添加跨仓岗位人员
-      if (this.crossBinPersonId != null) {
-        idsSet.add(this.crossBinPersonId as number);
-      }
-
-      // 添加所有仓卡片中的人员（UTS Map 使用 forEach 遍历）
-      this.binCardsData.forEach((cardData: EntryBinCardState, _key: number) => {
-        for (let i = 0; i < cardData.workers.length; i++) {
-          const worker = cardData.workers[i];
-          if (worker.personId != null) {
-            idsSet.add(worker.personId as number);
-          }
-        }
-      });
-
-      // 添加晾堂岗位人员
-      this.liangTangRolesData.forEach(
-        (roleData: LiangTangRoleData, _key: string) => {
-          for (let i = 0; i < roleData.workers.length; i++) {
-            const worker = roleData.workers[i];
-            if (worker.personId != null) {
-              idsSet.add(worker.personId as number);
-            }
-          }
-        },
+      this.occupiedIds = deriveOccupiedPersonIds(
+        this.crossBinPersonId,
+        this.binCardsData,
+        this.liangTangRolesData,
+        this.duiQuWorkers,
       );
-
-      // 添加堆曲人员
-      for (let i = 0; i < this.duiQuWorkers.length; i++) {
-        const worker = this.duiQuWorkers[i];
-        const personId = worker.personId;
-        if (personId != null) {
-          idsSet.add(personId);
-        }
-      }
-
-      // 转换为数组
-      const ids: number[] = [];
-      idsSet.forEach((id: number) => {
-        ids.push(id);
-      });
-      this.occupiedIds = ids;
     },
 
     /**
@@ -2561,46 +2497,15 @@ export default {
     },
 
     /**
-     * 重新计算跨仓工分分配
-     * 当曲坯数变更、仓集合变更或跨仓工分变更时调用
-     * 确保 crossBinSources 与当前 stageBinInfos 和 crossBinPointsUnits 一致。
-     *
-     * 业务语义：crossBinSources 是自动派生快照，不是用户可编辑业务事实源。
-     * 保存它是为了来源预览/落库回显可追溯；任何事实源变化都会按算法覆盖旧快照。
+     * 重新计算跨仓工分分配。
+     * crossBinSources 是自动派生快照，不是用户可编辑业务事实源。
      */
     recalculateCrossBinSources() {
-      // 如果不显示跨仓区域，清空 sources
-      if (this.showCrossBinSection == false) {
-        this.crossBinSources = [] as AssignmentSourceCreateParams[];
-        return;
-      }
-
-      // 如果跨仓工分为 0，清空 sources
-      if (this.crossBinPointsUnits <= 0) {
-        this.crossBinSources = [] as AssignmentSourceCreateParams[];
-        return;
-      }
-
-      // 如果没有仓，清空 sources
-      if (this.stageBinInfos.length == 0) {
-        this.crossBinSources = [] as AssignmentSourceCreateParams[];
-        return;
-      }
-
-      // 构建 BinInfo 数组
-      const binInfos: BinInfo[] = [];
-      for (let i = 0; i < this.stageBinInfos.length; i++) {
-        const bin = this.stageBinInfos[i];
-        binInfos.push({
-          bin_id: bin.bin_id,
-          stage_bin_id: bin.stage_bin_id,
-          koji_count: bin.koji_count,
-        } as BinInfo);
-      }
-
-      // 调用分配算法重新计算
-      const result = allocateCrossBinPoints(binInfos, this.crossBinPointsUnits);
-      this.crossBinSources = result.sources;
+      this.crossBinSources = deriveCrossBinSources(
+        this.showCrossBinSection,
+        this.stageBinInfos,
+        this.crossBinPointsUnits,
+      );
     },
   },
 };
