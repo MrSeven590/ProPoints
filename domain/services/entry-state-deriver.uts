@@ -1,0 +1,85 @@
+/**
+ * Entry 页面派生态计算 helper
+ *
+ * 所有函数均为纯计算：只读取入参事实源并返回派生结果，
+ * 页面仍负责赋值与保存/提交链路，降低低风险拆分范围。
+ */
+
+import type { StageBinInfo } from '../models/ferment.uts'
+import type { AssignmentSourceCreateParams } from '../models/assignment.uts'
+import type { EntryBinCardState, LiangTangRoleData, DuiQuWorkerData } from '../models/session.uts'
+import type { BinInfo } from './ScoreAllocator.uts'
+import { allocateCrossBinPoints } from './ScoreAllocator.uts'
+
+export function deriveOccupiedPersonIds(
+  crossBinPersonId: number | null,
+  binCardsData: Map<number, EntryBinCardState>,
+  liangTangRolesData: Map<string, LiangTangRoleData>,
+  duiQuWorkers: DuiQuWorkerData[]
+): number[] {
+  const idsSet = new Set<number>()
+
+  if (crossBinPersonId != null) {
+    idsSet.add(crossBinPersonId as number)
+  }
+
+  binCardsData.forEach((cardData: EntryBinCardState, _key: number) => {
+    for (let i = 0; i < cardData.workers.length; i++) {
+      const worker = cardData.workers[i]
+      if (worker.personId != null) {
+        idsSet.add(worker.personId as number)
+      }
+    }
+  })
+
+  liangTangRolesData.forEach((roleData: LiangTangRoleData, _key: string) => {
+    for (let i = 0; i < roleData.workers.length; i++) {
+      const worker = roleData.workers[i]
+      if (worker.personId != null) {
+        idsSet.add(worker.personId as number)
+      }
+    }
+  })
+
+  for (let i = 0; i < duiQuWorkers.length; i++) {
+    const worker = duiQuWorkers[i]
+    if (worker.personId != null) {
+      idsSet.add(worker.personId as number)
+    }
+  }
+
+  const ids: number[] = []
+  idsSet.forEach((id: number) => {
+    ids.push(id)
+  })
+  return ids
+}
+
+export function deriveCrossBinSources(
+  showCrossBinSection: boolean,
+  stageBinInfos: StageBinInfo[],
+  crossBinPointsUnits: number
+): AssignmentSourceCreateParams[] {
+  if (showCrossBinSection == false) {
+    return [] as AssignmentSourceCreateParams[]
+  }
+  if (crossBinPointsUnits <= 0) {
+    return [] as AssignmentSourceCreateParams[]
+  }
+  if (stageBinInfos.length == 0) {
+    return [] as AssignmentSourceCreateParams[]
+  }
+
+  const binInfos: BinInfo[] = []
+  for (let i = 0; i < stageBinInfos.length; i++) {
+    const bin = stageBinInfos[i]
+    binInfos.push({
+      bin_id: bin.bin_id,
+      stage_bin_id: bin.stage_bin_id,
+      koji_count: bin.koji_count
+    } as BinInfo)
+  }
+
+  const result = allocateCrossBinPoints(binInfos, crossBinPointsUnits)
+  return result.sources
+}

@@ -446,12 +446,10 @@ import type {
 import { getRoleName as _getRoleName } from "../../domain/models/assignment.uts";
 import type { SessionStatus } from "../../domain/models/types.uts";
 import {
-  deriveCrossBinSources,
   deriveOccupiedPersonIds,
-  mapDuiQuWorkersForCard,
-  mapLiangTangInitialWorkers,
-} from "../../domain/services/entry-component-mappers.uts";
-
+  deriveCrossBinSources,
+} from "../../domain/services/entry-state-deriver.uts";
+import {
   saveDraftSession,
   saveSubmittedSession,
   loadSessionForEdit,
@@ -496,6 +494,10 @@ import {
   type LiangTangDefaultsData,
   type LiangTangDefaultsSerializeResult,
 } from "../../domain/services/default-data-parser.uts";
+import {
+  mapLiangTangInitialWorkers,
+  mapDuiQuWorkersForRoleCard,
+} from "../../domain/services/entry-component-mappers.uts";
 
 // 系数版本常量
 const DEFAULT_COEF_SET_ID = 260000;
@@ -726,11 +728,12 @@ export default {
       return 3
     },
     /**
-     * 将堆曲事实源映射为 biz-session-role-card 输入，具体字段转换收口到 helper。
+     * 将 DuiQuWorkerData[] 转换为 SessionWorkerData[] 供 biz-session-role-card 使用
+     * 修复 ClassCastException：DuiQuWorkerData 不能直接转为 SessionWorkerData
      */
     duiQuWorkersForCard(): SessionWorkerData[] {
-      return mapDuiQuWorkersForCard(this.duiQuWorkers)
-    },
+      return mapDuiQuWorkersForRoleCard(this.duiQuWorkers)
+    }
   },
   methods: {
     /**
@@ -1558,7 +1561,7 @@ export default {
     },
 
     /**
-     * 更新人员互斥列表：occupiedIds 是从跨仓/仓内/晾堂/堆曲事实源统一重建的派生态。
+     * 更新人员互斥列表
      */
     updateOccupiedIds() {
       this.occupiedIds = deriveOccupiedPersonIds(
@@ -1570,7 +1573,7 @@ export default {
     },
 
     /**
-     * 检查当前轮次是否有安曲数据（仅翻曲/拆曲工序触发）
+     * 检查当前轮次是否有安曲数据
      * 无数据时弹窗提示，本次页面生命周期内只弹一次
      */
     /**
@@ -2497,8 +2500,12 @@ export default {
     },
 
     /**
-     * 重新计算跨仓工分分配。
-     * crossBinSources 是自动派生快照，不是用户可编辑业务事实源。
+     * 重新计算跨仓工分分配
+     * 当曲坯数变更、仓集合变更或跨仓工分变更时调用
+     * 确保 crossBinSources 与当前 stageBinInfos 和 crossBinPointsUnits 一致。
+     *
+     * 业务语义：crossBinSources 是自动派生快照，不是用户可编辑业务事实源。
+     * 保存它是为了来源预览/落库回显可追溯；任何事实源变化都会按算法覆盖旧快照。
      */
     recalculateCrossBinSources() {
       this.crossBinSources = deriveCrossBinSources(
@@ -2506,7 +2513,7 @@ export default {
         this.stageBinInfos,
         this.crossBinPointsUnits,
       );
-    },
+    }
   },
 };
 </script>

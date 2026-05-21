@@ -1,131 +1,50 @@
-import type { PointsUnits, RoleCode } from "../models/types.uts";
-import type { AssignmentSourceCreateParams, SessionPenaltyWorkerData, SessionWorkerData } from "../models/assignment.uts";
-import type { LiangTangRoleData, EntryBinCardState, DuiQuWorkerData } from "../models/session.uts";
-import type { StageBinInfo } from "../models/ferment.uts";
-import type { BinInfo } from "./ScoreAllocator.uts";
-import { allocateCrossBinPoints } from "./ScoreAllocator.uts";
-
-export function mapPenaltyWorkerToSessionWorker(worker: SessionPenaltyWorkerData): SessionWorkerData {
-  return {
-    personId: worker.personId,
-    personName: worker.personName,
-    pointsUnits: worker.pointsUnits,
-    deductedUnits: worker.deductedUnits,
-    penaltyReason: worker.penaltyReason,
-    penaltyId: worker.penaltyId,
-  } as SessionWorkerData;
-}
-
-export function mapDuiQuWorkerToSessionWorker(worker: DuiQuWorkerData): SessionWorkerData {
-  return {
-    personId: worker.personId,
-    personName: worker.personName,
-    pointsUnits: worker.pointsUnits,
-    deductedUnits: worker.deductedUnits,
-    penaltyReason: worker.penaltyReason,
-    penaltyId: worker.penaltyId
-  } as SessionWorkerData;
-}
-
 /**
- * Entry 页面组件输入 mapper：晾堂岗位事实源 -> biz-session-role-card initialWorkers。
+ * Entry 页面组件输入映射 helper
+ *
+ * 仅负责把页面事实源转换成子组件 initialWorkers 等输入结构，
+ * 不修改页面状态，避免 entry.uvue 继续承载重复的组件映射职责。
  */
+
+import type { RoleCode } from '../models/types.uts'
+import type { SessionWorkerData } from '../models/assignment.uts'
+import type { LiangTangRoleData, DuiQuWorkerData } from '../models/session.uts'
+
 export function mapLiangTangInitialWorkers(
   rolesData: Map<string, LiangTangRoleData>,
   roleCode: RoleCode
 ): SessionWorkerData[] {
-  const roleData = rolesData.get(roleCode);
+  const roleData = rolesData.get(roleCode)
   if (roleData == null) {
-    return [] as SessionWorkerData[];
+    return [] as SessionWorkerData[]
   }
 
-  const workers: SessionWorkerData[] = [];
+  const workers: SessionWorkerData[] = []
   for (let i = 0; i < roleData.workers.length; i++) {
-    workers.push(mapPenaltyWorkerToSessionWorker(roleData.workers[i]));
+    const worker = roleData.workers[i]
+    workers.push({
+      personId: worker.personId,
+      personName: worker.personName,
+      pointsUnits: worker.pointsUnits,
+      deductedUnits: worker.deductedUnits,
+      penaltyReason: worker.penaltyReason,
+      penaltyId: worker.penaltyId
+    } as SessionWorkerData)
   }
-  return workers;
+  return workers
 }
 
-/**
- * Entry 页面组件输入 mapper：堆曲事实源 -> biz-session-role-card initialWorkers。
- */
-export function mapDuiQuWorkersForCard(duiQuWorkers: DuiQuWorkerData[]): SessionWorkerData[] {
-  const result: SessionWorkerData[] = [];
-  for (let i = 0; i < duiQuWorkers.length; i++) {
-    result.push(mapDuiQuWorkerToSessionWorker(duiQuWorkers[i]));
+export function mapDuiQuWorkersForRoleCard(workersRaw: DuiQuWorkerData[]): SessionWorkerData[] {
+  const workers: SessionWorkerData[] = []
+  for (let i = 0; i < workersRaw.length; i++) {
+    const worker = workersRaw[i]
+    workers.push({
+      personId: worker.personId,
+      personName: worker.personName,
+      pointsUnits: worker.pointsUnits,
+      deductedUnits: worker.deductedUnits,
+      penaltyReason: worker.penaltyReason,
+      penaltyId: worker.penaltyId
+    } as SessionWorkerData)
   }
-  return result;
-}
-
-/**
- * 派生态 deriver：从页面事实源统一重建人员互斥列表。
- */
-export function deriveOccupiedPersonIds(
-  crossBinPersonId: number | null,
-  binCardsData: Map<number, EntryBinCardState>,
-  liangTangRolesData: Map<string, LiangTangRoleData>,
-  duiQuWorkers: DuiQuWorkerData[]
-): number[] {
-  const idsSet = new Set<number>();
-
-  if (crossBinPersonId != null) {
-    idsSet.add(crossBinPersonId as number);
-  }
-
-  binCardsData.forEach((cardData: EntryBinCardState, _key: number) => {
-    for (let i = 0; i < cardData.workers.length; i++) {
-      const worker = cardData.workers[i];
-      if (worker.personId != null) {
-        idsSet.add(worker.personId as number);
-      }
-    }
-  });
-
-  liangTangRolesData.forEach((roleData: LiangTangRoleData, _key: string) => {
-    for (let i = 0; i < roleData.workers.length; i++) {
-      const worker = roleData.workers[i];
-      if (worker.personId != null) {
-        idsSet.add(worker.personId as number);
-      }
-    }
-  });
-
-  for (let i = 0; i < duiQuWorkers.length; i++) {
-    const personId = duiQuWorkers[i].personId;
-    if (personId != null) {
-      idsSet.add(personId);
-    }
-  }
-
-  const ids: number[] = [];
-  idsSet.forEach((id: number) => {
-    ids.push(id);
-  });
-  return ids;
-}
-
-/**
- * 派生态 deriver：crossBinSources 是按当前仓集合/曲坯数/跨仓工分自动生成的快照。
- */
-export function deriveCrossBinSources(
-  showCrossBinSection: boolean,
-  stageBinInfos: StageBinInfo[],
-  crossBinPointsUnits: PointsUnits
-): AssignmentSourceCreateParams[] {
-  if (showCrossBinSection == false || crossBinPointsUnits <= 0 || stageBinInfos.length == 0) {
-    return [] as AssignmentSourceCreateParams[];
-  }
-
-  const binInfos: BinInfo[] = [];
-  for (let i = 0; i < stageBinInfos.length; i++) {
-    const bin = stageBinInfos[i];
-    binInfos.push({
-      bin_id: bin.bin_id,
-      stage_bin_id: bin.stage_bin_id,
-      koji_count: bin.koji_count,
-    } as BinInfo);
-  }
-
-  const result = allocateCrossBinPoints(binInfos, crossBinPointsUnits);
-  return result.sources;
+  return workers
 }
