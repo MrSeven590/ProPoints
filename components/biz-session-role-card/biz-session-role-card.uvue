@@ -150,6 +150,11 @@
   import type { PointsUnits, RoleCode } from '../../domain/models/types.uts'
   import type { SessionWorkerData, SessionRoleCardChangePayload, PersonSelectPayload } from '../../domain/models/assignment.uts'
   import { calcFinalPoints } from '../../domain/models/assignment.uts'
+  import {
+    canSavePenaltyDraft as canSavePenaltyDraftUtil,
+    formatPenaltyDraftFinalPoints,
+    hasPenaltyDraftChanged as hasPenaltyDraftChangedUtil
+  } from '../../domain/services/PenaltyDraftService.uts'
 
   /**
    * 考核草稿类型（含初始值用于判断变更）
@@ -505,23 +510,19 @@
        * 计算草稿的最终工分显示值
        */
       getDraftFinalPoints(originalUnits: PointsUnits): string {
-        const finalUnits = calcFinalPoints(originalUnits, this.penaltyDraft.deductedUnits)
-        return formatPointsUnits(finalUnits)
+        return formatPenaltyDraftFinalPoints(originalUnits, this.penaltyDraft.deductedUnits)
       },
 
       /**
        * 判断草稿是否有变更
        */
       hasPenaltyDraftChanged(): boolean {
-        // 检查扣分值是否变化
-        if (this.penaltyDraft.deductedUnits != this.penaltyDraft.initialDeductedUnits) {
-          return true
-        }
-        // 检查原因是否变化（trim 后比较）
-        if (this.penaltyDraft.reason.trim() != this.penaltyDraft.initialReason.trim()) {
-          return true
-        }
-        return false
+        return hasPenaltyDraftChangedUtil(
+          this.penaltyDraft.deductedUnits,
+          this.penaltyDraft.reason,
+          this.penaltyDraft.initialDeductedUnits,
+          this.penaltyDraft.initialReason
+        )
       },
 
       /**
@@ -529,11 +530,7 @@
        * 当且仅当分数和原因同时存在时才可点击
        */
       canSavePenaltyDraft(): boolean {
-        // 扣分 > 0 且原因不为空时才可保存
-        if (this.penaltyDraft.deductedUnits > 0 && this.penaltyDraft.reason.trim().length > 0) {
-          return true
-        }
-        return false
+        return canSavePenaltyDraftUtil(this.penaltyDraft.deductedUnits, this.penaltyDraft.reason)
       },
 
       /**
