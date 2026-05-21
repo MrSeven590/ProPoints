@@ -80,6 +80,78 @@ export type SessionDataBuildOptions = {
 // 解析辅助函数（Storage -> SessionData）
 // ============================================
 
+const LIANG_TANG_ROLE_CODES: RoleCode[] = [
+  'WHEAT_MATERIAL',
+  'MACHINE_GUARD',
+  'KOJI_UNLOADER',
+  'MICRO_OPERATOR'
+]
+function parseSessionWorkerStorageData(w: UTSJSONObject): SessionWorkerStorageData {
+  return {
+    person_id: w['person_id'] != null ? (w['person_id'] as number) : (w['personId'] != null ? (w['personId'] as number) : null),
+    person_name: w['person_name'] != null ? (w['person_name'] as string) : (w['personName'] != null ? (w['personName'] as string) : ''),
+    points_units: w['points_units'] != null ? (w['points_units'] as number) : (w['pointsUnits'] != null ? (w['pointsUnits'] as number) : 0),
+    deducted_units: w['deducted_units'] != null ? (w['deducted_units'] as number) : (w['deductedUnits'] != null ? (w['deductedUnits'] as number) : 0),
+    penalty_reason: w['penalty_reason'] != null ? (w['penalty_reason'] as string) : (w['penaltyReason'] != null ? (w['penaltyReason'] as string) : ''),
+    penalty_id: w['penalty_id'] != null ? (w['penalty_id'] as number) : (w['penaltyId'] != null ? (w['penaltyId'] as number) : null)
+  } as SessionWorkerStorageData
+}
+
+function mapStorageWorkersToSessionWorkers(workersRaw: SessionWorkerStorageData[]): SessionWorkerData[] {
+  const workers: SessionWorkerData[] = []
+  for (let i = 0; i < workersRaw.length; i++) {
+    const w = workersRaw[i]
+    workers.push({
+      personId: w.person_id,
+      personName: w.person_name,
+      pointsUnits: w.points_units,
+      deductedUnits: w.deducted_units,
+      penaltyReason: w.penalty_reason,
+      penaltyId: w.penalty_id
+    } as SessionWorkerData)
+  }
+  return workers
+}
+
+function mapSessionWorkersToStorageWorkers(workersRaw: SessionWorkerData[]): SessionWorkerStorageData[] {
+  const workers: SessionWorkerStorageData[] = []
+  for (let i = 0; i < workersRaw.length; i++) {
+    const worker = workersRaw[i]
+    workers.push({
+      person_id: worker.personId,
+      person_name: worker.personName,
+      points_units: worker.pointsUnits,
+      deducted_units: worker.deductedUnits,
+      penalty_reason: worker.penaltyReason,
+      penalty_id: worker.penaltyId
+    } as SessionWorkerStorageData)
+  }
+  return workers
+}
+
+function setLiangTangStorageRole(target: SessionLiangTangData, roleCode: RoleCode, workers: SessionWorkerStorageData[]) {
+  if (roleCode == 'WHEAT_MATERIAL') {
+    target.WHEAT_MATERIAL = workers
+  } else if (roleCode == 'MACHINE_GUARD') {
+    target.MACHINE_GUARD = workers
+  } else if (roleCode == 'KOJI_UNLOADER') {
+    target.KOJI_UNLOADER = workers
+  } else if (roleCode == 'MICRO_OPERATOR') {
+    target.MICRO_OPERATOR = workers
+  }
+}
+
+function readLiangTangRole(target: Map<string, LiangTangRoleData>, roleCode: RoleCode, storageWorkers: SessionWorkerStorageData[]) {
+  if (storageWorkers.length == 0) {
+    return
+  }
+
+  target.set(roleCode, {
+    roleCode: roleCode,
+    workers: mapStorageWorkersToSessionWorkers(storageWorkers)
+  } as LiangTangRoleData)
+}
+
 /**
  * 解析 bins 数据（snake_case -> snake_case）
  * 注意：SessionBinData 使用 snake_case 字段名（用于存储）
@@ -186,33 +258,15 @@ function parseLiangTang(liangTangRaw: UTSJSONObject | null): SessionLiangTangDat
   }
 
   // 解析各个角色的工人数据
-  const roleKeys = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER', 'MICRO_OPERATOR']
-  for (let i = 0; i < roleKeys.length; i++) {
-    const roleKey = roleKeys[i]
-    const workersRaw = liangTangRaw[roleKey] as UTSJSONObject[] | null
+  for (let i = 0; i < LIANG_TANG_ROLE_CODES.length; i++) {
+    const roleCode = LIANG_TANG_ROLE_CODES[i]
+    const workersRaw = liangTangRaw[roleCode] as UTSJSONObject[] | null
     if (workersRaw != null) {
       const workers: SessionWorkerStorageData[] = []
       for (let j = 0; j < workersRaw.length; j++) {
-        const w = workersRaw[j]
-        workers.push({
-          person_id: w['person_id'] != null ? (w['person_id'] as number) : (w['personId'] != null ? (w['personId'] as number) : null),
-          person_name: w['person_name'] != null ? (w['person_name'] as string) : (w['personName'] != null ? (w['personName'] as string) : ''),
-          points_units: w['points_units'] != null ? (w['points_units'] as number) : (w['pointsUnits'] != null ? (w['pointsUnits'] as number) : 0),
-          deducted_units: w['deducted_units'] != null ? (w['deducted_units'] as number) : (w['deductedUnits'] != null ? (w['deductedUnits'] as number) : 0),
-          penalty_reason: w['penalty_reason'] != null ? (w['penalty_reason'] as string) : (w['penaltyReason'] != null ? (w['penaltyReason'] as string) : ''),
-          penalty_id: w['penalty_id'] != null ? (w['penalty_id'] as number) : (w['penaltyId'] != null ? (w['penaltyId'] as number) : null)
-        } as SessionWorkerStorageData)
+        workers.push(parseSessionWorkerStorageData(workersRaw[j]))
       }
-      // 使用下标赋值，因为 roleKey 是动态的
-      if (roleKey == 'WHEAT_MATERIAL') {
-        result.WHEAT_MATERIAL = workers
-      } else if (roleKey == 'MACHINE_GUARD') {
-        result.MACHINE_GUARD = workers
-      } else if (roleKey == 'KOJI_UNLOADER') {
-        result.KOJI_UNLOADER = workers
-      } else if (roleKey == 'MICRO_OPERATOR') {
-        result.MICRO_OPERATOR = workers
-      }
+      setLiangTangStorageRole(result, roleCode, workers)
     }
   }
 
@@ -502,89 +556,10 @@ export function sessionDataToEntryPageState(
   const liangTangRolesData = new Map<string, LiangTangRoleData>()
 
   if (data.liang_tang != null) {
-    // WHEAT_MATERIAL
-    if (data.liang_tang.WHEAT_MATERIAL.length > 0) {
-      const workers: SessionWorkerData[] = []
-      for (let i = 0; i < data.liang_tang.WHEAT_MATERIAL.length; i++) {
-        const w = data.liang_tang.WHEAT_MATERIAL[i]
-        const worker = {
-          personId: w.person_id,
-          personName: w.person_name,
-          pointsUnits: w.points_units,
-          deductedUnits: w.deducted_units,
-          penaltyReason: w.penalty_reason,
-          penaltyId: w.penalty_id
-        } as SessionWorkerData
-        workers.push(worker)
-      }
-      liangTangRolesData.set('WHEAT_MATERIAL', {
-        roleCode: 'WHEAT_MATERIAL',
-        workers: workers
-      } as LiangTangRoleData)
-    }
-
-    // MACHINE_GUARD
-    if (data.liang_tang.MACHINE_GUARD.length > 0) {
-      const workers: SessionWorkerData[] = []
-      for (let i = 0; i < data.liang_tang.MACHINE_GUARD.length; i++) {
-        const w = data.liang_tang.MACHINE_GUARD[i]
-        const worker = {
-          personId: w.person_id,
-          personName: w.person_name,
-          pointsUnits: w.points_units,
-          deductedUnits: w.deducted_units,
-          penaltyReason: w.penalty_reason,
-          penaltyId: w.penalty_id
-        } as SessionWorkerData
-        workers.push(worker)
-      }
-      liangTangRolesData.set('MACHINE_GUARD', {
-        roleCode: 'MACHINE_GUARD',
-        workers: workers
-      } as LiangTangRoleData)
-    }
-
-    // KOJI_UNLOADER
-    if (data.liang_tang.KOJI_UNLOADER.length > 0) {
-      const workers: SessionWorkerData[] = []
-      for (let i = 0; i < data.liang_tang.KOJI_UNLOADER.length; i++) {
-        const w = data.liang_tang.KOJI_UNLOADER[i]
-        const worker = {
-          personId: w.person_id,
-          personName: w.person_name,
-          pointsUnits: w.points_units,
-          deductedUnits: w.deducted_units,
-          penaltyReason: w.penalty_reason,
-          penaltyId: w.penalty_id
-        } as SessionWorkerData
-        workers.push(worker)
-      }
-      liangTangRolesData.set('KOJI_UNLOADER', {
-        roleCode: 'KOJI_UNLOADER',
-        workers: workers
-      } as LiangTangRoleData)
-    }
-
-    // MICRO_OPERATOR
-    if (data.liang_tang.MICRO_OPERATOR.length > 0) {
-      const workers: SessionWorkerData[] = []
-      for (let i = 0; i < data.liang_tang.MICRO_OPERATOR.length; i++) {
-        const w = data.liang_tang.MICRO_OPERATOR[i]
-        const worker = {
-          personId: w.person_id,
-          personName: w.person_name,
-          pointsUnits: w.points_units,
-          deductedUnits: w.deducted_units,
-          penaltyReason: w.penalty_reason,
-          penaltyId: w.penalty_id
-        } as SessionWorkerData
-        workers.push(worker)
-      }
-      liangTangRolesData.set('MICRO_OPERATOR', {
-        roleCode: 'MICRO_OPERATOR',
-        workers: workers
-      } as LiangTangRoleData)
-    }
+    readLiangTangRole(liangTangRolesData, 'WHEAT_MATERIAL', data.liang_tang.WHEAT_MATERIAL)
+    readLiangTangRole(liangTangRolesData, 'MACHINE_GUARD', data.liang_tang.MACHINE_GUARD)
+    readLiangTangRole(liangTangRolesData, 'KOJI_UNLOADER', data.liang_tang.KOJI_UNLOADER)
+    readLiangTangRole(liangTangRolesData, 'MICRO_OPERATOR', data.liang_tang.MICRO_OPERATOR)
   }
 
   // 构建 duiQuWorkers
@@ -772,32 +747,11 @@ export function entryPageStateToSessionData(
   const hasLiangTangData = state.liangTangRolesData.size > 0
 
   if (hasLiangTangData) {
-    const serializeRole = (roleCode: string): SessionWorkerStorageData[] => {
-      const roleData = state.liangTangRolesData.get(roleCode)
-      if (roleData == null) {
-        return []
-      }
-
-      const workers: SessionWorkerStorageData[] = []
-      for (let i = 0; i < roleData.workers.length; i++) {
-        const worker = roleData.workers[i]
-        workers.push({
-          person_id: worker.personId,
-          person_name: worker.personName,
-          points_units: worker.pointsUnits,
-          deducted_units: worker.deductedUnits,
-          penalty_reason: worker.penaltyReason,
-          penalty_id: worker.penaltyId
-        } as SessionWorkerStorageData)
-      }
-      return workers
-    }
-
     liangTang = {
-      WHEAT_MATERIAL: serializeRole('WHEAT_MATERIAL'),
-      MACHINE_GUARD: serializeRole('MACHINE_GUARD'),
-      KOJI_UNLOADER: serializeRole('KOJI_UNLOADER'),
-      MICRO_OPERATOR: serializeRole('MICRO_OPERATOR')
+      WHEAT_MATERIAL: mapSessionWorkersToStorageWorkers(state.liangTangRolesData.get('WHEAT_MATERIAL')?.workers ?? []),
+      MACHINE_GUARD: mapSessionWorkersToStorageWorkers(state.liangTangRolesData.get('MACHINE_GUARD')?.workers ?? []),
+      KOJI_UNLOADER: mapSessionWorkersToStorageWorkers(state.liangTangRolesData.get('KOJI_UNLOADER')?.workers ?? []),
+      MICRO_OPERATOR: mapSessionWorkersToStorageWorkers(state.liangTangRolesData.get('MICRO_OPERATOR')?.workers ?? [])
     } as SessionLiangTangData
   }
 
