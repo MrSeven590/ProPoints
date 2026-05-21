@@ -78,6 +78,10 @@ export type AssignmentSource = {
 
 /**
  * 工分来源创建参数
+ *
+ * 当前 CROSS_BIN 来源由 ScoreAllocator 按仓曲坯占比自动派生，
+ * 在页面态中作为“算法结果快照”用于预览、保存和回显，不表示用户手工确认的可编辑来源。
+ * 若未来支持人工调整来源分摊，应新增 confirmed/suggested 语义类型，避免自动重算覆盖用户输入。
  */
 export type AssignmentSourceCreateParams = {
   assignment_id: number

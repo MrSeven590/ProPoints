@@ -514,13 +514,15 @@ export default {
       // 跨仓岗位配置
       crossBinRoleCode: "CART_PULLER" as RoleCode,
       crossBinRoleName: "拉车",
-      // 跨仓岗位分配数据
+      // 跨仓岗位分配事实源
       crossBinPersonId: null as number | null,
       crossBinPersonName: "" as string,
       crossBinPointsUnits: 0 as PointsUnits,
       crossBinDeductedUnits: 0 as PointsUnits,
       crossBinPenaltyReason: "" as string,
       crossBinPenaltyId: null as number | null,
+      // 自动派生的跨仓来源快照：由当前仓集合/曲坯数/跨仓工分按算法重算。
+      // 现阶段不承载用户手工确认值；若后续支持人工调整，需拆分 suggested/confirmed sources。
       crossBinSources: [] as AssignmentSourceCreateParams[],
       // 人员互斥列表
       occupiedIds: [] as number[],
@@ -1389,6 +1391,8 @@ export default {
 
     /**
      * 跨仓岗位分配变更
+     * payload.sources 仅作为组件当前输入下的自动派生来源快照，
+     * 最终仍由 afterCrossBinStateChanged/recalculateCrossBinSources 与页面事实源保持一致。
      */
     onCrossBinChange(payload: CrossBinChangePayload) {
       if (this.isRestoring == true || this.viewMode != "edit") {
@@ -2551,7 +2555,10 @@ export default {
     /**
      * 重新计算跨仓工分分配
      * 当曲坯数变更、仓集合变更或跨仓工分变更时调用
-     * 确保 crossBinSources 与当前 stageBinInfos 和 crossBinPointsUnits 一致
+     * 确保 crossBinSources 与当前 stageBinInfos 和 crossBinPointsUnits 一致。
+     *
+     * 业务语义：crossBinSources 是自动派生快照，不是用户可编辑业务事实源。
+     * 保存它是为了来源预览/落库回显可追溯；任何事实源变化都会按算法覆盖旧快照。
      */
     recalculateCrossBinSources() {
       // 如果不显示跨仓区域，清空 sources

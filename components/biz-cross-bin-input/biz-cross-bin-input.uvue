@@ -220,6 +220,8 @@
         type: Number,
         default: 0
       },
+      // 父页面传入的跨仓来源快照：由页面按仓集合/曲坯数/跨仓工分自动派生。
+      // 组件只负责展示预览与随 change 回传当前快照，不把它视为用户手工确认值。
       externalSources: {
         type: Array,
         default: (): AssignmentSourceCreateParams[] => {
