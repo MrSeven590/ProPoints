@@ -152,6 +152,12 @@ function readLiangTangRole(target: Map<string, LiangTangRoleData>, roleCode: Rol
   } as LiangTangRoleData)
 }
 
+function writeLiangTangRole(target: SessionLiangTangData, source: Map<string, LiangTangRoleData>, roleCode: RoleCode) {
+  const roleData = source.get(roleCode)
+  const workersRaw: SessionWorkerData[] = roleData != null ? roleData.workers : []
+  setLiangTangStorageRole(target, roleCode, mapSessionWorkersToStorageWorkers(workersRaw))
+}
+
 /**
  * 解析 bins 数据（snake_case -> snake_case）
  * 注意：SessionBinData 使用 snake_case 字段名（用于存储）
@@ -748,11 +754,15 @@ export function entryPageStateToSessionData(
 
   if (hasLiangTangData) {
     liangTang = {
-      WHEAT_MATERIAL: mapSessionWorkersToStorageWorkers(state.liangTangRolesData.get('WHEAT_MATERIAL')?.workers ?? []),
-      MACHINE_GUARD: mapSessionWorkersToStorageWorkers(state.liangTangRolesData.get('MACHINE_GUARD')?.workers ?? []),
-      KOJI_UNLOADER: mapSessionWorkersToStorageWorkers(state.liangTangRolesData.get('KOJI_UNLOADER')?.workers ?? []),
-      MICRO_OPERATOR: mapSessionWorkersToStorageWorkers(state.liangTangRolesData.get('MICRO_OPERATOR')?.workers ?? [])
+      WHEAT_MATERIAL: [],
+      MACHINE_GUARD: [],
+      KOJI_UNLOADER: [],
+      MICRO_OPERATOR: []
     } as SessionLiangTangData
+
+    for (let i = 0; i < LIANG_TANG_ROLE_CODES.length; i++) {
+      writeLiangTangRole(liangTang, state.liangTangRolesData, LIANG_TANG_ROLE_CODES[i])
+    }
   }
 
   let duiQu: SessionDuiQuData | null = null
