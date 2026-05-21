@@ -145,8 +145,8 @@
     </view>
 
     <!-- 统一冲突提示 Modal -->
-    <view class="picker-mask" v-show="showConflictModal" @click="onCloseConflictModal">
-      <view class="modal-container conflict-modal" @click.stop="">
+    <view class="modal-mask" v-show="showConflictModal" @click="onCloseConflictModal">
+      <view class="modal-content conflict-modal" @click.stop="">
         <view class="modal-header">
           <text class="modal-title">配置确认</text>
         </view>
@@ -208,12 +208,12 @@
             </view>
           </scroll-view>
         </view>
-        <view class="modal-actions">
-          <view class="modal-btn modal-btn-cancel" @click="onCloseConflictModal">
-            <text class="modal-btn-text modal-btn-text-cancel">取消</text>
+        <view class="modal-footer">
+          <view class="modal-btn cancel-btn" @click="onCloseConflictModal">
+            <text class="modal-btn-text">取消</text>
           </view>
-          <view class="modal-btn modal-btn-confirm" @click="onConfirmAllConflicts">
-            <text class="modal-btn-text modal-btn-text-confirm">确认导入</text>
+          <view class="modal-btn confirm-btn" @click="onConfirmAllConflicts">
+            <text class="modal-btn-text">确认导入</text>
           </view>
         </view>
       </view>
@@ -940,12 +940,88 @@
     padding: 40px 16px;
   }
 
+  /* ===== 轮次选择器共享 Modal 样式（对齐 biz-round-picker；冲突弹窗仍保留旧 modal-*） ===== */
+  .picker-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    align-items: center;
+    justify-content: center;
+    z-index: 999;
+  }
+
+  .modal-container {
+    background-color: #ffffff;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .modal-actions {
+    flex-direction: row;
+    border-top-width: 1px;
+    border-top-color: #e8e8e8;
+    border-top-style: solid;
+  }
+
+  .modal-btn-cancel {
+    border-right-width: 1px;
+    border-right-color: #e8e8e8;
+    border-right-style: solid;
+  }
+
+  .modal-btn-confirm {
+    background-color: #007aff;
+  }
+
+  .modal-btn-text-cancel {
+    color: #333333;
+  }
+
+  .modal-btn-text-confirm {
+    color: #ffffff;
+  }
+
   .transfer-round-modal {
     width: 320px;
   }
 
+  .modal-mask {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .modal-content {
+    width: 320px;
+    background-color: #ffffff;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
   .conflict-modal {
     width: 340px;
+  }
+
+  .modal-header {
+    padding: 16px;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .modal-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: #333333;
   }
 
   .modal-body {
@@ -1137,5 +1213,32 @@
     color: #333333;
   }
 
+  .modal-footer {
+    flex-direction: row;
+    border-top-width: 1px;
+    border-top-color: #f0f0f0;
+    border-top-style: solid;
+  }
 
+  .modal-btn {
+    flex: 1;
+    padding: 14px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cancel-btn {
+    border-right-width: 1px;
+    border-right-color: #f0f0f0;
+    border-right-style: solid;
+  }
+
+  .modal-btn-text {
+    font-size: 16px;
+    color: #007aff;
+  }
+
+  .cancel-btn .modal-btn-text {
+    color: #999999;
+  }
 </style>
