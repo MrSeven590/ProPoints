@@ -11,6 +11,21 @@ import type { EntryBinCardState, LiangTangRoleData, DuiQuWorkerData } from '../m
 import type { BinInfo } from './ScoreAllocator.uts'
 import { allocateCrossBinPoints } from './ScoreAllocator.uts'
 
+export type EntryDerivedStateInput = {
+  crossBinPersonId: number | null
+  binCardsData: Map<number, EntryBinCardState>
+  liangTangRolesData: Map<string, LiangTangRoleData>
+  duiQuWorkers: DuiQuWorkerData[]
+  showCrossBinSection: boolean
+  stageBinInfos: StageBinInfo[]
+  crossBinPointsUnits: number
+}
+
+export type EntryDerivedState = {
+  occupiedIds: number[]
+  crossBinSources: AssignmentSourceCreateParams[]
+}
+
 export function deriveOccupiedPersonIds(
   crossBinPersonId: number | null,
   binCardsData: Map<number, EntryBinCardState>,
@@ -82,4 +97,20 @@ export function deriveCrossBinSources(
 
   const result = allocateCrossBinPoints(binInfos, crossBinPointsUnits)
   return result.sources
+}
+
+export function deriveEntryDerivedState(input: EntryDerivedStateInput): EntryDerivedState {
+  return {
+    occupiedIds: deriveOccupiedPersonIds(
+      input.crossBinPersonId,
+      input.binCardsData,
+      input.liangTangRolesData,
+      input.duiQuWorkers
+    ),
+    crossBinSources: deriveCrossBinSources(
+      input.showCrossBinSection,
+      input.stageBinInfos,
+      input.crossBinPointsUnits
+    )
+  } as EntryDerivedState
 }

@@ -445,10 +445,7 @@ import type {
 } from "../../domain/models/session.uts";
 import { getRoleName as _getRoleName } from "../../domain/models/assignment.uts";
 import type { SessionStatus } from "../../domain/models/types.uts";
-import {
-  deriveOccupiedPersonIds,
-  deriveCrossBinSources,
-} from "../../domain/services/entry-state-deriver.uts";
+import { deriveEntryDerivedState } from "../../domain/services/entry-state-deriver.uts";
 import {
   saveDraftSession,
   saveSubmittedSession,
@@ -1510,48 +1507,44 @@ export default {
 
     /**
      * 仓位/曲坯数等仓相关事实源变更后的统一后处理入口
+     * 保留 wrapper 兼容既有调用点，内部收口到统一派生态刷新入口。
      */
     afterBinStateChanged(shouldScheduleSave: boolean) {
-      this.updateOccupiedIds();
-      if (this.showLiangTangSection == true) {
-        this.updateLiangTangPoolCache();
-      }
-      if (this.showDuiQuSection == true) {
-        this.updateDuiQuPoolCache();
-      }
-      this.recalculateCrossBinSources();
-      if (shouldScheduleSave == true) {
-        this.scheduleAutoSave();
-      }
+      this.refreshDerivedStateAndMaybeSave(shouldScheduleSave);
     },
 
     /**
      * 人员分配事实源变更后的统一后处理入口
+     * 保留 wrapper 兼容既有调用点，内部收口到统一派生态刷新入口。
      */
     afterAssignmentStateChanged(shouldScheduleSave: boolean) {
-      this.updateOccupiedIds();
-      if (shouldScheduleSave == true) {
-        this.scheduleAutoSave();
-      }
+      this.refreshDerivedStateAndMaybeSave(shouldScheduleSave);
     },
 
     /**
      * 跨仓事实源变更后的统一后处理入口
+     * 保留 wrapper 兼容既有调用点，内部收口到统一派生态刷新入口。
      */
     afterCrossBinStateChanged(shouldScheduleSave: boolean) {
-      this.updateOccupiedIds();
-      this.recalculateCrossBinSources();
-      if (shouldScheduleSave == true) {
-        this.scheduleAutoSave();
-      }
+      this.refreshDerivedStateAndMaybeSave(shouldScheduleSave);
     },
 
     /**
-     * 还原页面状态后的派生态统一刷新入口，不触发自动保存
+     * 刷新页面派生态。只读取事实源并赋值，不触发自动保存。
      */
-    refreshDerivedStateAfterApply() {
-      this.updateOccupiedIds();
-      this.recalculateCrossBinSources();
+    refreshDerivedState() {
+      const derivedState = deriveEntryDerivedState({
+        crossBinPersonId: this.crossBinPersonId,
+        binCardsData: this.binCardsData,
+        liangTangRolesData: this.liangTangRolesData,
+        duiQuWorkers: this.duiQuWorkers,
+        showCrossBinSection: this.showCrossBinSection,
+        stageBinInfos: this.stageBinInfos,
+        crossBinPointsUnits: this.crossBinPointsUnits,
+      });
+      this.occupiedIds = derivedState.occupiedIds;
+      this.crossBinSources = derivedState.crossBinSources;
+
       if (this.showLiangTangSection == true) {
         this.updateLiangTangPoolCache();
       }
@@ -1561,15 +1554,21 @@ export default {
     },
 
     /**
-     * 更新人员互斥列表
+     * 刷新页面派生态，并按原有调用方传入条件决定是否调度自动保存。
      */
-    updateOccupiedIds() {
-      this.occupiedIds = deriveOccupiedPersonIds(
-        this.crossBinPersonId,
-        this.binCardsData,
-        this.liangTangRolesData,
-        this.duiQuWorkers,
-      );
+    refreshDerivedStateAndMaybeSave(shouldScheduleSave: boolean) {
+      this.refreshDerivedState();
+      if (shouldScheduleSave == true) {
+        this.scheduleAutoSave();
+      }
+    },
+
+    /**
+     * 还原页面状态后的派生态统一刷新入口，不触发自动保存。
+     * 兼容旧调用名，内部委托到 refreshDerivedState。
+     */
+    refreshDerivedStateAfterApply() {
+      this.refreshDerivedState();
     },
 
     /**
@@ -2497,22 +2496,6 @@ export default {
     fillBonus() {
       this.sessionBonusUnits = this.totalAllocatedUnits - this.totalPoolUnits + this.sessionBonusUnits
       this.scheduleAutoSave()
-    },
-
-    /**
-     * 重新计算跨仓工分分配
-     * 当曲坯数变更、仓集合变更或跨仓工分变更时调用
-     * 确保 crossBinSources 与当前 stageBinInfos 和 crossBinPointsUnits 一致。
-     *
-     * 业务语义：crossBinSources 是自动派生快照，不是用户可编辑业务事实源。
-     * 保存它是为了来源预览/落库回显可追溯；任何事实源变化都会按算法覆盖旧快照。
-     */
-    recalculateCrossBinSources() {
-      this.crossBinSources = deriveCrossBinSources(
-        this.showCrossBinSection,
-        this.stageBinInfos,
-        this.crossBinPointsUnits,
-      );
     }
   },
 };
