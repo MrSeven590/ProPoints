@@ -71,12 +71,28 @@ export function getDraftIndexKey(): string {
 }
 
 /**
+ * 人员索引 Key 前缀
+ * 格式: pp:idx:person:
+ */
+export function getPersonIndexKeyPrefix(): string {
+  return `${KEY_PREFIX}:idx:person:`
+}
+
+/**
  * 人员索引 Key
  * 格式: pp:idx:person:{personId}
  * 存储: 该人员参与的所有会话 key 列表
  */
 export function getPersonIndexKey(personId: number): string {
-  return `${KEY_PREFIX}:idx:person:${personId}`
+  return `${getPersonIndexKeyPrefix()}${personId}`
+}
+
+/**
+ * 发酵仓索引 Key 前缀
+ * 格式: pp:idx:bin:
+ */
+export function getBinIndexKeyPrefix(): string {
+  return `${KEY_PREFIX}:idx:bin:`
 }
 
 /**
@@ -85,7 +101,7 @@ export function getPersonIndexKey(personId: number): string {
  * 存储: 该发酵仓参与的所有会话 key 列表
  */
 export function getBinIndexKey(classNo: number, floorNo: number, seqNo: number): string {
-  return `${KEY_PREFIX}:idx:bin:${classNo}-${floorNo}-${seqNo}`
+  return `${getBinIndexKeyPrefix()}${classNo}-${floorNo}-${seqNo}`
 }
 
 // ============ 配置类 Key ============

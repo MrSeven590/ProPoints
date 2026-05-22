@@ -10,7 +10,9 @@ import {
   getDateIndexKey,
   getDraftIndexKey,
   getPersonIndexKey,
+  getPersonIndexKeyPrefix,
   getBinIndexKey,
+  getBinIndexKeyPrefix,
   getPersonsKey,
   getBinsKey,
   getRoundsKey,
@@ -139,6 +141,158 @@ export function getIndexList(indexKey: string): string[] {
   return items as string[]
 }
 
+function addUniqueNumber(target: number[], value: number | null): void {
+  if (value == null) {
+    return
+  }
+  if (target.indexOf(value) == -1) {
+    target.push(value)
+  }
+}
+
+function addSessionWorkerPersonIds(target: number[], workersRaw: any): void {
+  if (workersRaw == null) {
+    return
+  }
+  const workers = workersRaw as UTSJSONObject[]
+  for (let i = 0; i < workers.length; i++) {
+    const personId = workers[i]['person_id'] as number | null
+    addUniqueNumber(target, personId)
+  }
+}
+
+/**
+ * 从会话 JSON 中提取参与人员 ID。
+ * 覆盖仓内 workers、跨仓人员、晾堂各岗位、堆曲 workers；仅索引 person_id 非空的数据。
+ */
+export function extractPersonIdsFromSession(sessionData: UTSJSONObject): number[] {
+  const ids: number[] = []
+
+  const binsRaw = sessionData['bins']
+  if (binsRaw != null) {
+    const bins = binsRaw as UTSJSONObject[]
+    for (let i = 0; i < bins.length; i++) {
+      addSessionWorkerPersonIds(ids, bins[i]['workers'])
+    }
+  }
+
+  const crossBinRaw = sessionData['cross_bin']
+  if (crossBinRaw != null) {
+    const crossBin = crossBinRaw as UTSJSONObject
+    if (crossBin['enabled'] == true) {
+      addUniqueNumber(ids, crossBin['person_id'] as number | null)
+    }
+  }
+
+  const liangTangRaw = sessionData['liang_tang']
+  if (liangTangRaw != null) {
+    const liangTang = liangTangRaw as UTSJSONObject
+    addSessionWorkerPersonIds(ids, liangTang['WHEAT_MATERIAL'])
+    addSessionWorkerPersonIds(ids, liangTang['MACHINE_GUARD'])
+    addSessionWorkerPersonIds(ids, liangTang['KOJI_UNLOADER'])
+    addSessionWorkerPersonIds(ids, liangTang['MICRO_OPERATOR'])
+  }
+
+  const duiQuRaw = sessionData['dui_qu']
+  if (duiQuRaw != null) {
+    const duiQu = duiQuRaw as UTSJSONObject
+    addSessionWorkerPersonIds(ids, duiQu['workers'])
+  }
+
+  return ids
+}
+
+function addUniqueBinIndexKey(target: string[], classNo: number | null, floorNo: number | null, seqNo: number | null): void {
+  if (classNo == null || floorNo == null || seqNo == null) {
+    return
+  }
+  const key = getBinIndexKey(classNo, floorNo, seqNo)
+  if (target.indexOf(key) == -1) {
+    target.push(key)
+  }
+}
+
+/**
+ * 从会话 JSON 中提取发酵仓索引 key。
+ * 以 SessionData.bins[].class_no/floor_no/seq_no 为唯一来源，避免依赖展示用 bin_code 字符串解析。
+ */
+export function extractBinIndexKeysFromSession(sessionData: UTSJSONObject): string[] {
+  const keys: string[] = []
+  const binsRaw = sessionData['bins']
+  if (binsRaw == null) {
+    return keys
+  }
+
+  const bins = binsRaw as UTSJSONObject[]
+  for (let i = 0; i < bins.length; i++) {
+    addUniqueBinIndexKey(
+      keys,
+      bins[i]['class_no'] as number | null,
+      bins[i]['floor_no'] as number | null,
+      bins[i]['seq_no'] as number | null
+    )
+  }
+  return keys
+}
+
+function addSessionToPersonBinIndexes(sessionKey: string, sessionData: UTSJSONObject): void {
+  const personIds = extractPersonIdsFromSession(sessionData)
+  for (let i = 0; i < personIds.length; i++) {
+    addToIndex(getPersonIndexKey(personIds[i]), sessionKey)
+  }
+
+  const binIndexKeys = extractBinIndexKeysFromSession(sessionData)
+  for (let i = 0; i < binIndexKeys.length; i++) {
+    addToIndex(binIndexKeys[i], sessionKey)
+  }
+}
+
+function removeSessionFromPersonBinIndexes(sessionKey: string, sessionData: UTSJSONObject): void {
+  const personIds = extractPersonIdsFromSession(sessionData)
+  for (let i = 0; i < personIds.length; i++) {
+    removeFromIndex(getPersonIndexKey(personIds[i]), sessionKey)
+  }
+
+  const binIndexKeys = extractBinIndexKeysFromSession(sessionData)
+  for (let i = 0; i < binIndexKeys.length; i++) {
+    removeFromIndex(binIndexKeys[i], sessionKey)
+  }
+}
+
+function clearPersonBinIndexes(): void {
+  const info = uni.getStorageInfoSync()
+  const keys = info.keys
+  const personPrefix = getPersonIndexKeyPrefix()
+  const binPrefix = getBinIndexKeyPrefix()
+
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i]
+    if (key.startsWith(personPrefix) || key.startsWith(binPrefix)) {
+      removeData(key)
+    }
+  }
+}
+
+/**
+ * 重建已提交会话的 person/bin 索引。
+ * 用于历史数据补索引或索引损坏自愈；草稿和缺失数据会被跳过。
+ */
+export function rebuildPersonBinIndexes(): void {
+  clearPersonBinIndexes()
+
+  const keys = listAllSessionKeys()
+  for (let i = 0; i < keys.length; i++) {
+    const parsed = parseSessionKey(keys[i])
+    if (parsed == null) {
+      continue
+    }
+    const sessionData = loadData(keys[i])
+    if (sessionData != null && sessionData['status'] == 'submitted') {
+      addSessionToPersonBinIndexes(keys[i], sessionData)
+    }
+  }
+}
+
 // ============ 会话数据操作（草稿/已提交分离） ============
 
 /**
@@ -165,7 +319,7 @@ export function saveDraftSession(
 }
 
 /**
- * 保存已提交会话数据（写入正式 key + 正式日期索引）
+ * 保存已提交会话数据（写入正式 key + 正式日期索引 + person/bin 索引）
  * 同时删除对应草稿（draft key + 全局草稿索引）
  * @param date 日期 YYYY-MM-DD
  * @param stageCode 环节代码
@@ -182,10 +336,16 @@ export function saveSubmittedSession(
   sessionData['status'] = 'submitted'
 
   const key = getSessionKey(date, stageCode, roundId)
+  const oldSessionData = loadData(key)
+  if (oldSessionData != null) {
+    removeSessionFromPersonBinIndexes(key, oldSessionData)
+  }
+
   saveData(key, sessionData)
 
-  // 更新正式日期索引
+  // 更新正式日期索引与 person/bin 索引
   addToIndex(getDateIndexKey(date), key)
+  addSessionToPersonBinIndexes(key, sessionData)
 
   // 删除草稿
   deleteDraftSession(date, stageCode, roundId)
@@ -240,6 +400,10 @@ export function deleteSession(
   roundId: number | null
 ): void {
   const key = getSessionKey(date, stageCode, roundId)
+  const oldSessionData = loadData(key)
+  if (oldSessionData != null) {
+    removeSessionFromPersonBinIndexes(key, oldSessionData)
+  }
   removeData(key)
   removeFromIndex(getDateIndexKey(date), key)
 }
