@@ -137,14 +137,51 @@ function writeWorkerPersonPenaltyFields(target: UTSJSONObject, personId: number 
   return target
 }
 
-function parseSessionWorkerStorageData(w: UTSJSONObject): SessionWorkerStorageData {
-  return writeWorkerPersonPenaltyFields({} as UTSJSONObject, readWorkerPersonId(w), readWorkerPersonName(w), readWorkerPointsUnits(w), readWorkerDeductedUnits(w), readWorkerPenaltyReason(w), readWorkerPenaltyId(w)) as SessionWorkerStorageData
+function buildSessionWorkerStorageData(personId: number | null, personName: string, pointsUnits: PointsUnits, deductedUnits: PointsUnits, penaltyReason: string, penaltyId: number | null): SessionWorkerStorageData {
+  return {
+    person_id: personId,
+    person_name: personName,
+    points_units: pointsUnits,
+    deducted_units: deductedUnits,
+    penalty_reason: penaltyReason,
+    penalty_id: penaltyId
+  } as SessionWorkerStorageData
 }
 
-function parsePositionedStorageWorkerData(w: UTSJSONObject, defaultPositionIndex: number): UTSJSONObject {
-  const worker = writeWorkerPersonPenaltyFields({} as UTSJSONObject, readWorkerPersonId(w), readWorkerPersonName(w), readWorkerPointsUnits(w), readWorkerDeductedUnits(w), readWorkerPenaltyReason(w), readWorkerPenaltyId(w))
-  worker['position_index'] = readWorkerPositionIndex(w, defaultPositionIndex)
-  return worker
+function buildSessionBinStorageWorkerData(personId: number | null, personName: string, pointsUnits: PointsUnits, positionIndex: number, deductedUnits: PointsUnits, penaltyReason: string, penaltyId: number | null): SessionBinStorageWorkerData {
+  return {
+    person_id: personId,
+    person_name: personName,
+    points_units: pointsUnits,
+    position_index: positionIndex,
+    deducted_units: deductedUnits,
+    penalty_reason: penaltyReason,
+    penalty_id: penaltyId
+  } as SessionBinStorageWorkerData
+}
+
+function buildDuiQuStorageWorkerData(personId: number | null, personName: string, pointsUnits: PointsUnits, positionIndex: number, deductedUnits: PointsUnits, penaltyReason: string, penaltyId: number | null): DuiQuStorageWorkerData {
+  return {
+    person_id: personId,
+    person_name: personName,
+    points_units: pointsUnits,
+    position_index: positionIndex,
+    deducted_units: deductedUnits,
+    penalty_reason: penaltyReason,
+    penalty_id: penaltyId
+  } as DuiQuStorageWorkerData
+}
+
+function parseSessionWorkerStorageData(w: UTSJSONObject): SessionWorkerStorageData {
+  return buildSessionWorkerStorageData(readWorkerPersonId(w), readWorkerPersonName(w), readWorkerPointsUnits(w), readWorkerDeductedUnits(w), readWorkerPenaltyReason(w), readWorkerPenaltyId(w))
+}
+
+function parsePositionedBinStorageWorkerData(w: UTSJSONObject, defaultPositionIndex: number): SessionBinStorageWorkerData {
+  return buildSessionBinStorageWorkerData(readWorkerPersonId(w), readWorkerPersonName(w), readWorkerPointsUnits(w), readWorkerPositionIndex(w, defaultPositionIndex), readWorkerDeductedUnits(w), readWorkerPenaltyReason(w), readWorkerPenaltyId(w))
+}
+
+function parseDuiQuStorageWorkerData(w: UTSJSONObject, defaultPositionIndex: number): DuiQuStorageWorkerData {
+  return buildDuiQuStorageWorkerData(readWorkerPersonId(w), readWorkerPersonName(w), readWorkerPointsUnits(w), readWorkerPositionIndex(w, defaultPositionIndex), readWorkerDeductedUnits(w), readWorkerPenaltyReason(w), readWorkerPenaltyId(w))
 }
 
 function serializeStorageWorkerData(worker: SessionWorkerStorageData): UTSJSONObject {
@@ -255,7 +292,7 @@ function parseBins(binsRaw: UTSJSONObject[] | null): SessionBinData[] {
     const workers: SessionBinStorageWorkerData[] = []
     if (workersRaw != null) {
       for (let j = 0; j < workersRaw.length; j++) {
-        workers.push(parsePositionedStorageWorkerData(workersRaw[j], j + 1) as SessionBinStorageWorkerData)
+        workers.push(parsePositionedBinStorageWorkerData(workersRaw[j], j + 1))
       }
     }
 
@@ -361,7 +398,7 @@ function parseDuiQu(duiQuRaw: UTSJSONObject | null): SessionDuiQuData | null {
   const workers: DuiQuStorageWorkerData[] = []
   if (workersRaw != null) {
     for (let i = 0; i < workersRaw.length; i++) {
-      workers.push(parsePositionedStorageWorkerData(workersRaw[i], i + 1) as DuiQuStorageWorkerData)
+      workers.push(parseDuiQuStorageWorkerData(workersRaw[i], i + 1))
     }
   }
 
@@ -704,9 +741,7 @@ export function entryPageStateToSessionData(
     if (cardData != null) {
       for (let j = 0; j < cardData.workers.length; j++) {
         const worker = cardData.workers[j]
-        const storageWorker = writeWorkerPersonPenaltyFields({} as UTSJSONObject, worker.personId, worker.personName, worker.pointsUnits, worker.deductedUnits, worker.penaltyReason, worker.penaltyId)
-        storageWorker['position_index'] = worker.positionIndex
-        workers.push(storageWorker as SessionBinStorageWorkerData)
+        workers.push(buildSessionBinStorageWorkerData(worker.personId, worker.personName, worker.pointsUnits, worker.positionIndex, worker.deductedUnits, worker.penaltyReason, worker.penaltyId))
       }
     }
 
@@ -793,9 +828,7 @@ export function entryPageStateToSessionData(
     const workers: DuiQuStorageWorkerData[] = []
     for (let i = 0; i < state.duiQuWorkers.length; i++) {
       const worker = state.duiQuWorkers[i]
-      const storageWorker = writeWorkerPersonPenaltyFields({} as UTSJSONObject, worker.personId, worker.personName, worker.pointsUnits, worker.deductedUnits, worker.penaltyReason, worker.penaltyId)
-      storageWorker['position_index'] = worker.positionIndex
-      workers.push(storageWorker as DuiQuStorageWorkerData)
+      workers.push(buildDuiQuStorageWorkerData(worker.personId, worker.personName, worker.pointsUnits, worker.positionIndex, worker.deductedUnits, worker.penaltyReason, worker.penaltyId))
     }
 
     duiQu = {
