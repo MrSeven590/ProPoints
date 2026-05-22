@@ -1,5 +1,7 @@
 # Phase 2 Implementation Guide
 
+> **历史计划 / 背景参考**：本文记录 Phase 2 核心数据流强类型化的原始分步方案。当前核心链路已基本 typed，后续判断以 `A-G架构重复问题收口推进计划.md`、当前代码复核和运行验证为准；不要把本文中的历史 checklist 重新当作待办逐项执行。
+
 ## 总体策略说明
 
 Phase 2 的目标不是一次性“清零所有 UTSJSONObject”，而是把 `entry.uvue -> Validator -> Storage` 的核心数据流改造成“内部强类型、边界弱类型”的结构。

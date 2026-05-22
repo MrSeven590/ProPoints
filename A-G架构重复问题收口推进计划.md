@@ -11,7 +11,7 @@
 - 当前总体状态；
 - A-G 问题现状；
 - 已完成修复；
-- 剩余 2~3 轮推进计划；
+- 第 1~3 轮执行状态与阶段准入判断；
 - 验证清单；
 - 推进原则与禁止事项。
 
@@ -33,15 +33,16 @@
 - `components/biz-cross-bin-input/biz-cross-bin-input.uvue` 的 `externalSources` 已使用 `AssignmentSourceCreateParams[]`；
 - `pages/work/entry.uvue` 的 `onCrossBinChange(payload: CrossBinChangePayload)` 已直接接收 typed payload。
 
-因此，后续推进重点应从“建核心 typed 架构”转为“清理重复过渡层、固化边界契约、补齐运行验证”。
+因此，后续推进重点已从“建核心 typed 架构”转为“清理重复过渡层、固化边界契约、补齐运行验证”。截至第 3 轮只读复核，核心录入代码链路已基本 typed，本轮不建议继续改业务代码，优先做文档对齐与阶段准入记录。
 
 ### 2.2 当前阶段定位
 
 可将当前状态视为：
 
 - **Phase 2 主链路基本完成**：读链、写链、Validator typed 入口、storage adapter 已具备；
-- **Phase 3 组件边界 typed 化已推进到较后阶段**：role-card、bin-card、cross-bin 三个关键边界已出现 typed 形态；
-- **剩余风险主要在收尾质量**：残余弱类型搜索、重复 helper 清理、组件 emit payload 契约核对、运行路径回归验证。
+- **Phase 3 组件边界 typed 化已基本完成核心范围**：role-card、bin-card、cross-bin 三个关键边界已呈 typed 形态；
+- **第 1、2 轮复核/收口已完成，当前处于第 3 轮收尾准入**：本轮以文档对齐、合法边界标注、验证记录为主；
+- **剩余风险主要在运行验证**：需继续通过真实设备 / HBuilderX 日志确认无 cast、null、payload 字段缺失等运行态异常。
 
 ### 2.3 不应误判的点
 
@@ -53,15 +54,15 @@
 
 ## 三、A-G 问题现状表
 
-| 编号 | 问题类别 | 典型表现 | 当前状态 | 后续处理建议 |
-| --- | --- | --- | --- | --- |
-| A | 页面、存储、校验之间重复 JSON 映射 | `entry.uvue`、`Validator`、storage 各自拆装 `bins/cross_bin/liang_tang/dui_qu` | **基本收口**。adapter 与 typed session 主链路已存在 | 后续只做残余检查，不再大改主链路 |
-| B | 页面内部重复弱类型状态 | 页面核心状态曾同时存在 typed state、`UTSJSONObject[]` 镜像、Map/数组双轨事实源 | **大部分收口**。`SessionEntryPageState`、`EntryBinCardState`、`SessionWorkerData` 等已成为主表达 | 检查 `entry.uvue` 是否仍有不必要的本地重复类型或反向镜像写入 |
-| C | 组件边界重复 payload 协议 | 页面 typed，但传给组件前又转成 legacy `UTSJSONObject[]`；组件 emit 弱类型 payload | **已显著改善**。role-card、bin-card、cross-bin 已看到 typed props / typed payload | 下一轮优先核对 emit payload、watcher、初始化函数是否全链路 typed |
-| D | snake_case / camelCase 混用 | storage DTO 与 page state 字段命名混在同一层 | **已建立边界规则**：storage DTO 用 snake_case，page state 用 camelCase，adapter 负责转换 | 继续搜索越层字段，避免 `entry.uvue` 直接处理 storage DTO 细节 |
-| E | Validator 兼容逻辑重复 | Validator 既解析 raw JSON，又承担业务规则，导致页面字段兼容逻辑散落 | **基本收口**。`validateTypedSessionData` 已存在，旧入口作为兼容 wrapper | 保持规则层只面向 DTO / normalized 结构，不再新增页面字段兼容分支 |
-| F | 运行时 cast / null 风险 | `SessionPenaltyWorkerData cannot be cast to UTSJSONObject`、payload 字段缺失 | **已进入重点验证阶段**。role-card typed 化直接针对该类风险 | 每轮必须查看运行日志，重点排除 cast、null、payload 结构异常 |
-| G | 文档、计划与当前实现不同步 | Phase 2 / Phase 3 文档中仍有“待做”项，但代码已有部分实现 | **需要收口**。本文用于重新对齐当前状态 | 后续推进以代码只读复核为准，旧计划只作背景参考 |
+| 编号 | 问题类别                           | 典型表现                                                                          | 当前状态                                                                                                                                                                 | 后续处理建议                                                       |
+| ---- | ---------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| A    | 页面、存储、校验之间重复 JSON 映射 | `entry.uvue`、`Validator`、storage 各自拆装 `bins/cross_bin/liang_tang/dui_qu`    | **基本收口**。adapter 与 typed session 主链路已存在                                                                                                                      | 后续只做残余检查，不再大改主链路                                   |
+| B    | 页面内部重复弱类型状态             | 页面核心状态曾同时存在 typed state、`UTSJSONObject[]` 镜像、Map/数组双轨事实源    | **大部分收口**。`SessionEntryPageState`、`EntryBinCardState`、`SessionWorkerData` 等已成为主表达                                                                         | 检查 `entry.uvue` 是否仍有不必要的本地重复类型或反向镜像写入       |
+| C    | 组件边界重复 payload 协议          | 页面 typed，但传给组件前又转成 legacy `UTSJSONObject[]`；组件 emit 弱类型 payload | **核心范围已基本收口**。role-card、bin-card、cross-bin 已看到 typed props / typed payload，entry 中未发现 `toBinWorkerPayload` / `parseCrossBinChangePayload` 主路径残留 | 后续以运行回归和局部复核为主，不再大改组件边界                     |
+| D    | snake_case / camelCase 混用        | storage DTO 与 page state 字段命名混在同一层                                      | **已建立边界规则**：storage DTO 用 snake_case，page state 用 camelCase，adapter 负责转换                                                                                 | 继续防止越层字段；不要删除 adapter 的合法 storage 边界转换         |
+| E    | Validator 兼容逻辑重复             | Validator 既解析 raw JSON，又承担业务规则，导致页面字段兼容逻辑散落               | **基本收口**。`validateTypedSessionData` 已存在，旧入口作为兼容 wrapper                                                                                                  | 保持规则层 typed 主入口；旧兼容入口可保留，不作为核心录入页主路径  |
+| F    | 运行时 cast / null 风险            | `SessionPenaltyWorkerData cannot be cast to UTSJSONObject`、payload 字段缺失      | **进入准入验证阶段**。代码链路已基本 typed，风险主要靠运行日志确认                                                                                                       | 必须通过 HBuilderX / 真机日志继续排除 cast、null、payload 结构异常 |
+| G    | 文档、计划与当前实现不同步         | Phase 2 / Phase 3 文档中仍有“待做”项，但代码已有部分实现                          | **本轮已对齐**。本文记录当前代码复核结论；旧 Phase 2 / Phase 3 计划仅作历史背景参考                                                                                      | 后续推进以 A-G 收口计划、当前代码复核和运行验证为准                |
 
 ---
 
@@ -110,15 +111,19 @@
 
 当前已有可参考资料：
 
-- `PHASE2_IMPLEMENTATION_GUIDE.md`：核心数据流强类型化的分步方案；
-- `PHASE3_COMMIT_SPLIT_PLAN.md`：三个组件边界 typed 化的 commit 切分方案；
-- 本文：基于当前复核结果，对 A-G 重复问题进行后续收口排程。
+- `PHASE2_IMPLEMENTATION_GUIDE.md`：核心数据流强类型化的历史分步方案，当前不再作为待办逐项执行；
+- `PHASE3_COMMIT_SPLIT_PLAN.md`：三个组件边界 typed 化的历史 commit 切分方案，当前不再作为待办逐项执行；
+- 本文：基于当前复核结果，对 A-G 重复问题进行收尾判断与阶段准入记录。
+
+> 第 3 轮代码复核结论：`entry.uvue` 已走 `buildSessionDataFromState` / `entryPageStateToSessionData` 与 `validateTypedSessionData`；三个核心组件 props、watcher、内部状态已基本 typed；`session-adapter`、`default-data-parser`、`Validator` 中的 `UTSJSONObject` 多属于 storage、默认数据解析、旧兼容入口、i18n 消息模板等合法边界，不作为清零目标。
 
 ---
 
-## 五、剩余 2~3 轮推进计划
+## 五、第 1~3 轮执行状态与阶段准入判断
 
 ## 第 1 轮：组件边界 typed 契约复核与残余 legacy 清理
+
+**执行状态：已完成核心范围复核与必要收口。** 当前复核未发现 `entry.uvue` 仍以 `toBinWorkerPayload` / `parseCrossBinChangePayload` 作为主路径；role-card、bin-card、cross-bin 的 props、watcher、内部状态已基本 typed。后续不再按本轮清单逐项改业务代码，仅保留运行回归与局部问题止损。
 
 ### 目标
 
@@ -167,6 +172,8 @@
 ---
 
 ## 第 2 轮：页面事实源与保存 / 校验主链路收口验证
+
+**执行状态：已完成主链路复核与收口判断。** `entry.uvue` 当前已走 `buildSessionDataFromState` / `entryPageStateToSessionData` 构造 typed session，并使用 `validateTypedSessionData` 作为提交校验主入口；保存、提交、校验不再按历史计划继续拆业务链路。后续重点是保存后重载、日期 / 轮次切换和运行日志验证。
 
 ### 目标
 
@@ -217,7 +224,9 @@
 
 ## 第 3 轮：收尾清理、文档对齐与阶段准入
 
-> 若第 1、2 轮已完全通过，可将本轮压缩为一次收尾 commit；若前两轮发现较多遗留，则本轮单独执行。
+**执行状态：进行文档对齐与阶段准入记录。** 根据当前分析 / QA 结论，本轮最小安全实现仅更新计划文档，不改 `entry.uvue`、三个核心组件、adapter、Validator、default-data-parser 等业务链路；不删除合法 `UTSJSONObject` 边界。
+
+> 第 1、2 轮核心范围已通过代码复核，本轮压缩为一次文档收尾 commit；如后续运行验证发现具体问题，应回到对应组件或链路做最小修复，而不是重启大范围 typed 改造。
 
 ### 目标
 
@@ -227,20 +236,15 @@
 
 重点文件：
 
-- `pages/work/entry.uvue`
-- `components/biz-session-role-card/biz-session-role-card.uvue`
-- `components/biz-bin-card/biz-bin-card.uvue`
-- `components/biz-cross-bin-input/biz-cross-bin-input.uvue`
-- `domain/services/session-adapter.uts`
-- `domain/services/Validator.uts`
-- 相关 Markdown 计划文档
+- 相关 Markdown 计划文档；
+- 仅作只读复核参考：`pages/work/entry.uvue`、三个核心组件、`domain/services/session-adapter.uts`、`domain/services/Validator.uts`、`domain/services/default-data-parser.uts`。
 
 重点检查：
 
-- 删除或标注已废弃的 legacy helper；
-- 清理误导性注释；
-- 更新旧计划中已经完成但仍标为待做的内容；
-- 建立后续 Phase 4 不应破坏的 typed 边界；
+- 标注 Phase 2 / Phase 3 旧计划属于历史执行计划 / 背景参考；
+- 更新旧计划中已经完成但仍容易被误读为待做的内容；
+- 明确后续 Phase 4 不应破坏 typed 主路径和 adapter 边界；
+- 明确 `session-adapter`、`default-data-parser`、`Validator` 中 storage / 默认数据解析 / 旧兼容入口 / i18n 消息模板相关 `UTSJSONObject` 属于合法保留边界；
 - 形成最终搜索与验证记录。
 
 ### 验收
