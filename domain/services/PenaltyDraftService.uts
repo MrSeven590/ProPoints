@@ -28,6 +28,14 @@ export type PenaltyDraftSaveCheck = {
 }
 
 /**
+ * 保存时写回组件/页面的扣分值
+ */
+export type PenaltyDraftCommit = {
+  deductedUnits: PointsUnits
+  reason: string
+}
+
+/**
  * 创建空草稿
  */
 export function createEmptyPenaltyDraft(): PenaltyDraft {
@@ -140,7 +148,7 @@ export function checkPenaltyDraftBeforeSave(draft: PenaltyDraft): PenaltyDraftSa
 /**
  * 读取草稿写回值：扣分为 0 时清空原因；否则去掉首尾空白。
  */
-export function resolvePenaltyDraftCommit(draft: PenaltyDraft): { deductedUnits: PointsUnits, reason: string } {
+export function resolvePenaltyDraftCommit(draft: PenaltyDraft): PenaltyDraftCommit {
   return {
     deductedUnits: draft.deductedUnits,
     reason: draft.deductedUnits > 0 ? draft.reason.trim() : ''
