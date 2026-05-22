@@ -9,5 +9,5 @@ export * from './PersonSearchService.uts'
 export * from './PinyinMatchService.uts'
 export * from './RoundService.uts'
 export * from './StageCoefService.uts'
-export * from './PenaltyService.uts'
+
 export * from './session-adapter.uts'

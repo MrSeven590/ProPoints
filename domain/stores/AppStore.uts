@@ -1441,10 +1441,3 @@ function applyBundleImportInStore(payload: BundlePayload, resolvedRoundId: numbe
     errors: configResult.errors.concat(anquResult.errors)
   }
 }
-
-/**
- * 应用传输数据(旧接口,保持向后兼容)
- */
-export function applyTransferData(payload: AnQuPayload, roundId: number, applyFloorConfig: boolean = true): ImportResult {
-  return applyTransferImport(payload, roundId, applyFloorConfig)
-}
