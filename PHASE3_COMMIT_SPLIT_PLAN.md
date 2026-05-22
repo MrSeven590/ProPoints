@@ -1,6 +1,6 @@
 # Phase 3 三个 Commit 切分清单
 
-> 状态说明：本文是 Phase 3 组件边界 typed 化的历史 commit 切分计划 / 背景资料。当前 role-card、bin-card、cross-bin 三个核心组件边界已按 typed 协议复核收口，文中的顺序建议与 `[ ]` 清单不再表示当前待办；后续以 `A-G架构重复问题收口推进计划.md` 第 3 轮准入条件为准。
+> **历史计划 / 背景参考**：本文记录 Phase 3 组件边界 typed 化的原始 commit 切分。当前 role-card、bin-card、cross-bin 核心边界已基本 typed，后续以 `A-G架构重复问题收口推进计划.md`、当前代码复核和运行验证为准；不要按本文把已完成项重复改业务代码。
 
 ## 背景
 
