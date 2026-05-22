@@ -86,15 +86,81 @@ const LIANG_TANG_ROLE_CODES: RoleCode[] = [
   'KOJI_UNLOADER',
   'MICRO_OPERATOR'
 ]
+
+function readNumberField(source: UTSJSONObject, snakeKey: string, camelKey: string, defaultValue: number): number {
+  return source[snakeKey] != null ? (source[snakeKey] as number) : (source[camelKey] != null ? (source[camelKey] as number) : defaultValue)
+}
+
+function readStringField(source: UTSJSONObject, snakeKey: string, camelKey: string, defaultValue: string): string {
+  return source[snakeKey] != null ? (source[snakeKey] as string) : (source[camelKey] != null ? (source[camelKey] as string) : defaultValue)
+}
+
+function readNullableNumberField(source: UTSJSONObject, snakeKey: string, camelKey: string): number | null {
+  return source[snakeKey] != null ? (source[snakeKey] as number) : (source[camelKey] != null ? (source[camelKey] as number) : null)
+}
+
+function readWorkerPersonId(source: UTSJSONObject): number | null {
+  return readNullableNumberField(source, 'person_id', 'personId')
+}
+
+function readWorkerPersonName(source: UTSJSONObject): string {
+  return readStringField(source, 'person_name', 'personName', '')
+}
+
+function readWorkerPointsUnits(source: UTSJSONObject): PointsUnits {
+  return readNumberField(source, 'points_units', 'pointsUnits', 0)
+}
+
+function readWorkerDeductedUnits(source: UTSJSONObject): PointsUnits {
+  return readNumberField(source, 'deducted_units', 'deductedUnits', 0)
+}
+
+function readWorkerPenaltyReason(source: UTSJSONObject): string {
+  return readStringField(source, 'penalty_reason', 'penaltyReason', '')
+}
+
+function readWorkerPenaltyId(source: UTSJSONObject): number | null {
+  return readNullableNumberField(source, 'penalty_id', 'penaltyId')
+}
+
+function readWorkerPositionIndex(source: UTSJSONObject, defaultPositionIndex: number): number {
+  return readNumberField(source, 'position_index', 'positionIndex', defaultPositionIndex)
+}
+
+function writeWorkerPersonPenaltyFields(target: UTSJSONObject, personId: number | null, personName: string, pointsUnits: PointsUnits, deductedUnits: PointsUnits, penaltyReason: string, penaltyId: number | null): UTSJSONObject {
+  target['person_id'] = personId
+  target['person_name'] = personName
+  target['points_units'] = pointsUnits
+  target['deducted_units'] = deductedUnits
+  target['penalty_reason'] = penaltyReason
+  target['penalty_id'] = penaltyId
+  return target
+}
+
 function parseSessionWorkerStorageData(w: UTSJSONObject): SessionWorkerStorageData {
-  return {
-    person_id: w['person_id'] != null ? (w['person_id'] as number) : (w['personId'] != null ? (w['personId'] as number) : null),
-    person_name: w['person_name'] != null ? (w['person_name'] as string) : (w['personName'] != null ? (w['personName'] as string) : ''),
-    points_units: w['points_units'] != null ? (w['points_units'] as number) : (w['pointsUnits'] != null ? (w['pointsUnits'] as number) : 0),
-    deducted_units: w['deducted_units'] != null ? (w['deducted_units'] as number) : (w['deductedUnits'] != null ? (w['deductedUnits'] as number) : 0),
-    penalty_reason: w['penalty_reason'] != null ? (w['penalty_reason'] as string) : (w['penaltyReason'] != null ? (w['penaltyReason'] as string) : ''),
-    penalty_id: w['penalty_id'] != null ? (w['penalty_id'] as number) : (w['penaltyId'] != null ? (w['penaltyId'] as number) : null)
-  } as SessionWorkerStorageData
+  return writeWorkerPersonPenaltyFields({} as UTSJSONObject, readWorkerPersonId(w), readWorkerPersonName(w), readWorkerPointsUnits(w), readWorkerDeductedUnits(w), readWorkerPenaltyReason(w), readWorkerPenaltyId(w)) as SessionWorkerStorageData
+}
+
+function parsePositionedStorageWorkerData(w: UTSJSONObject, defaultPositionIndex: number): UTSJSONObject {
+  const worker = writeWorkerPersonPenaltyFields({} as UTSJSONObject, readWorkerPersonId(w), readWorkerPersonName(w), readWorkerPointsUnits(w), readWorkerDeductedUnits(w), readWorkerPenaltyReason(w), readWorkerPenaltyId(w))
+  worker['position_index'] = readWorkerPositionIndex(w, defaultPositionIndex)
+  return worker
+}
+
+function serializeStorageWorkerData(worker: SessionWorkerStorageData): UTSJSONObject {
+  return writeWorkerPersonPenaltyFields({} as UTSJSONObject, worker.person_id, worker.person_name, worker.points_units, worker.deducted_units, worker.penalty_reason, worker.penalty_id)
+}
+
+function serializePositionedStorageWorkerData(worker: SessionBinStorageWorkerData): UTSJSONObject {
+  const result = serializeStorageWorkerData(worker as SessionWorkerStorageData)
+  result['position_index'] = worker.position_index
+  return result
+}
+
+function serializeDuiQuStorageWorkerData(worker: DuiQuStorageWorkerData): UTSJSONObject {
+  const result = serializeStorageWorkerData(worker as SessionWorkerStorageData)
+  result['position_index'] = worker.position_index
+  return result
 }
 
 function mapStorageWorkersToSessionWorkers(workersRaw: SessionWorkerStorageData[]): SessionWorkerData[] {
@@ -189,16 +255,7 @@ function parseBins(binsRaw: UTSJSONObject[] | null): SessionBinData[] {
     const workers: SessionBinStorageWorkerData[] = []
     if (workersRaw != null) {
       for (let j = 0; j < workersRaw.length; j++) {
-        const w = workersRaw[j]
-        workers.push({
-          person_id: w['person_id'] != null ? (w['person_id'] as number) : (w['personId'] != null ? (w['personId'] as number) : null),
-          person_name: w['person_name'] != null ? (w['person_name'] as string) : (w['personName'] != null ? (w['personName'] as string) : ''),
-          points_units: w['points_units'] != null ? (w['points_units'] as number) : (w['pointsUnits'] != null ? (w['pointsUnits'] as number) : 0),
-          position_index: w['position_index'] != null ? (w['position_index'] as number) : (w['positionIndex'] != null ? (w['positionIndex'] as number) : j + 1),
-          deducted_units: w['deducted_units'] != null ? (w['deducted_units'] as number) : (w['deductedUnits'] != null ? (w['deductedUnits'] as number) : 0),
-          penalty_reason: w['penalty_reason'] != null ? (w['penalty_reason'] as string) : (w['penaltyReason'] != null ? (w['penaltyReason'] as string) : ''),
-          penalty_id: w['penalty_id'] != null ? (w['penalty_id'] as number) : (w['penaltyId'] != null ? (w['penaltyId'] as number) : null)
-        } as SessionBinStorageWorkerData)
+        workers.push(parsePositionedStorageWorkerData(workersRaw[j], j + 1) as SessionBinStorageWorkerData)
       }
     }
 
@@ -250,13 +307,13 @@ function parseCrossBin(crossBinRaw: UTSJSONObject | null): SessionCrossBinData |
   return {
     enabled: enabled != null ? enabled : false,
     role_code: (crossBinRaw['role_code'] != null ? (crossBinRaw['role_code'] as string) : (crossBinRaw['roleCode'] != null ? (crossBinRaw['roleCode'] as string) : 'CROSS_BIN_YI_FAN')) as RoleCode,
-    role_name: crossBinRaw['role_name'] != null ? (crossBinRaw['role_name'] as string) : (crossBinRaw['roleName'] != null ? (crossBinRaw['roleName'] as string) : ''),
-    person_id: crossBinRaw['person_id'] != null ? (crossBinRaw['person_id'] as number) : (crossBinRaw['personId'] != null ? (crossBinRaw['personId'] as number) : null),
-    person_name: crossBinRaw['person_name'] != null ? (crossBinRaw['person_name'] as string) : (crossBinRaw['personName'] != null ? (crossBinRaw['personName'] as string) : ''),
-    points_units: crossBinRaw['points_units'] != null ? (crossBinRaw['points_units'] as number) : (crossBinRaw['pointsUnits'] != null ? (crossBinRaw['pointsUnits'] as number) : 0),
-    deducted_units: crossBinRaw['deducted_units'] != null ? (crossBinRaw['deducted_units'] as number) : (crossBinRaw['deductedUnits'] != null ? (crossBinRaw['deductedUnits'] as number) : 0),
-    penalty_reason: crossBinRaw['penalty_reason'] != null ? (crossBinRaw['penalty_reason'] as string) : (crossBinRaw['penaltyReason'] != null ? (crossBinRaw['penaltyReason'] as string) : ''),
-    penalty_id: crossBinRaw['penalty_id'] != null ? (crossBinRaw['penalty_id'] as number) : (crossBinRaw['penaltyId'] != null ? (crossBinRaw['penaltyId'] as number) : null),
+    role_name: readStringField(crossBinRaw, 'role_name', 'roleName', ''),
+    person_id: readWorkerPersonId(crossBinRaw),
+    person_name: readWorkerPersonName(crossBinRaw),
+    points_units: readWorkerPointsUnits(crossBinRaw),
+    deducted_units: readWorkerDeductedUnits(crossBinRaw),
+    penalty_reason: readWorkerPenaltyReason(crossBinRaw),
+    penalty_id: readWorkerPenaltyId(crossBinRaw),
     sources: sources
   } as SessionCrossBinData
 }
@@ -304,16 +361,7 @@ function parseDuiQu(duiQuRaw: UTSJSONObject | null): SessionDuiQuData | null {
   const workers: DuiQuStorageWorkerData[] = []
   if (workersRaw != null) {
     for (let i = 0; i < workersRaw.length; i++) {
-      const w = workersRaw[i]
-      workers.push({
-        person_id: w['person_id'] != null ? (w['person_id'] as number) : (w['personId'] != null ? (w['personId'] as number) : null),
-        person_name: w['person_name'] != null ? (w['person_name'] as string) : (w['personName'] != null ? (w['personName'] as string) : ''),
-        points_units: w['points_units'] != null ? (w['points_units'] as number) : (w['pointsUnits'] != null ? (w['pointsUnits'] as number) : 0),
-        position_index: w['position_index'] != null ? (w['position_index'] as number) : (w['positionIndex'] != null ? (w['positionIndex'] as number) : i + 1),
-        deducted_units: w['deducted_units'] != null ? (w['deducted_units'] as number) : (w['deductedUnits'] != null ? (w['deductedUnits'] as number) : 0),
-        penalty_reason: w['penalty_reason'] != null ? (w['penalty_reason'] as string) : (w['penaltyReason'] != null ? (w['penaltyReason'] as string) : ''),
-        penalty_id: w['penalty_id'] != null ? (w['penalty_id'] as number) : (w['penaltyId'] != null ? (w['penaltyId'] as number) : null)
-      } as DuiQuStorageWorkerData)
+      workers.push(parsePositionedStorageWorkerData(workersRaw[i], i + 1) as DuiQuStorageWorkerData)
     }
   }
 
@@ -378,16 +426,7 @@ export function sessionDataToStorageJson(data: SessionData): UTSJSONObject {
     const workersRaw: UTSJSONObject[] = []
 
     for (let j = 0; j < bin.workers.length; j++) {
-      const worker = bin.workers[j]
-      workersRaw.push({
-        person_id: worker.person_id,
-        person_name: worker.person_name,
-        points_units: worker.points_units,
-        position_index: worker.position_index,
-        deducted_units: worker.deducted_units,
-        penalty_reason: worker.penalty_reason,
-        penalty_id: worker.penalty_id
-      } as UTSJSONObject)
+      workersRaw.push(serializePositionedStorageWorkerData(bin.workers[j]))
     }
 
     binsRaw.push({
@@ -435,15 +474,7 @@ export function sessionDataToStorageJson(data: SessionData): UTSJSONObject {
     const serializeWorkers = (workers: SessionWorkerStorageData[]): UTSJSONObject[] => {
       const result: UTSJSONObject[] = []
       for (let i = 0; i < workers.length; i++) {
-        const worker = workers[i]
-        result.push({
-          person_id: worker.person_id,
-          person_name: worker.person_name,
-          points_units: worker.points_units,
-          deducted_units: worker.deducted_units,
-          penalty_reason: worker.penalty_reason,
-          penalty_id: worker.penalty_id
-        } as UTSJSONObject)
+        result.push(serializeStorageWorkerData(workers[i]))
       }
       return result
     }
@@ -460,16 +491,7 @@ export function sessionDataToStorageJson(data: SessionData): UTSJSONObject {
   if (data.dui_qu != null) {
     const workersRaw: UTSJSONObject[] = []
     for (let i = 0; i < data.dui_qu.workers.length; i++) {
-      const worker = data.dui_qu.workers[i]
-      workersRaw.push({
-        person_id: worker.person_id,
-        person_name: worker.person_name,
-        points_units: worker.points_units,
-        position_index: worker.position_index,
-        deducted_units: worker.deducted_units,
-        penalty_reason: worker.penalty_reason,
-        penalty_id: worker.penalty_id
-      } as UTSJSONObject)
+      workersRaw.push(serializeDuiQuStorageWorkerData(data.dui_qu.workers[i]))
     }
 
     duiQuRaw = {
@@ -688,15 +710,9 @@ export function entryPageStateToSessionData(
     if (cardData != null) {
       for (let j = 0; j < cardData.workers.length; j++) {
         const worker = cardData.workers[j]
-        workers.push({
-          person_id: worker.personId,
-          person_name: worker.personName,
-          points_units: worker.pointsUnits,
-          position_index: worker.positionIndex,
-          deducted_units: worker.deductedUnits,
-          penalty_reason: worker.penaltyReason,
-          penalty_id: worker.penaltyId
-        } as SessionBinStorageWorkerData)
+        const storageWorker = writeWorkerPersonPenaltyFields({} as UTSJSONObject, worker.personId, worker.personName, worker.pointsUnits, worker.deductedUnits, worker.penaltyReason, worker.penaltyId)
+        storageWorker['position_index'] = worker.positionIndex
+        workers.push(storageWorker as SessionBinStorageWorkerData)
       }
     }
 
@@ -783,15 +799,9 @@ export function entryPageStateToSessionData(
     const workers: DuiQuStorageWorkerData[] = []
     for (let i = 0; i < state.duiQuWorkers.length; i++) {
       const worker = state.duiQuWorkers[i]
-      workers.push({
-        person_id: worker.personId,
-        person_name: worker.personName,
-        points_units: worker.pointsUnits,
-        position_index: worker.positionIndex,
-        deducted_units: worker.deductedUnits,
-        penalty_reason: worker.penaltyReason,
-        penalty_id: worker.penaltyId
-      } as DuiQuStorageWorkerData)
+      const storageWorker = writeWorkerPersonPenaltyFields({} as UTSJSONObject, worker.personId, worker.personName, worker.pointsUnits, worker.deductedUnits, worker.penaltyReason, worker.penaltyId)
+      storageWorker['position_index'] = worker.positionIndex
+      workers.push(storageWorker as DuiQuStorageWorkerData)
     }
 
     duiQu = {
