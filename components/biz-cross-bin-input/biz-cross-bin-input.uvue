@@ -157,9 +157,17 @@
 	  import type { AssignmentSourceCreateParams, CrossBinChangePayload, PersonSelectPayload } from '../../domain/models/assignment.uts'
 	  import {
 	    canSavePenaltyDraft as canSavePenaltyDraftUtil,
+	    checkPenaltyDraftBeforeSave,
+	    createEmptyPenaltyDraft,
+	    createPenaltyDraft,
 	    formatPenaltyDraftFinalPoints,
-	    hasPenaltyDraftChanged as hasPenaltyDraftChangedUtil
+	    hasPenaltyDraftChanged as hasPenaltyDraftChangedUtil,
+	    resetPenaltyDraft,
+	    resolvePenaltyDraftCommit,
+	    updatePenaltyDraftDeducted,
+	    updatePenaltyDraftReason
 	  } from '../../domain/services/PenaltyDraftService.uts'
+	  import type { PenaltyDraft } from '../../domain/services/PenaltyDraftService.uts'
 	  import { StageBinInfo } from '../../domain/models/ferment.uts'
 
   /**
@@ -169,17 +177,6 @@
     binCode: string
     displayPoints: string
     percent: string
-  }
-
-  /**
-   * 考核草稿类型（含初始值用于判断变更）
-   */
-  type LocalPenaltyDraft = {
-    deductedUnits: PointsUnits
-    reason: string
-    // 记录初始值，用于判断是否有变更
-    initialDeductedUnits: PointsUnits
-    initialReason: string
   }
 
   export default {
@@ -264,12 +261,7 @@
         // 考核相关（使用 false 表示面板收起）
         expandedPenaltyIndex: false as boolean,
         // 草稿模式：编辑时使用临时变量
-        penaltyDraft: {
-          deductedUnits: 0,
-          reason: '',
-          initialDeductedUnits: 0,
-          initialReason: ''
-        } as LocalPenaltyDraft
+        penaltyDraft: createEmptyPenaltyDraft() as PenaltyDraft
       }
     },
     watch: {
@@ -474,11 +466,7 @@
         } else {
           // 展开面板
           this.expandedPenaltyIndex = true
-          // 初始化草稿：复制当前值，并记录初始值
-          this.penaltyDraft.deductedUnits = this.deductedUnits
-          this.penaltyDraft.reason = this.penaltyReason
-          this.penaltyDraft.initialDeductedUnits = this.deductedUnits
-          this.penaltyDraft.initialReason = this.penaltyReason
+          this.penaltyDraft = createPenaltyDraft(this.deductedUnits, this.penaltyReason)
         }
       },
 
@@ -486,14 +474,14 @@
        * 草稿：扣分值变化（biz-score-input）
        */
       onDraftDeductedChange(value: PointsUnits) {
-        this.penaltyDraft.deductedUnits = value
+        this.penaltyDraft = updatePenaltyDraftDeducted(this.penaltyDraft, value)
       },
 
       /**
        * 草稿：扣分原因输入
        */
       onDraftReasonInput(e: UniInputEvent) {
-        this.penaltyDraft.reason = e.detail.value
+        this.penaltyDraft = updatePenaltyDraftReason(this.penaltyDraft, e.detail.value)
       },
 
       /**
@@ -529,46 +517,34 @@
       onCancelPenalty() {
         // 收起面板，丢弃草稿
         this.expandedPenaltyIndex = false
-        this.penaltyDraft.deductedUnits = 0
-        this.penaltyDraft.reason = ''
-        this.penaltyDraft.initialDeductedUnits = 0
-        this.penaltyDraft.initialReason = ''
+        this.penaltyDraft = resetPenaltyDraft()
       },
 
       /**
        * 保存考核（提交草稿到组件数据）
        */
       onSavePenalty() {
-        if (this.canSavePenaltyDraft() == false) {
-          // 根据不同情况显示不同提示
-          if (this.hasPenaltyDraftChanged() == false) {
-            // 没有变更，不做任何操作
+        const check = checkPenaltyDraftBeforeSave(this.penaltyDraft)
+        if (check.canSave == false) {
+          if (check.hasChanged == false) {
             return
           }
-          // 有变更但原因未填写
           uni.showToast({
-            title: '请输入扣分原因',
+            title: check.message,
             icon: 'none'
           })
           return
         }
-        // 提交草稿到组件数据
-        this.deductedUnits = this.penaltyDraft.deductedUnits
-        this.penaltyReason = this.penaltyDraft.reason.trim()
+        const commit = resolvePenaltyDraftCommit(this.penaltyDraft)
+        this.deductedUnits = commit.deductedUnits
+        this.penaltyReason = commit.reason
 
-        // 如果扣分为 0，清除原因和 ID（表示删除扣分）
-        if (this.deductedUnits == 0) {
-          this.penaltyReason = ''
-          // penaltyId 保留，用于通知父组件删除
-        }
+        // penaltyId 保留，用于通知父组件删除
 
         // 收起面板
         this.expandedPenaltyIndex = false
         // 清空草稿
-        this.penaltyDraft.deductedUnits = 0
-        this.penaltyDraft.reason = ''
-        this.penaltyDraft.initialDeductedUnits = 0
-        this.penaltyDraft.initialReason = ''
+        this.penaltyDraft = resetPenaltyDraft()
         // 发送变更事件
         this.emitChange()
         // 显示保存成功提示

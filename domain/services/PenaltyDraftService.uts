@@ -9,6 +9,73 @@ import { formatPointsUnits } from '../models/types.uts'
 import { calcFinalPoints } from '../models/assignment.uts'
 
 /**
+ * 考核扣分草稿状态
+ */
+export type PenaltyDraft = {
+  deductedUnits: PointsUnits
+  reason: string
+  initialDeductedUnits: PointsUnits
+  initialReason: string
+}
+
+/**
+ * 保存前的草稿检查结果
+ */
+export type PenaltyDraftSaveCheck = {
+  canSave: boolean
+  hasChanged: boolean
+  message: string
+}
+
+/**
+ * 创建空草稿
+ */
+export function createEmptyPenaltyDraft(): PenaltyDraft {
+  return {
+    deductedUnits: 0,
+    reason: '',
+    initialDeductedUnits: 0,
+    initialReason: ''
+  }
+}
+
+/**
+ * 从当前已保存值初始化草稿
+ */
+export function createPenaltyDraft(deductedUnits: PointsUnits, reason: string): PenaltyDraft {
+  const normalizedReason = reason.trim()
+  return {
+    deductedUnits: deductedUnits,
+    reason: normalizedReason,
+    initialDeductedUnits: deductedUnits,
+    initialReason: normalizedReason
+  }
+}
+
+/**
+ * 重置草稿到空状态
+ */
+export function resetPenaltyDraft(): PenaltyDraft {
+  return createEmptyPenaltyDraft()
+}
+
+/**
+ * 更新草稿扣分值
+ */
+export function updatePenaltyDraftDeducted(draft: PenaltyDraft, deductedUnits: PointsUnits): PenaltyDraft {
+  draft.deductedUnits = deductedUnits
+  return draft
+}
+
+/**
+ * 更新草稿原因
+ */
+export function updatePenaltyDraftReason(draft: PenaltyDraft, reason: string): PenaltyDraft {
+  draft.reason = reason
+  return draft
+}
+
+/**
  * 计算扣分草稿对应的最终工分单位
  */
 export function calcPenaltyDraftFinalUnits(originalUnits: PointsUnits, deductedUnits: PointsUnits): PointsUnits {
@@ -46,4 +113,36 @@ export function hasPenaltyDraftChanged(
  */
 export function canSavePenaltyDraft(deductedUnits: PointsUnits, reason: string): boolean {
   return deductedUnits > 0 && reason.trim().length > 0
+}
+
+/**
+ * 统一保存前校验：同时返回是否可保存、是否有变更、提示文案。
+ */
+export function checkPenaltyDraftBeforeSave(draft: PenaltyDraft): PenaltyDraftSaveCheck {
+  const hasChanged = hasPenaltyDraftChanged(
+    draft.deductedUnits,
+    draft.reason,
+    draft.initialDeductedUnits,
+    draft.initialReason
+  )
+  const canSave = canSavePenaltyDraft(draft.deductedUnits, draft.reason)
+  let message = ''
+  if (canSave == false && hasChanged == true) {
+    message = '请输入扣分原因'
+  }
+  return {
+    canSave: canSave,
+    hasChanged: hasChanged,
+    message: message
+  }
+}
+
+/**
+ * 读取草稿写回值：扣分为 0 时清空原因；否则去掉首尾空白。
+ */
+export function resolvePenaltyDraftCommit(draft: PenaltyDraft): { deductedUnits: PointsUnits, reason: string } {
+  return {
+    deductedUnits: draft.deductedUnits,
+    reason: draft.deductedUnits > 0 ? draft.reason.trim() : ''
+  }
 }
