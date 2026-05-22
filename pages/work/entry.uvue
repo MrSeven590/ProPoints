@@ -107,6 +107,9 @@
           :initialPersonId="crossBinPersonId"
           :initialPersonName="crossBinPersonName"
           :initialPointsUnits="crossBinPointsUnits"
+          :initialDeductedUnits="crossBinDeductedUnits"
+          :initialPenaltyReason="crossBinPenaltyReason"
+          :initialPenaltyId="crossBinPenaltyId"
           :externalSources="crossBinSources"
           :readonly="viewMode == 'view' || isRestoring == true"
           @change="onCrossBinChange"
@@ -1390,6 +1393,9 @@ export default {
       }
 
       this.crossBinPointsUnits = payload.pointsUnits;
+      this.crossBinDeductedUnits = payload.deductedUnits;
+      this.crossBinPenaltyReason = payload.penaltyReason;
+      this.crossBinPenaltyId = payload.penaltyId;
       this.crossBinSources = payload.sources;
       this.afterCrossBinStateChanged(true);
     },
