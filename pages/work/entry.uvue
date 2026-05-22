@@ -1836,6 +1836,9 @@ export default {
         this.crossBinPersonId = nextState.crossBinPersonId;
         this.crossBinPersonName = nextState.crossBinPersonName;
         this.crossBinPointsUnits = nextState.crossBinPointsUnits;
+        this.crossBinDeductedUnits = nextState.crossBinDeductedUnits;
+        this.crossBinPenaltyReason = nextState.crossBinPenaltyReason;
+        this.crossBinPenaltyId = nextState.crossBinPenaltyId;
         this.crossBinSources = nextState.crossBinSources;
 
         // 跨仓岗位配置
