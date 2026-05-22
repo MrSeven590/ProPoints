@@ -644,15 +644,9 @@ export function sessionDataToEntryPageState(
     } as StageBinInfo)
   }
 
-  // 检查缺失的安曲数据
+  // 缺失安曲记录依赖运行态快照查询，由 entry.uvue 页面恢复后统一计算。
+  // adapter 仅负责 Storage DTO <-> typed page state 转换，不跨入 AnQuSnapshotService 业务查询边界。
   const missingAnQuBins: string[] = []
-  const ANQU_REQUIRED_STAGES = ['YI_FAN', 'ER_FAN', 'CHAI_QU']
-  if (ANQU_REQUIRED_STAGES.indexOf(options.stageCode as string) != -1 &&
-      options.roundId != null && options.roundId != 0 &&
-      stageBinInfos.length > 0) {
-    // TODO: 需要导入 lookupKojiCountBatch 函数
-    // 暂时留空，在页面层处理
-  }
 
   return {
     hasData: true,

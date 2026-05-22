@@ -1899,19 +1899,8 @@ registerRule({
 // ============================================
 
 /**
- * 校验会话数据
- * 主入口函数，执行所有适用的校验规则
- * @param raw 原始会话数据
- * @param ctx 校验上下文
- * @returns 校验结果
- */
-// ============================================
-// 公共 API
-// ============================================
-
-/**
- * 校验强类型 SessionData（Phase 2 C6 新增）
- * 主流程入口，接受强类型 SessionData
+ * 校验强类型 SessionData。
+ * 当前核心录入页主流程入口，业务规则统一在 typed/normalized 结构上执行。
  *
  * @param data 强类型的 SessionData
  * @param ctx 校验上下文
@@ -1961,8 +1950,8 @@ export function validateTypedSessionData(
 }
 
 /**
- * 校验 UTSJSONObject（兼容旧入口）
- * 保留此函数以兼容现有调用方，内部转换为强类型后复用 validateTypedSessionData
+ * 校验 UTSJSONObject（兼容旧入口）。
+ * @deprecated 新增录入/提交流程必须调用 validateTypedSessionData；此入口仅服务历史调用方和 storage JSON 边界兼容。
  *
  * @param raw UTSJSONObject 格式的会话数据
  * @param ctx 校验上下文

@@ -925,9 +925,8 @@ export default {
     },
 
     /**
-     * 加载晾堂默认人员（从上次安曲会话回填）
-     * 修复：微机禁用时不加载微机默认数据
-     * C4修复：使用强类型解析，避免直接操作 UTSJSONObject
+     * 加载晾堂默认人员（从上次安曲会话回填）。
+     * 微机禁用时不加载微机默认数据；默认值解析集中在 parser，页面只接收 typed 结果。
      */
     loadLiangTangDefaults() {
       const classNo = getCurrentClassNo();

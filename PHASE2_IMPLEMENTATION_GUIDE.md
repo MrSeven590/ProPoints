@@ -1,5 +1,7 @@
 # Phase 2 Implementation Guide
 
+> 状态说明：本文是 Phase 2 核心数据流强类型化的历史执行计划 / 背景资料。当前代码已完成核心 typed 主链路收口，文中的 commit 步骤与检查项不再作为当前待办清单；后续以 `A-G架构重复问题收口推进计划.md` 的阶段准入和代码复核结果为准。
+
 ## 总体策略说明
 
 Phase 2 的目标不是一次性“清零所有 UTSJSONObject”，而是把 `entry.uvue -> Validator -> Storage` 的核心数据流改造成“内部强类型、边界弱类型”的结构。
@@ -47,20 +49,17 @@ export function storageJsonToSessionData(raw: UTSJSONObject): SessionData {
   // 第一版允许保留兼容兜底
 }
 
-export function sessionDataToStorageJson(data: SessionData): UTSJSONObject {
-}
+export function sessionDataToStorageJson(data: SessionData): UTSJSONObject {}
 
 export function sessionDataToEntryPageState(
   data: SessionData,
   options: SessionEntryStateBuildOptions
-): SessionEntryPageState {
-}
+): SessionEntryPageState {}
 
 export function entryPageStateToSessionData(
   state: SessionEntryPageState,
   options: SessionDataBuildOptions
-): SessionData {
-}
+): SessionData {}
 ```
 
 #### 2. 先从现有代码搬运“纯字段映射”
@@ -92,26 +91,26 @@ export function entryPageStateToSessionData(
 #### adapter 中处理历史字段兼容
 
 ```ts
-const savedSnapshot = raw['coef_snapshot'] as UTSJSONObject | null
-const binsRaw = raw['bins'] as UTSJSONObject[] | null
+const savedSnapshot = raw["coef_snapshot"] as UTSJSONObject | null;
+const binsRaw = raw["bins"] as UTSJSONObject[] | null;
 
 return {
-  session_date: (raw['session_date'] as string | null) ?? '',
-  class_no: (raw['class_no'] as number | null) ?? 0,
-  stage_code: ((raw['stage_code'] as string | null) ?? 'AN_QU') as StageCode,
-  round_id: raw['round_id'] as number | null,
-  coef_set_id: (raw['coef_set_id'] as number | null) ?? DEFAULT_COEF_SET_ID,
+  session_date: (raw["session_date"] as string | null) ?? "",
+  class_no: (raw["class_no"] as number | null) ?? 0,
+  stage_code: ((raw["stage_code"] as string | null) ?? "AN_QU") as StageCode,
+  round_id: raw["round_id"] as number | null,
+  coef_set_id: (raw["coef_set_id"] as number | null) ?? DEFAULT_COEF_SET_ID,
   coef_snapshot: savedSnapshot,
   bins: parseBins(binsRaw),
-  cross_bin: parseCrossBin(raw['cross_bin'] as UTSJSONObject | null),
-  liang_tang: parseLiangTang(raw['liang_tang'] as UTSJSONObject | null),
-  dui_qu: parseDuiQu(raw['dui_qu'] as UTSJSONObject | null),
-  status: ((raw['status'] as string | null) ?? 'draft') as SessionStatus,
-  remark: (raw['remark'] as string | null) ?? '',
-  session_bonus_units: (raw['session_bonus_units'] as number | null) ?? 0,
-  created_by_manager: (raw['created_by_manager'] as string | null) ?? '',
-  updated_by_manager: (raw['updated_by_manager'] as string | null) ?? ''
-} as SessionData
+  cross_bin: parseCrossBin(raw["cross_bin"] as UTSJSONObject | null),
+  liang_tang: parseLiangTang(raw["liang_tang"] as UTSJSONObject | null),
+  dui_qu: parseDuiQu(raw["dui_qu"] as UTSJSONObject | null),
+  status: ((raw["status"] as string | null) ?? "draft") as SessionStatus,
+  remark: (raw["remark"] as string | null) ?? "",
+  session_bonus_units: (raw["session_bonus_units"] as number | null) ?? 0,
+  created_by_manager: (raw["created_by_manager"] as string | null) ?? "",
+  updated_by_manager: (raw["updated_by_manager"] as string | null) ?? "",
+} as SessionData;
 ```
 
 ### 验证检查点
@@ -281,13 +280,13 @@ applyState(nextState: SessionEntryPageState) {
 把：
 
 ```ts
-this.sessionDate = nextState['sessionDate'] as string
+this.sessionDate = nextState["sessionDate"] as string;
 ```
 
 替换为：
 
 ```ts
-this.sessionDate = nextState.sessionDate
+this.sessionDate = nextState.sessionDate;
 ```
 
 #### 3. 派生逻辑保留在 applyState 尾部
@@ -413,21 +412,21 @@ applyState(nextState: SessionEntryPageState) {
 把：
 
 ```ts
-wheatMaterialWorkers: [] as UTSJSONObject[]
-machineGuardWorkers: [] as UTSJSONObject[]
-kojiUnloaderWorkers: [] as UTSJSONObject[]
-microOperatorWorkers: [] as UTSJSONObject[]
-duiQuWorkers: [] as UTSJSONObject[]
+wheatMaterialWorkers: [] as UTSJSONObject[];
+machineGuardWorkers: [] as UTSJSONObject[];
+kojiUnloaderWorkers: [] as UTSJSONObject[];
+microOperatorWorkers: [] as UTSJSONObject[];
+duiQuWorkers: [] as UTSJSONObject[];
 ```
 
 改成：
 
 ```ts
-wheatMaterialWorkers: [] as SessionWorkerData[]
-machineGuardWorkers: [] as SessionWorkerData[]
-kojiUnloaderWorkers: [] as SessionWorkerData[]
-microOperatorWorkers: [] as SessionWorkerData[]
-duiQuWorkers: [] as DuiQuWorkerData[]
+wheatMaterialWorkers: [] as SessionWorkerData[];
+machineGuardWorkers: [] as SessionWorkerData[];
+kojiUnloaderWorkers: [] as SessionWorkerData[];
+microOperatorWorkers: [] as SessionWorkerData[];
+duiQuWorkers: [] as DuiQuWorkerData[];
 ```
 
 #### 3. 如果组件暂时还吃弱类型，边界再转
@@ -464,12 +463,12 @@ import type {
   EntryBinCardState,
   SessionEntryPageState,
   DuiQuWorkerData,
-  LiangTangRoleData
-} from '../../domain/models/session.uts'
+  LiangTangRoleData,
+} from "../../domain/models/session.uts";
 import type {
   SessionWorkerData,
-  SessionPenaltyWorkerData
-} from '../../domain/models/assignment.uts'
+  SessionPenaltyWorkerData,
+} from "../../domain/models/assignment.uts";
 ```
 
 ```ts
@@ -589,16 +588,16 @@ captureCurrentEntryState(status: SessionStatus): SessionEntryPageState {
 把：
 
 ```ts
-const sessionData = this.buildSessionData('draft')
-saveDraftSession(date, this.stageCode, roundId, sessionData)
+const sessionData = this.buildSessionData("draft");
+saveDraftSession(date, this.stageCode, roundId, sessionData);
 ```
 
 改成：
 
 ```ts
-const session = this.buildSessionData('draft')
-const raw = sessionDataToStorageJson(session)
-saveDraftSession(date, this.stageCode, roundId, raw)
+const session = this.buildSessionData("draft");
+const raw = sessionDataToStorageJson(session);
+saveDraftSession(date, this.stageCode, roundId, raw);
 ```
 
 ### 先删什么
@@ -648,8 +647,7 @@ saveDraftSession(date, this.stageCode, roundId, raw)
 #### 1. 先把现有标准化函数改成“吃 SessionData”
 
 ```ts
-function normalizeTypedSessionData(data: SessionData): NormalizedSessionData {
-}
+function normalizeTypedSessionData(data: SessionData): NormalizedSessionData {}
 ```
 
 #### 2. 保留旧入口包装
@@ -659,8 +657,8 @@ export function validateSessionData(
   raw: UTSJSONObject,
   ctx: ValidationContext
 ): ValidationResult {
-  const session = storageJsonToSessionData(raw)
-  return validateTypedSessionData(session, ctx)
+  const session = storageJsonToSessionData(raw);
+  return validateTypedSessionData(session, ctx);
 }
 ```
 
@@ -671,9 +669,9 @@ export function validateTypedSessionData(
   data: SessionData,
   ctx: ValidationContext
 ): ValidationResult {
-  const normalized = normalizeTypedSessionData(data)
-  const runtime = buildRuntimeContext(normalized)
-  const rules = sortRulesByCategory(getRulesForMode(ctx.mode))
+  const normalized = normalizeTypedSessionData(data);
+  const runtime = buildRuntimeContext(normalized);
+  const rules = sortRulesByCategory(getRulesForMode(ctx.mode));
   // ...
 }
 ```
@@ -701,12 +699,12 @@ export function validateTypedSessionData(
 
 ```ts
 function normalizeTypedSessionData(data: SessionData): NormalizedSessionData {
-  const bins: NormalizedBin[] = []
+  const bins: NormalizedBin[] = [];
   for (let i = 0; i < data.bins.length; i++) {
-    const bin = data.bins[i]
-    const workers: NormalizedWorker[] = []
+    const bin = data.bins[i];
+    const workers: NormalizedWorker[] = [];
     for (let j = 0; j < bin.workers.length; j++) {
-      const worker = bin.workers[j]
+      const worker = bin.workers[j];
       workers.push({
         person_id: worker.person_id,
         person_name: worker.person_name,
@@ -714,8 +712,8 @@ function normalizeTypedSessionData(data: SessionData): NormalizedSessionData {
         deducted_units: worker.deducted_units,
         penalty_reason: worker.penalty_reason,
         penalty_id: worker.penalty_id,
-        position_index: worker.position_index
-      } as NormalizedWorker)
+        position_index: worker.position_index,
+      } as NormalizedWorker);
     }
     bins.push({
       bin_id: bin.bin_id,
@@ -723,15 +721,15 @@ function normalizeTypedSessionData(data: SessionData): NormalizedSessionData {
       bin_code: bin.bin_code,
       koji_count: bin.koji_count,
       total_points_units: bin.total_points_units,
-      workers: workers
-    } as NormalizedBin)
+      workers: workers,
+    } as NormalizedBin);
   }
 
   return {
     status: data.status,
     session_date: data.session_date,
     stage_code: data.stage_code,
-    stage_name: '',
+    stage_name: "",
     round_id: data.round_id,
     coef_set_id: data.coef_set_id,
     created_by_manager: data.created_by_manager,
@@ -741,8 +739,8 @@ function normalizeTypedSessionData(data: SessionData): NormalizedSessionData {
     cross_bin: normalizeCrossBin(data.cross_bin),
     liang_tang: normalizeLiangTang(data.liang_tang),
     dui_qu: normalizeDuiQu(data.dui_qu),
-    session_bonus_units: data.session_bonus_units
-  } as NormalizedSessionData
+    session_bonus_units: data.session_bonus_units,
+  } as NormalizedSessionData;
 }
 ```
 
