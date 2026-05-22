@@ -742,7 +742,10 @@
     color: #999999;
   }
 
-  /* 人员选择弹窗 */
+  /* 人员选择弹窗
+   * 输入法弹出时会占据屏幕下半部分，因此弹窗不能再垂直居中。
+   * 固定在屏幕上方并限制高度，搜索结果在内部滚动，避免拼音搜索时被键盘遮挡。
+   */
   .picker-mask {
     position: fixed;
     top: 0;
@@ -750,16 +753,17 @@
     right: 0;
     bottom: 0;
     background-color: rgba(0, 0, 0, 0.5);
-    justify-content: center;
+    justify-content: flex-start;
     align-items: center;
+    padding-top: 24px;
   }
 
   .picker-container {
     width: 320px;
-    max-height: 500px;
+    max-height: 430px;
     background-color: #ffffff;
     border-radius: 12px;
-    padding: 16px;
+    padding: 12px;
   }
 
   .picker-header {
