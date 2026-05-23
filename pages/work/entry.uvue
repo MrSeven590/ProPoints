@@ -1512,7 +1512,7 @@ export default {
 
     /**
      * 仓位/曲坯数等仓相关事实源变更后的统一后处理入口
-     * 保留 wrapper 兼容既有调用点，内部收口到统一派生态刷新入口。
+     * 保留轻量后处理入口，内部收口到统一派生态刷新入口。
      */
     afterBinStateChanged(shouldScheduleSave: boolean) {
       this.refreshDerivedStateAndMaybeSave(shouldScheduleSave);
@@ -1520,7 +1520,7 @@ export default {
 
     /**
      * 人员分配事实源变更后的统一后处理入口
-     * 保留 wrapper 兼容既有调用点，内部收口到统一派生态刷新入口。
+     * 保留轻量后处理入口，内部收口到统一派生态刷新入口。
      */
     afterAssignmentStateChanged(shouldScheduleSave: boolean) {
       this.refreshDerivedStateAndMaybeSave(shouldScheduleSave);
@@ -1528,7 +1528,7 @@ export default {
 
     /**
      * 跨仓事实源变更后的统一后处理入口
-     * 保留 wrapper 兼容既有调用点，内部收口到统一派生态刷新入口。
+     * 保留轻量后处理入口，内部收口到统一派生态刷新入口。
      */
     afterCrossBinStateChanged(shouldScheduleSave: boolean) {
       this.refreshDerivedStateAndMaybeSave(shouldScheduleSave);
@@ -1570,7 +1570,7 @@ export default {
 
     /**
      * 还原页面状态后的派生态统一刷新入口，不触发自动保存。
-     * 兼容旧调用名，内部委托到 refreshDerivedState。
+     * 页面状态应用后的派生态刷新入口，内部委托到 refreshDerivedState。
      */
     refreshDerivedStateAfterApply() {
       this.refreshDerivedState();
@@ -2168,7 +2168,7 @@ export default {
     },
 
     // ============================================
-    // 旧的日期切换方法（已废弃，保留用于兼容）
+    // 页面状态快照与会话数据构建
     // ============================================
 
     /**

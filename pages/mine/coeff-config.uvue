@@ -309,7 +309,7 @@
         } as UTSJSONObject
 
         // 只在系数变化时创建新版本
-        const result = saveCoefSetIfChanged('', coefData)
+        const result = saveCoefSetIfChanged(coefData)
 
         // 根据变更显示提示
         if (result.changed == true) {

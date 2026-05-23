@@ -103,10 +103,9 @@ export function collectAnQuPayload(
 
   const year = roundInfo['year'] as number
   const roundNo = roundInfo['round_no'] as number
-  // 兼容当前 FermentRound.micro_enabled 与旧传输字段 micro
+  // 传输字段 m 对应本地 FermentRound.micro_enabled
   const microEnabledValue = roundInfo['micro_enabled']
-  const microValue = microEnabledValue != null ? microEnabledValue : roundInfo['micro']
-  const micro = microValue != null ? microValue as number : 0
+  const micro = microEnabledValue != null ? microEnabledValue as number : 0
 
   // 使用传入的楼层配置
   const floors = convertFloorConfigToPairs(floorConfig)
@@ -1264,8 +1263,8 @@ export function resolveRound(payload: AnQuPayload, allRounds: UTSJSONObject[]): 
     const rClassNo = round['class_no'] as number
     const rYear = round['year'] as number
     const rRoundNo = round['round_no'] as number
-    // Null 安全处理：micro 字段可能为 null
-    const rMicroValue = round['micro']
+    // Null 安全处理：本地轮次只读取 micro_enabled
+    const rMicroValue = round['micro_enabled']
     const rMicro = rMicroValue != null ? rMicroValue as number : 0
     const rId = round['id'] as number
 

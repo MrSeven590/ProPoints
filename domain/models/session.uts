@@ -249,11 +249,6 @@ export type EntryPageState = {
   missingAnQuBins: string[]
 }
 
-/**
- * Entry 页面状态（向后兼容的别名）
- * @deprecated 请直接使用 EntryPageState
- */
-export type SessionEntryPageState = EntryPageState
 
 // ============================================
 // 扣分默认值常量

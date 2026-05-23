@@ -87,44 +87,44 @@ const LIANG_TANG_ROLE_CODES: RoleCode[] = [
   'MICRO_OPERATOR'
 ]
 
-function readNumberField(source: UTSJSONObject, snakeKey: string, camelKey: string, defaultValue: number): number {
-  return source[snakeKey] != null ? (source[snakeKey] as number) : (source[camelKey] != null ? (source[camelKey] as number) : defaultValue)
+function readNumberField(source: UTSJSONObject, key: string, defaultValue: number): number {
+  return source[key] != null ? (source[key] as number) : defaultValue
 }
 
-function readStringField(source: UTSJSONObject, snakeKey: string, camelKey: string, defaultValue: string): string {
-  return source[snakeKey] != null ? (source[snakeKey] as string) : (source[camelKey] != null ? (source[camelKey] as string) : defaultValue)
+function readStringField(source: UTSJSONObject, key: string, defaultValue: string): string {
+  return source[key] != null ? (source[key] as string) : defaultValue
 }
 
-function readNullableNumberField(source: UTSJSONObject, snakeKey: string, camelKey: string): number | null {
-  return source[snakeKey] != null ? (source[snakeKey] as number) : (source[camelKey] != null ? (source[camelKey] as number) : null)
+function readNullableNumberField(source: UTSJSONObject, key: string): number | null {
+  return source[key] != null ? (source[key] as number) : null
 }
 
 function readWorkerPersonId(source: UTSJSONObject): number | null {
-  return readNullableNumberField(source, 'person_id', 'personId')
+  return readNullableNumberField(source, 'person_id')
 }
 
 function readWorkerPersonName(source: UTSJSONObject): string {
-  return readStringField(source, 'person_name', 'personName', '')
+  return readStringField(source, 'person_name', '')
 }
 
 function readWorkerPointsUnits(source: UTSJSONObject): PointsUnits {
-  return readNumberField(source, 'points_units', 'pointsUnits', 0)
+  return readNumberField(source, 'points_units', 0)
 }
 
 function readWorkerDeductedUnits(source: UTSJSONObject): PointsUnits {
-  return readNumberField(source, 'deducted_units', 'deductedUnits', 0)
+  return readNumberField(source, 'deducted_units', 0)
 }
 
 function readWorkerPenaltyReason(source: UTSJSONObject): string {
-  return readStringField(source, 'penalty_reason', 'penaltyReason', '')
+  return readStringField(source, 'penalty_reason', '')
 }
 
 function readWorkerPenaltyId(source: UTSJSONObject): number | null {
-  return readNullableNumberField(source, 'penalty_id', 'penaltyId')
+  return readNullableNumberField(source, 'penalty_id')
 }
 
 function readWorkerPositionIndex(source: UTSJSONObject, defaultPositionIndex: number): number {
-  return readNumberField(source, 'position_index', 'positionIndex', defaultPositionIndex)
+  return readNumberField(source, 'position_index', defaultPositionIndex)
 }
 
 function writeWorkerPersonPenaltyFields(target: UTSJSONObject, personId: number | null, personName: string, pointsUnits: PointsUnits, deductedUnits: PointsUnits, penaltyReason: string, penaltyId: number | null): UTSJSONObject {
@@ -287,7 +287,7 @@ function parseBins(binsRaw: UTSJSONObject[] | null): SessionBinData[] {
   for (let i = 0; i < binsRaw.length; i++) {
     const binObj = binsRaw[i]
 
-    // 解析工人数据（兼容 snake_case 和 camelCase）
+    // 解析工人数据（storage DTO snake_case）
     const workersRaw = binObj['workers'] as UTSJSONObject[] | null
     const workers: SessionBinStorageWorkerData[] = []
     if (workersRaw != null) {
@@ -327,24 +327,24 @@ function parseCrossBin(crossBinRaw: UTSJSONObject | null): SessionCrossBinData |
     return null
   }
 
-  // 解析来源数据（兼容 snake_case 和 camelCase）
+  // 解析来源数据（storage DTO snake_case）
   const sourcesRaw = crossBinRaw['sources'] as UTSJSONObject[] | null
   const sources: AssignmentSourceCreateParams[] = []
   if (sourcesRaw != null) {
     for (let i = 0; i < sourcesRaw.length; i++) {
       const s = sourcesRaw[i]
       sources.push({
-        assignment_id: s['assignment_id'] != null ? (s['assignment_id'] as number) : (s['assignmentId'] != null ? (s['assignmentId'] as number) : 0),
-        stage_bin_id: s['stage_bin_id'] != null ? (s['stage_bin_id'] as number) : (s['stageBinId'] != null ? (s['stageBinId'] as number) : 0),
-        source_points_units: s['source_points_units'] != null ? (s['source_points_units'] as number) : (s['sourcePointsUnits'] != null ? (s['sourcePointsUnits'] as number) : 0)
+        assignment_id: s['assignment_id'] != null ? (s['assignment_id'] as number) : 0,
+        stage_bin_id: s['stage_bin_id'] != null ? (s['stage_bin_id'] as number) : 0,
+        source_points_units: s['source_points_units'] != null ? (s['source_points_units'] as number) : 0
       } as AssignmentSourceCreateParams)
     }
   }
 
   return {
     enabled: enabled != null ? enabled : false,
-    role_code: (crossBinRaw['role_code'] != null ? (crossBinRaw['role_code'] as string) : (crossBinRaw['roleCode'] != null ? (crossBinRaw['roleCode'] as string) : 'CROSS_BIN_YI_FAN')) as RoleCode,
-    role_name: readStringField(crossBinRaw, 'role_name', 'roleName', ''),
+    role_code: (crossBinRaw['role_code'] != null ? (crossBinRaw['role_code'] as string) : 'CROSS_BIN_YI_FAN') as RoleCode,
+    role_name: readStringField(crossBinRaw, 'role_name', ''),
     person_id: readWorkerPersonId(crossBinRaw),
     person_name: readWorkerPersonName(crossBinRaw),
     points_units: readWorkerPointsUnits(crossBinRaw),
@@ -403,8 +403,8 @@ function parseDuiQu(duiQuRaw: UTSJSONObject | null): SessionDuiQuData | null {
   }
 
   return {
-    total_koji_count: duiQuRaw['total_koji_count'] != null ? (duiQuRaw['total_koji_count'] as number) : (duiQuRaw['totalKojiCount'] != null ? (duiQuRaw['totalKojiCount'] as number) : 0),
-    total_pool_units: duiQuRaw['total_pool_units'] != null ? (duiQuRaw['total_pool_units'] as number) : (duiQuRaw['totalPoolUnits'] != null ? (duiQuRaw['totalPoolUnits'] as number) : 0),
+    total_koji_count: duiQuRaw['total_koji_count'] != null ? (duiQuRaw['total_koji_count'] as number) : 0,
+    total_pool_units: duiQuRaw['total_pool_units'] != null ? (duiQuRaw['total_pool_units'] as number) : 0,
     workers: workers
   } as SessionDuiQuData
 }
@@ -430,7 +430,7 @@ export function storageJsonToSessionData(raw: UTSJSONObject): SessionData {
     session_date: (raw['session_date'] as string | null) ?? '',
     class_no: (raw['class_no'] as number | null) ?? 0,
     stage_code: ((raw['stage_code'] as string | null) ?? 'AN_QU') as StageCode,
-    stage_name: (raw['stage_name'] as string | null) ?? (raw['stageName'] as string | null) ?? '',
+    stage_name: (raw['stage_name'] as string | null) ?? '',
     round_id: raw['round_id'] as number | null,
     coef_set_id: (raw['coef_set_id'] as number | null) ?? DEFAULT_COEF_SET_ID,
     coef_snapshot: savedSnapshot,

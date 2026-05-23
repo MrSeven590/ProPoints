@@ -4,7 +4,7 @@
  *
  * 设计原则：
  * 1. Single source of truth - 所有阻塞规则都在此文件
- * 2. Pure + deterministic - validateSessionData() 是纯函数
+ * 2. Pure + deterministic - validateTypedSessionData() 是纯函数
  * 3. Typed, locatable errors - 每个错误都有 code/category/severity/location
  * 4. Phase-ordered execution - 阶段化执行（Structure → Permission → Business → Consistency）
  * 5. Extensible registry - 通过注册规则扩展，无需修改提交流程
@@ -18,7 +18,6 @@ import {
   SessionWorkerStorageData,
   DuiQuStorageWorkerData
 } from '../models/session.uts'
-import { storageJsonToSessionData } from './session-adapter.uts'
 
 // 晾堂岗位角色列表常量（修复 M1：统一定义必需岗位）
 const LIANG_TANG_REQUIRED_ROLES: RoleCode[] = ['WHEAT_MATERIAL', 'MACHINE_GUARD', 'KOJI_UNLOADER']
@@ -652,20 +651,6 @@ function normalizeTypedSessionData(data: SessionData): NormalizedSessionData {
 }
 
 /**
- * 标准化 UTSJSONObject（兼容旧入口）
- * 保留此函数以兼容现有调用方，内部转换为强类型后复用 normalizeTypedSessionData
- *
- * @param raw UTSJSONObject 格式的会话数据
- * @returns 标准化后的会话数据
- */
-function normalizeSessionData(raw: UTSJSONObject): NormalizedSessionData {
-  // 转换为强类型 SessionData
-  const sessionData = storageJsonToSessionData(raw)
-  // 复用 typed 版本的标准化逻辑
-  return normalizeTypedSessionData(sessionData)
-}
-
-/**
  * 构建运行时上下文
  * 从标准化数据中提取运行时需要的辅助信息
  * @param data 标准化后的会话数据
@@ -675,7 +660,6 @@ type RuntimeContext = {
   bin_map: Map<number, NormalizedBin>
   person_locations: Map<number, string[]>
 }
-
 function buildRuntimeContext(data: NormalizedSessionData): RuntimeContext {
   const binMap = new Map<number, NormalizedBin>()
   const personLocations = new Map<number, string[]>()
@@ -1947,24 +1931,6 @@ export function validateTypedSessionData(
     has_warnings: hasWarnings,
     errors: allErrors
   } as ValidationResult
-}
-
-/**
- * 校验 UTSJSONObject（兼容旧入口）。
- * @deprecated 新增录入/提交流程必须调用 validateTypedSessionData；此入口仅服务历史调用方和 storage JSON 边界兼容。
- *
- * @param raw UTSJSONObject 格式的会话数据
- * @param ctx 校验上下文
- * @returns 校验结果
- */
-export function validateSessionData(
-  raw: UTSJSONObject,
-  ctx: ValidationContext
-): ValidationResult {
-  // 转换为强类型 SessionData
-  const sessionData = storageJsonToSessionData(raw)
-  // 复用 typed 版本的校验逻辑
-  return validateTypedSessionData(sessionData, ctx)
 }
 
 /**

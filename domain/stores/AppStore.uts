@@ -648,11 +648,10 @@ export function saveCoefSet(setId: number, coefSet: UTSJSONObject): void {
 
 /**
  * 保存系数版本（仅在变更时创建新版本）
- * @param remark 备注（未使用，保留兼容性）
  * @param coefSet 系数数据
  * @returns 保存结果 { changed: boolean, setId: number }
  */
-export function saveCoefSetIfChanged(remark: string, coefSet: UTSJSONObject): UTSJSONObject {
+export function saveCoefSetIfChanged(coefSet: UTSJSONObject): UTSJSONObject {
   const currentSetId = loadActiveCoefSetId() ?? 260000
   const currentCoefSet = loadCoefSet(currentSetId)
 
@@ -837,8 +836,8 @@ export function listTransferRoundsForCurrentClass(): TransferRoundOption[] {
     const id = round['id'] as number
     const year = round['year'] as number
     const roundNo = round['round_no'] as number
-    // Null 安全处理：micro 字段可能为 null
-    const microValue = round['micro']
+    // Null 安全处理：本地轮次只读取 micro_enabled
+    const microValue = round['micro_enabled']
     const micro = microValue != null ? microValue as number : 0
 
     const label = `${year}年 第${roundNo}轮 (微调${micro})`
