@@ -103,8 +103,9 @@ export function collectAnQuPayload(
 
   const year = roundInfo['year'] as number
   const roundNo = roundInfo['round_no'] as number
-  // Null 安全处理：micro 字段可能为 null
-  const microValue = roundInfo['micro']
+  // 兼容当前 FermentRound.micro_enabled 与旧传输字段 micro
+  const microEnabledValue = roundInfo['micro_enabled']
+  const microValue = microEnabledValue != null ? microEnabledValue : roundInfo['micro']
   const micro = microValue != null ? microValue as number : 0
 
   // 使用传入的楼层配置
@@ -122,19 +123,18 @@ export function collectAnQuPayload(
     binIndexMap.set(key, binId)
   }
 
-  // 收集曲块数据
+  // 收集安曲曲坯数据；后续工序复用安曲曲坯数，不能再次导出为安曲快照。
   const bins: AnQuBinData[] = []
   const skippedBins: string[] = []
-
-  // 过滤该轮次的会话
 
   for (let i = 0; i < allSessions.length; i++) {
     const session = allSessions[i]
     const sessionRoundId = session['round_id'] as number | null
     const sessionStatus = session['status'] as string | null
+    const sessionStageCode = session['stage_code'] as string | null
 
-    // 只处理已提交的数据
-    if (sessionStatus != SESSION_STATUS_SUBMITTED) {
+    // 只处理已提交的安曲数据
+    if (sessionStatus != SESSION_STATUS_SUBMITTED || sessionStageCode != 'AN_QU') {
       continue
     }
 
@@ -168,18 +168,19 @@ export function collectAnQuPayload(
           continue
         }
 
-        // 使用索引 Map 查找 binId
+        // 优先使用全局发酵仓表 ID；测试/迁移数据缺少全局表时回退到会话内稳定字段。
         const key = `${binClassNo}-${binSeqNo}-${binFloorNo}`
-        const binId = binIndexMap.get(key)
+        const mappedBinSeq = binIndexMap.get(key)
+        const sessionBinId = bin['bin_id'] as number | null
+        const stageBinId = bin['stage_bin_id'] as number | null
+        const binSeq = mappedBinSeq != null ? mappedBinSeq : (sessionBinId != null ? sessionBinId : (stageBinId != null ? stageBinId : binSeqNo))
 
-        if (binId != null) {
-          bins.push({
-            id: binCode,
-            seq: binId,
-            floor: binFloorNo,
-            koji: kojiCount
-          })
-        }
+        bins.push({
+          id: binCode,
+          seq: binSeq,
+          floor: binFloorNo,
+          koji: kojiCount
+        })
       }
     }
   }
