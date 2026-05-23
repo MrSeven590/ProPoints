@@ -189,13 +189,13 @@ function serializeStorageWorkerData(worker: SessionWorkerStorageData): UTSJSONOb
 }
 
 function serializePositionedStorageWorkerData(worker: SessionBinStorageWorkerData): UTSJSONObject {
-  const result = serializeStorageWorkerData(worker as SessionWorkerStorageData)
+  const result = writeWorkerPersonPenaltyFields({} as UTSJSONObject, worker.person_id, worker.person_name, worker.points_units, worker.deducted_units, worker.penalty_reason, worker.penalty_id)
   result['position_index'] = worker.position_index
   return result
 }
 
 function serializeDuiQuStorageWorkerData(worker: DuiQuStorageWorkerData): UTSJSONObject {
-  const result = serializeStorageWorkerData(worker as SessionWorkerStorageData)
+  const result = writeWorkerPersonPenaltyFields({} as UTSJSONObject, worker.person_id, worker.person_name, worker.points_units, worker.deducted_units, worker.penalty_reason, worker.penalty_id)
   result['position_index'] = worker.position_index
   return result
 }
