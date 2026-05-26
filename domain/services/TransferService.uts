@@ -52,7 +52,10 @@ import {
   readNumber,
   readString,
   readObject,
-  isUTSObject
+  isUTSObject,
+  readObjectArray,
+  readStringArray,
+  safeErrorMessage
 } from '../../utils/json-reader.uts'
 
 // ============================================
@@ -295,82 +298,111 @@ export function assembleBundlePayload(
  * @param prefix 错误消息前缀（用于嵌套验证）
  * @returns 验证错误，无错误返回 null
  */
+function createInvalidPayloadError(message: string, details: string | null = null): TransferError {
+  return {
+    code: 'INVALID_PAYLOAD',
+    message: message,
+    details: details
+  }
+}
+
+function createEmptyBinsError(prefix: string): TransferError {
+  return {
+    code: 'EMPTY_BINS',
+    message: `${prefix}ANQ 载荷 bins 不能为空`,
+    details: '至少需要 1 个曲块'
+  }
+}
+
+/**
+ * 验证 AnQu 载荷结构
+ * @param anquPayload AnQu 载荷对象
+ * @param prefix 错误消息前缀（用于嵌套验证）
+ * @returns 验证错误，无错误返回 null
+ */
 function validateAnQuPayload(anquPayload: UTSJSONObject, prefix: string = ''): TransferError | null {
-  // 验证必需字段
   const anqFields = ['c', 'y', 'n', 'm', 'f', 'bins', 'skip']
   for (let i = 0; i < anqFields.length; i++) {
     const field = anqFields[i]
     if (anquPayload[field] == null) {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}ANQ 载荷缺少必需字段: ${field}`,
-        details: `期望类型: ${field == 'f' || field == 'bins' || field == 'skip' ? 'array' : 'number'}`
-      }
+      return createInvalidPayloadError(
+        `${prefix}ANQ 载荷缺少必需字段: ${field}`,
+        `期望类型: ${field == 'f' || field == 'bins' || field == 'skip' ? 'array' : 'number'}`
+      )
     }
   }
 
-  // 验证数字字段
-  const numFields = ['c', 'y', 'n', 'm']
+  const numFields = ['c', 'y', 'n', 'm', 'ts', 'v']
   for (let i = 0; i < numFields.length; i++) {
     const field = numFields[i]
     const value = anquPayload[field]
-    if (typeof value != 'number') {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}字段 ${field} 类型错误`,
-        details: `期望: number, 实际: ${typeof value}`
-      }
+    if (value != null && typeof value != 'number') {
+      return createInvalidPayloadError(`${prefix}字段 ${field} 类型错误`, `期望: number, 实际: ${typeof value}`)
     }
   }
 
-  // 验证数组字段
   const arrayFields = ['f', 'bins', 'skip']
   for (let i = 0; i < arrayFields.length; i++) {
     const field = arrayFields[i]
     const value = anquPayload[field]
     if (!Array.isArray(value)) {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}字段 ${field} 类型错误`,
-        details: `期望: array, 实际: ${typeof value}`
-      }
+      return createInvalidPayloadError(`${prefix}字段 ${field} 类型错误`, `期望: array, 实际: ${typeof value}`)
     }
   }
 
-  // 验证 bins 数组元素结构
   const bins = anquPayload['bins'] as any[]
+  if (bins.length == 0) {
+    return createEmptyBinsError(prefix)
+  }
+
+  const binIdSet = new Set<string>()
+  const floorSeqMap = new Map<string, number>()
   for (let i = 0; i < bins.length; i++) {
     const bin = bins[i]
-    if (typeof bin != 'object' || bin == null) {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}bins[${i}] 不是有效对象`,
-        details: `期望: object, 实际: ${typeof bin}`
-      }
+    if (typeof bin != 'object' || bin == null || Array.isArray(bin)) {
+      return createInvalidPayloadError(`${prefix}bins[${i}] 不是有效对象`, `期望: object, 实际: ${typeof bin}`)
     }
+
     const binObj = bin as UTSJSONObject
     const binId = binObj['id']
+    const binSeq = binObj['seq']
+    const binFloor = binObj['floor']
     const binKoji = binObj['koji']
 
-    if (binId == null || typeof binId != 'string' || binKoji == null || typeof binKoji != 'number') {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}bins[${i}] 结构错误`,
-        details: `期望: {id: string, koji: number}`
-      }
+    if (binId == null || typeof binId != 'string') {
+      return createInvalidPayloadError(`${prefix}bins[${i}].id 类型错误`, '期望类型: string')
     }
+    if (binSeq == null || typeof binSeq != 'number') {
+      return createInvalidPayloadError(`${prefix}bins[${i}].seq 类型错误`, '期望类型: number')
+    }
+    if (binFloor == null || typeof binFloor != 'number') {
+      return createInvalidPayloadError(`${prefix}bins[${i}].floor 类型错误`, '期望类型: number')
+    }
+    if (binKoji == null || typeof binKoji != 'number') {
+      return createInvalidPayloadError(`${prefix}bins[${i}].koji 类型错误`, '期望类型: number')
+    }
+    if (binIdSet.has(binId as string)) {
+      return createInvalidPayloadError(`${prefix}bins 存在重复 id: ${binId as string}`, 'duplicate bin.id')
+    }
+    binIdSet.add(binId as string)
+
+    const floorSeqKey = `${binFloor as number}-${binSeq as number}`
+    const existedKoji = floorSeqMap.get(floorSeqKey)
+    if (existedKoji != null) {
+      if (existedKoji != (binKoji as number)) {
+        return createInvalidPayloadError(`${prefix}bins 存在相同 floor+seq 但 koji 不同: ${floorSeqKey}`, 'same floor + seq but different koji')
+      }
+      return createInvalidPayloadError(`${prefix}bins 存在重复 floor+seq: ${floorSeqKey}`, 'duplicate floor + seq')
+    }
+    floorSeqMap.set(floorSeqKey, binKoji as number)
   }
 
-  // 验证 f (floors) 数组元素结构
   const floors = anquPayload['f'] as any[]
+  const floorNoSet = new Set<number>()
   for (let i = 0; i < floors.length; i++) {
     const floor = floors[i]
-    if (typeof floor != 'object' || floor == null) {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}f[${i}] 结构错误`,
-        details: `期望: FloorConfigPair`
-      }
+    if (typeof floor != 'object' || floor == null || Array.isArray(floor)) {
+      return createInvalidPayloadError(`${prefix}f[${i}] 结构错误`, '期望: FloorConfigPair')
     }
 
     const floorObj = floor as UTSJSONObject
@@ -378,23 +410,18 @@ function validateAnQuPayload(anquPayload: UTSJSONObject, prefix: string = ''): T
     const maxSeqNo = floorObj['maxSeqNo']
 
     if (floorNo == null || typeof floorNo != 'number' || maxSeqNo == null || typeof maxSeqNo != 'number') {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}f[${i}] 元素类型错误`,
-        details: `期望: {floorNo: number, maxSeqNo: number}`
-      }
+      return createInvalidPayloadError(`${prefix}f[${i}] 元素类型错误`, '期望: {floorNo: number, maxSeqNo: number}')
     }
+    if (floorNoSet.has(floorNo as number)) {
+      return createInvalidPayloadError(`${prefix}f 存在重复 floorNo: ${floorNo as number}`, 'duplicate f.floorNo')
+    }
+    floorNoSet.add(floorNo as number)
   }
 
-  // 验证 skip 数组元素类型
   const skip = anquPayload['skip'] as any[]
   for (let i = 0; i < skip.length; i++) {
     if (typeof skip[i] != 'string') {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}skip[${i}] 类型错误`,
-        details: `期望: string, 实际: ${typeof skip[i]}`
-      }
+      return createInvalidPayloadError(`${prefix}skip[${i}] 类型错误`, `期望: string, 实际: ${typeof skip[i]}`)
     }
   }
 
@@ -406,21 +433,15 @@ function validateAnQuPayload(anquPayload: UTSJSONObject, prefix: string = ''): T
  */
 function validatePersonsArray(persons: any, prefix: string = ''): TransferError | null {
   if (!Array.isArray(persons)) {
-    return {
-      code: 'INVALID_PAYLOAD',
-      message: `${prefix}persons 类型错误`,
-      details: '期望类型: PersonData[]'
-    }
+    return createInvalidPayloadError(`${prefix}persons 类型错误`, '期望类型: PersonData[]')
   }
 
+  const idSet = new Set<number>()
+  const nameSet = new Set<string>()
   for (let i = 0; i < persons.length; i++) {
     const rawPerson = persons[i]
-    if (typeof rawPerson != 'object' || rawPerson == null) {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}persons[${i}] 类型错误`,
-        details: '期望类型: PersonData'
-      }
+    if (typeof rawPerson != 'object' || rawPerson == null || Array.isArray(rawPerson)) {
+      return createInvalidPayloadError(`${prefix}persons[${i}] 类型错误`, '期望类型: PersonData')
     }
 
     const person = rawPerson as UTSJSONObject
@@ -429,25 +450,25 @@ function validatePersonsArray(persons: any, prefix: string = ''): TransferError 
     const personSkill = person['skill']
 
     if (personId == null || typeof personId != 'number') {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}persons[${i}].id 类型错误`,
-        details: '期望类型: number'
-      }
+      return createInvalidPayloadError(`${prefix}persons[${i}].id 类型错误`, '期望类型: number')
     }
     if (personName == null || typeof personName != 'string') {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}persons[${i}].name 类型错误`,
-        details: '期望类型: string'
-      }
+      return createInvalidPayloadError(`${prefix}persons[${i}].name 类型错误`, '期望类型: string')
     }
     if (personSkill == null || typeof personSkill != 'number') {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}persons[${i}].skill 类型错误`,
-        details: '期望类型: number'
+      return createInvalidPayloadError(`${prefix}persons[${i}].skill 类型错误`, '期望类型: number')
+    }
+    if (idSet.has(personId as number)) {
+      return createInvalidPayloadError(`${prefix}persons 存在重复 id: ${personId as number}`, 'duplicate person.id')
+    }
+    idSet.add(personId as number)
+
+    const name = personName as string
+    if (name.length > 0) {
+      if (nameSet.has(name)) {
+        return createInvalidPayloadError(`${prefix}persons 存在重复姓名: ${name}`, 'duplicate non-empty person.name')
       }
+      nameSet.add(name)
     }
   }
 
@@ -458,33 +479,22 @@ function validatePersonsArray(persons: any, prefix: string = ''): TransferError 
  * 验证 coef 对象结构
  */
 function validateCoefData(coef: any, prefix: string = ''): TransferError | null {
-  if (typeof coef != 'object' || coef == null) {
-    return {
-      code: 'INVALID_PAYLOAD',
-      message: `${prefix}coef 类型错误`,
-      details: '期望类型: CoefData'
-    }
+  if (typeof coef != 'object' || coef == null || Array.isArray(coef)) {
+    return createInvalidPayloadError(`${prefix}coef 类型错误`, '期望类型: CoefData')
   }
 
   const coefObj = coef as UTSJSONObject
 
   if (!Array.isArray(coefObj['stages'])) {
-    return {
-      code: 'INVALID_PAYLOAD',
-      message: `${prefix}coef.stages 类型错误`,
-      details: '期望类型: StageCoefData[]'
-    }
+    return createInvalidPayloadError(`${prefix}coef.stages 类型错误`, '期望类型: StageCoefData[]')
   }
 
+  const stageCodeSet = new Set<string>()
   const stages = coefObj['stages'] as any[]
   for (let i = 0; i < stages.length; i++) {
     const rawStage = stages[i]
-    if (typeof rawStage != 'object' || rawStage == null) {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}coef.stages[${i}] 类型错误`,
-        details: '期望类型: StageCoefData'
-      }
+    if (typeof rawStage != 'object' || rawStage == null || Array.isArray(rawStage)) {
+      return createInvalidPayloadError(`${prefix}coef.stages[${i}] 类型错误`, '期望类型: StageCoefData')
     }
 
     const stage = rawStage as UTSJSONObject
@@ -493,45 +503,30 @@ function validateCoefData(coef: any, prefix: string = ''): TransferError | null 
     const stageCoef = stage['coef']
 
     if (stageCode == null || typeof stageCode != 'string') {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}coef.stages[${i}].code 类型错误`,
-        details: '期望类型: string'
-      }
+      return createInvalidPayloadError(`${prefix}coef.stages[${i}].code 类型错误`, '期望类型: string')
     }
     if (stageName == null || typeof stageName != 'string') {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}coef.stages[${i}].name 类型错误`,
-        details: '期望类型: string'
-      }
+      return createInvalidPayloadError(`${prefix}coef.stages[${i}].name 类型错误`, '期望类型: string')
     }
     if (stageCoef == null || typeof stageCoef != 'number') {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}coef.stages[${i}].coef 类型错误`,
-        details: '期望类型: number'
-      }
+      return createInvalidPayloadError(`${prefix}coef.stages[${i}].coef 类型错误`, '期望类型: number')
     }
+    if (stageCodeSet.has(stageCode as string)) {
+      return createInvalidPayloadError(`${prefix}coef.stages 存在重复 code: ${stageCode as string}`, 'duplicate coef.stages.code')
+    }
+    stageCodeSet.add(stageCode as string)
   }
 
   if (!Array.isArray(coefObj['duiQu'])) {
-    return {
-      code: 'INVALID_PAYLOAD',
-      message: `${prefix}coef.duiQu 类型错误`,
-      details: '期望类型: DuiQuCoefItem[]'
-    }
+    return createInvalidPayloadError(`${prefix}coef.duiQu 类型错误`, '期望类型: DuiQuCoefItem[]')
   }
 
+  const duiQuKeySet = new Set<string>()
   const duiQu = coefObj['duiQu'] as any[]
   for (let i = 0; i < duiQu.length; i++) {
     const rawItem = duiQu[i]
-    if (typeof rawItem != 'object' || rawItem == null) {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}coef.duiQu[${i}] 类型错误`,
-        details: '期望类型: DuiQuCoefItem'
-      }
+    if (typeof rawItem != 'object' || rawItem == null || Array.isArray(rawItem)) {
+      return createInvalidPayloadError(`${prefix}coef.duiQu[${i}] 类型错误`, '期望类型: DuiQuCoefItem')
     }
 
     const item = rawItem as UTSJSONObject
@@ -539,38 +534,27 @@ function validateCoefData(coef: any, prefix: string = ''): TransferError | null 
     const itemValue = item['value']
 
     if (itemKey == null || typeof itemKey != 'string') {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}coef.duiQu[${i}].key 类型错误`,
-        details: '期望类型: string'
-      }
+      return createInvalidPayloadError(`${prefix}coef.duiQu[${i}].key 类型错误`, '期望类型: string')
     }
     if (itemValue == null || typeof itemValue != 'number') {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}coef.duiQu[${i}].value 类型错误`,
-        details: '期望类型: number'
-      }
+      return createInvalidPayloadError(`${prefix}coef.duiQu[${i}].value 类型错误`, '期望类型: number')
     }
+    if (duiQuKeySet.has(itemKey as string)) {
+      return createInvalidPayloadError(`${prefix}coef.duiQu 存在重复 key: ${itemKey as string}`, 'duplicate coef.duiQu.key')
+    }
+    duiQuKeySet.add(itemKey as string)
   }
 
   if (!Array.isArray(coefObj['liangTang'])) {
-    return {
-      code: 'INVALID_PAYLOAD',
-      message: `${prefix}coef.liangTang 类型错误`,
-      details: '期望类型: LiangTangCoefItem[]'
-    }
+    return createInvalidPayloadError(`${prefix}coef.liangTang 类型错误`, '期望类型: LiangTangCoefItem[]')
   }
 
+  const liangTangKeySet = new Set<string>()
   const liangTang = coefObj['liangTang'] as any[]
   for (let i = 0; i < liangTang.length; i++) {
     const rawItem = liangTang[i]
-    if (typeof rawItem != 'object' || rawItem == null) {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}coef.liangTang[${i}] 类型错误`,
-        details: '期望类型: LiangTangCoefItem'
-      }
+    if (typeof rawItem != 'object' || rawItem == null || Array.isArray(rawItem)) {
+      return createInvalidPayloadError(`${prefix}coef.liangTang[${i}] 类型错误`, '期望类型: LiangTangCoefItem')
     }
 
     const item = rawItem as UTSJSONObject
@@ -578,19 +562,15 @@ function validateCoefData(coef: any, prefix: string = ''): TransferError | null 
     const itemValue = item['value']
 
     if (itemKey == null || typeof itemKey != 'string') {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}coef.liangTang[${i}].key 类型错误`,
-        details: '期望类型: string'
-      }
+      return createInvalidPayloadError(`${prefix}coef.liangTang[${i}].key 类型错误`, '期望类型: string')
     }
     if (itemValue == null || typeof itemValue != 'number') {
-      return {
-        code: 'INVALID_PAYLOAD',
-        message: `${prefix}coef.liangTang[${i}].value 类型错误`,
-        details: '期望类型: number'
-      }
+      return createInvalidPayloadError(`${prefix}coef.liangTang[${i}].value 类型错误`, '期望类型: number')
     }
+    if (liangTangKeySet.has(itemKey as string)) {
+      return createInvalidPayloadError(`${prefix}coef.liangTang 存在重复 key: ${itemKey as string}`, 'duplicate coef.liangTang.key')
+    }
+    liangTangKeySet.add(itemKey as string)
   }
 
   return null
@@ -601,11 +581,11 @@ function validateCoefData(coef: any, prefix: string = ''): TransferError | null 
  */
 export function validateConfigPayload(payload: UTSJSONObject, prefix: string = ''): TransferError | null {
   if (payload['c'] == null || typeof payload['c'] != 'number') {
-    return {
-      code: 'INVALID_PAYLOAD',
-      message: `${prefix}缺少或类型错误: c`,
-      details: '期望类型: number'
-    }
+    return createInvalidPayloadError(`${prefix}缺少或类型错误: c`, '期望类型: number')
+  }
+
+  if (payload['persons'] == null && payload['coef'] == null) {
+    return createInvalidPayloadError(`${prefix}CONFIG 包未包含人员或系数`, 'persons == null && coef == null')
   }
 
   if (payload['persons'] != null) {
@@ -630,32 +610,14 @@ export function validateConfigPayload(payload: UTSJSONObject, prefix: string = '
  */
 export function validateBundlePayload(payload: UTSJSONObject, prefix: string = ''): TransferError | null {
   if (payload['c'] == null || typeof payload['c'] != 'number') {
-    return {
-      code: 'INVALID_PAYLOAD',
-      message: `${prefix}缺少或类型错误: c`,
-      details: '期望类型: number'
-    }
+    return createInvalidPayloadError(`${prefix}缺少或类型错误: c`, '期望类型: number')
   }
 
-  if (payload['anqu'] == null) {
-    return {
-      code: 'INVALID_PAYLOAD',
-      message: `${prefix}缺少必需字段: anqu`,
-      details: '期望类型: AnQuPayload'
-    }
+  if (payload['anqu'] == null || !isUTSObject(payload['anqu'])) {
+    return createInvalidPayloadError(`${prefix}字段类型错误: anqu`, '期望类型: object')
   }
 
-  // 校验 anqu 是否为对象类型
-  const anquRaw = payload['anqu']
-  if (typeof anquRaw != 'object' || anquRaw == null) {
-    return {
-      code: 'INVALID_PAYLOAD',
-      message: `${prefix}字段类型错误: anqu`,
-      details: '期望类型: object'
-    }
-  }
-
-  const anquPayload = anquRaw as UTSJSONObject
+  const anquPayload = payload['anqu'] as UTSJSONObject
   const anquError = validateAnQuPayload(anquPayload, `${prefix}anqu: `)
   if (anquError != null) {
     return anquError
@@ -678,6 +640,115 @@ export function validateBundlePayload(payload: UTSJSONObject, prefix: string = '
   return null
 }
 
+function buildAnQuPayloadFromJSON(payloadObj: UTSJSONObject): AnQuPayload {
+  const floorsRaw = readObjectArray(payloadObj, 'f')
+  const floors: FloorConfigPair[] = []
+  for (let i = 0; i < floorsRaw.length; i++) {
+    const floorObj = floorsRaw[i]
+    floors.push({
+      floorNo: floorObj['floorNo'] as number,
+      maxSeqNo: floorObj['maxSeqNo'] as number
+    })
+  }
+
+  const binsRaw = readObjectArray(payloadObj, 'bins')
+  const bins: AnQuBinData[] = []
+  for (let i = 0; i < binsRaw.length; i++) {
+    const binObj = binsRaw[i]
+    bins.push({
+      id: binObj['id'] as string,
+      seq: binObj['seq'] as number,
+      floor: binObj['floor'] as number,
+      koji: binObj['koji'] as number
+    })
+  }
+
+  return {
+    v: 1,
+    kind: PAYLOAD_KIND_ANQ,
+    ts: payloadObj['ts'] as number,
+    c: payloadObj['c'] as number,
+    y: payloadObj['y'] as number,
+    n: payloadObj['n'] as number,
+    m: payloadObj['m'] as number,
+    f: floors,
+    bins: bins,
+    skip: readStringArray(payloadObj, 'skip')
+  }
+}
+
+function buildCoefDataFromJSON(coefObj: UTSJSONObject): CoefData {
+  const stagesRaw = readObjectArray(coefObj, 'stages')
+  const stages: StageCoefData[] = []
+  for (let i = 0; i < stagesRaw.length; i++) {
+    const stage = stagesRaw[i]
+    stages.push({
+      code: stage['code'] as string,
+      name: stage['name'] as string,
+      coef: stage['coef'] as number
+    })
+  }
+
+  const duiQuRaw = readObjectArray(coefObj, 'duiQu')
+  const duiQu: DuiQuCoefItem[] = []
+  for (let i = 0; i < duiQuRaw.length; i++) {
+    const item = duiQuRaw[i]
+    duiQu.push({ key: item['key'] as string, value: item['value'] as number })
+  }
+
+  const liangTangRaw = readObjectArray(coefObj, 'liangTang')
+  const liangTang: LiangTangCoefItem[] = []
+  for (let i = 0; i < liangTangRaw.length; i++) {
+    const item = liangTangRaw[i]
+    liangTang.push({ key: item['key'] as string, value: item['value'] as number })
+  }
+
+  return { stages, duiQu, liangTang }
+}
+
+function buildPersonsFromJSON(payloadObj: UTSJSONObject): PersonData[] | null {
+  if (payloadObj['persons'] == null) {
+    return null
+  }
+  const personsRaw = readObjectArray(payloadObj, 'persons')
+  const persons: PersonData[] = []
+  for (let i = 0; i < personsRaw.length; i++) {
+    const person = personsRaw[i]
+    persons.push({
+      id: person['id'] as number,
+      name: person['name'] as string,
+      skill: person['skill'] as number
+    })
+  }
+  return persons
+}
+
+function buildConfigPayloadFromJSON(payloadObj: UTSJSONObject): ConfigPayload {
+  const coefObj = readObject(payloadObj, 'coef')
+  return {
+    v: 1,
+    kind: PAYLOAD_KIND_CONFIG,
+    ts: payloadObj['ts'] as number,
+    c: payloadObj['c'] as number,
+    persons: buildPersonsFromJSON(payloadObj),
+    coef: coefObj != null ? buildCoefDataFromJSON(coefObj) : null
+  }
+}
+
+function buildBundlePayloadFromJSON(payloadObj: UTSJSONObject): BundlePayload {
+  const anquObj = readObject(payloadObj, 'anqu') as UTSJSONObject
+  const coefObj = readObject(payloadObj, 'coef')
+  return {
+    v: 1,
+    kind: PAYLOAD_KIND_BUNDLE,
+    ts: payloadObj['ts'] as number,
+    c: payloadObj['c'] as number,
+    anqu: buildAnQuPayloadFromJSON(anquObj),
+    persons: buildPersonsFromJSON(payloadObj),
+    coef: coefObj != null ? buildCoefDataFromJSON(coefObj) : null
+  }
+}
+
 /**
  * 封装载荷为 JSON 字符串（用于剪切板传输）
  * @param payload 载荷对象（AnQuPayload、ConfigPayload 或 BundlePayload）
@@ -695,9 +766,16 @@ export function seal(payload: TransferPayload): string {
 export function unseal(text: string): UnsealResult {
   try {
     const payload = JSON.parse(text)
+    if (!isUTSObject(payload)) {
+      return {
+        success: false,
+        payload: null,
+        error: createInvalidPayloadError('导入数据不是有效对象', '期望 JSON object')
+      }
+    }
+
     const payloadObj = payload as UTSJSONObject
 
-    // 验证必需字段
     const requiredFields = ['v', 'kind', 'ts']
     for (let i = 0; i < requiredFields.length; i++) {
       const field = requiredFields[i]
@@ -705,60 +783,54 @@ export function unseal(text: string): UnsealResult {
         return {
           success: false,
           payload: null,
-          error: {
-            code: 'INVALID_PAYLOAD',
-            message: `缺少必需字段: ${field}`,
-            details: `期望类型: ${field == 'v' ? 'number' : field == 'kind' ? 'string' : 'number'}`
-          }
+          error: createInvalidPayloadError(
+            `缺少必需字段: ${field}`,
+            `期望类型: ${field == 'v' ? 'number' : field == 'kind' ? 'string' : 'number'}`
+          )
         }
       }
     }
 
-    // 获取 kind 并验证特定字段
+    if (typeof payloadObj['v'] != 'number' || typeof payloadObj['kind'] != 'string' || typeof payloadObj['ts'] != 'number') {
+      return {
+        success: false,
+        payload: null,
+        error: createInvalidPayloadError('基础字段类型错误', 'v:number, kind:string, ts:number')
+      }
+    }
+
     const kind = payloadObj['kind'] as string
+    let decodedPayload: TransferPayload | null = null
 
     if (kind == PAYLOAD_KIND_ANQ) {
       const validationError = validateAnQuPayload(payloadObj, '')
       if (validationError != null) {
-        return {
-          success: false,
-          payload: null,
-          error: validationError
-        }
+        return { success: false, payload: null, error: validationError }
       }
+      decodedPayload = buildAnQuPayloadFromJSON(payloadObj)
     } else if (kind == PAYLOAD_KIND_CONFIG) {
       const validationError = validateConfigPayload(payloadObj, '')
       if (validationError != null) {
-        return {
-          success: false,
-          payload: null,
-          error: validationError
-        }
+        return { success: false, payload: null, error: validationError }
       }
+      decodedPayload = buildConfigPayloadFromJSON(payloadObj)
     } else if (kind == PAYLOAD_KIND_BUNDLE) {
       const validationError = validateBundlePayload(payloadObj, '')
       if (validationError != null) {
-        return {
-          success: false,
-          payload: null,
-          error: validationError
-        }
+        return { success: false, payload: null, error: validationError }
       }
+      decodedPayload = buildBundlePayloadFromJSON(payloadObj)
     } else {
       return {
         success: false,
         payload: null,
-        error: {
-          code: 'INVALID_PAYLOAD',
-          message: `未知的数据类型: ${kind}`,
-          details: '期望: ANQ, CONFIG 或 BUNDLE'
-        }
+        error: createInvalidPayloadError(`未知的数据类型: ${kind}`, '期望: ANQ, CONFIG 或 BUNDLE')
       }
     }
 
     return {
       success: true,
-      payload: payload as TransferPayload,
+      payload: decodedPayload,
       error: null
     }
   } catch (e: any) {
@@ -768,7 +840,7 @@ export function unseal(text: string): UnsealResult {
       error: {
         code: 'DECODE_FAILED',
         message: 'JSON 解析失败',
-        details: e != null ? ((e as UTSJSONObject)['message'] as string | null) : null
+        details: safeErrorMessage(e)
       }
     }
   }

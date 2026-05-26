@@ -368,10 +368,10 @@
         // 保存预览的 canImport
         this.canImportFromPreview = preview.canImport
 
-        // 处理候选轮次
-        if (preview.matchStatus == 'AMBIGUOUS' && this.candidates.length > 0) {
-          this.selectedCandidateIndex = 0
-          this.resolvedRoundId = this.candidates[0].roundId
+        // 处理候选轮次：歧义匹配必须由用户显式选择
+        if (preview.matchStatus == 'AMBIGUOUS') {
+          this.selectedCandidateIndex = -1
+          this.resolvedRoundId = 0
         }
 
         this.step = 2
@@ -565,13 +565,15 @@
       },
 
       canImport(): boolean {
-        // 如果预览明确返回 canImport=false,直接使用
-        if (!this.canImportFromPreview) {
+        if (this.requiresConfirmation && !this.conflictResolved) {
           return false
         }
 
-        // 如果需要确认但尚未确认,不允许导入
-        if (this.requiresConfirmation && !this.conflictResolved) {
+        if (this.matchStatus == 'AMBIGUOUS') {
+          return this.resolvedRoundId > 0
+        }
+
+        if (!this.canImportFromPreview) {
           return false
         }
 

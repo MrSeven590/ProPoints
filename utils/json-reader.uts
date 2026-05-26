@@ -112,3 +112,77 @@ export function requireString(obj: UTSJSONObject, key: string): string {
   }
   return value
 }
+
+export function isNumber(value: any | null): boolean {
+  return typeof value === 'number'
+}
+
+export function isString(value: any | null): boolean {
+  return typeof value === 'string'
+}
+
+export function isObjectArray(value: any | null): boolean {
+  if (!Array.isArray(value)) {
+    return false
+  }
+  const arr = value as any[]
+  for (let i = 0; i < arr.length; i++) {
+    if (!isUTSObject(arr[i])) {
+      return false
+    }
+  }
+  return true
+}
+
+export function readObjectArray(obj: UTSJSONObject, key: string): UTSJSONObject[] {
+  const value = obj[key]
+  const result: UTSJSONObject[] = []
+  if (!Array.isArray(value)) {
+    return result
+  }
+  const arr = value as any[]
+  for (let i = 0; i < arr.length; i++) {
+    if (isUTSObject(arr[i])) {
+      result.push(arr[i] as UTSJSONObject)
+    }
+  }
+  return result
+}
+
+export function readStringArray(obj: UTSJSONObject, key: string): string[] {
+  const value = obj[key]
+  const result: string[] = []
+  if (!Array.isArray(value)) {
+    return result
+  }
+  const arr = value as any[]
+  for (let i = 0; i < arr.length; i++) {
+    if (typeof arr[i] === 'string') {
+      result.push(arr[i] as string)
+    }
+  }
+  return result
+}
+
+export function readNumberArray(obj: UTSJSONObject, key: string): number[] {
+  const value = obj[key]
+  const result: number[] = []
+  if (!Array.isArray(value)) {
+    return result
+  }
+  const arr = value as any[]
+  for (let i = 0; i < arr.length; i++) {
+    if (typeof arr[i] === 'number') {
+      result.push(arr[i] as number)
+    }
+  }
+  return result
+}
+
+export function safeErrorMessage(error: any | null): string | null {
+  if (error == null) {
+    return null
+  }
+  const message = (error as UTSJSONObject)['message']
+  return typeof message === 'string' ? message as string : null
+}

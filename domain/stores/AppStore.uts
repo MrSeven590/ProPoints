@@ -1155,23 +1155,7 @@ export function previewTransferImport(envelope: string): ImportPreview {
         details: roundResult.warnings != null && roundResult.warnings.length > 0 ? roundResult.warnings[0] : null
       })
     } else if (roundResult.status == 'AMBIGUOUS') {
-      return {
-        success: false,
-        error: {
-          code: 'ROUND_AMBIGUOUS',
-          message: '轮次匹配存在歧义，找到多个候选轮次',
-          details: `找到 ${candidates != null ? candidates.length : 0} 个候选轮次`
-        },
-        payload: null,
-        payloadKind: null,
-        matchStatus: roundResult.status,
-        resolvedRoundId: null,
-        candidates: candidates,
-        warnings: [],
-        conflictSummary: null,
-        requiresConfirmation: false,
-        canImport: false
-      }
+      resolvedRoundId = null
     } else if (roundResult.status == 'NOT_FOUND') {
       return {
         success: false,
@@ -1247,11 +1231,41 @@ export function applyTransferImport(
   const kind = payloadObj['kind'] as string
 
   if (kind == 'ANQ') {
-    return applyAnQuImportInStore(payload as AnQuPayload, resolvedRoundId!, applyFloorConfig)
+    if (resolvedRoundId == null || resolvedRoundId <= 0) {
+      return {
+        success: false,
+        payloadKind: 'ANQ',
+        roundId: null,
+        binsImported: 0,
+        binsSkipped: 0,
+        personsImported: 0,
+        coefUpdated: false,
+        floorConfigApplied: false,
+        snapshotSaved: false,
+        warnings: [],
+        errors: ['请选择目标轮次']
+      }
+    }
+    return applyAnQuImportInStore(payload as AnQuPayload, resolvedRoundId, applyFloorConfig)
   } else if (kind == 'CONFIG') {
     return applyConfigImportInStore(payload as ConfigPayload)
   } else if (kind == 'BUNDLE') {
-    return applyBundleImportInStore(payload as BundlePayload, resolvedRoundId!, applyFloorConfig)
+    if (resolvedRoundId == null || resolvedRoundId <= 0) {
+      return {
+        success: false,
+        payloadKind: 'BUNDLE',
+        roundId: null,
+        binsImported: 0,
+        binsSkipped: 0,
+        personsImported: 0,
+        coefUpdated: false,
+        floorConfigApplied: false,
+        snapshotSaved: false,
+        warnings: [],
+        errors: ['请选择目标轮次']
+      }
+    }
+    return applyBundleImportInStore(payload as BundlePayload, resolvedRoundId, applyFloorConfig)
   }
 
   return {
@@ -1273,12 +1287,6 @@ function applyAnQuImportInStore(payload: AnQuPayload, resolvedRoundId: number, a
   const errors: string[] = []
   const warnings: string[] = []
 
-  // 只有在用户选择应用导入配置时才保存楼层配置
-  if (applyFloorConfig) {
-    const floorConfig = convertFloorPairsToConfig(payload.f)
-    saveBinSeqMaxByFloor(floorConfig)
-  }
-
   const snapshotItems = buildAnQuSnapshotItems(payload.bins)
   const classNo = payload.c
 
@@ -1294,11 +1302,16 @@ function applyAnQuImportInStore(payload: AnQuPayload, resolvedRoundId: number, a
       binsSkipped: payload.skip.length,
       personsImported: 0,
       coefUpdated: false,
-      floorConfigApplied: applyFloorConfig,
+      floorConfigApplied: false,
       snapshotSaved: false,
       warnings: warnings,
       errors: errors
     }
+  }
+
+  if (applyFloorConfig) {
+    const floorConfig = convertFloorPairsToConfig(payload.f)
+    saveBinSeqMaxByFloor(floorConfig)
   }
 
   return {
@@ -1321,12 +1334,8 @@ function applyConfigImportInStore(payload: ConfigPayload): ImportResult {
   const warnings: string[] = []
   let personsImported = 0
   let coefUpdated = false
-
-  if (payload.persons != null) {
-    const storagePersons = fromTransferPersonData(payload.persons)
-    savePersonsToRepo(storagePersons)
-    personsImported = payload.persons.length
-  }
+  let activeSetIdToSave: number | null = null
+  let updatedCoefSetToSave: UTSJSONObject | null = null
 
   if (payload.coef != null) {
     const activeSetId = loadActiveCoefSetIdFromRepo()
@@ -1338,7 +1347,7 @@ function applyConfigImportInStore(payload: ConfigPayload): ImportResult {
         roundId: null,
         binsImported: 0,
         binsSkipped: 0,
-        personsImported: personsImported,
+        personsImported: 0,
         coefUpdated: false,
         floorConfigApplied: false,
         snapshotSaved: false,
@@ -1358,7 +1367,7 @@ function applyConfigImportInStore(payload: ConfigPayload): ImportResult {
         roundId: null,
         binsImported: 0,
         binsSkipped: 0,
-        personsImported: personsImported,
+        personsImported: 0,
         coefUpdated: false,
         floorConfigApplied: false,
         snapshotSaved: false,
@@ -1367,7 +1376,18 @@ function applyConfigImportInStore(payload: ConfigPayload): ImportResult {
       }
     }
 
-    saveCoefSetToRepo(activeSetId, updatedCoefSet)
+    activeSetIdToSave = activeSetId
+    updatedCoefSetToSave = updatedCoefSet
+  }
+
+  if (payload.persons != null) {
+    const storagePersons = fromTransferPersonData(payload.persons)
+    savePersonsToRepo(storagePersons)
+    personsImported = payload.persons.length
+  }
+
+  if (updatedCoefSetToSave != null && activeSetIdToSave != null) {
+    saveCoefSetToRepo(activeSetIdToSave, updatedCoefSetToSave)
     coefUpdated = true
   }
 
