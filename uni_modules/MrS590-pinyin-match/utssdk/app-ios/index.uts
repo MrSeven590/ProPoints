@@ -4,14 +4,13 @@
  * Pure UTS implementation (no native dependencies).
  */
 
-import { GetInitials, PinyinMatch } from '../interface.uts'
 import { getInitials as _getInitials, pinyinMatch as _pinyinMatch } from '../pinyin-match.uts'
 
-export const pinyinMatch: PinyinMatch = function (input: string, keyword: string): boolean {
+export function pinyinMatch(input: string, keyword: string): boolean {
   return _pinyinMatch(input, keyword)
 }
 
-export const getInitials: GetInitials = function (cn: string): string {
+export function getInitials(cn: string): string {
   return _getInitials(cn)
 }
 
