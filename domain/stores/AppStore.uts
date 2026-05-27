@@ -660,12 +660,10 @@ export function saveCoefSetIfChanged(coefSet: UTSJSONObject): UTSJSONObject {
   if (currentCoefSet == null) {
     changed = true
   } else {
-    // 只比较系数字段，忽略元数据
+    // 只比较统一 stages 系数字段，忽略元数据
     const normalizeCoefSet = (set: UTSJSONObject): UTSJSONObject => {
       return {
-        stages: set['stages'],
-        duiQu: set['duiQu'],
-        liangTang: set['liangTang']
+        stages: set['stages']
       } as UTSJSONObject
     }
     const currentNormalized = JSON.stringify(normalizeCoefSet(currentCoefSet))

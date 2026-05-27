@@ -794,10 +794,10 @@
         }
         if (this.payloadKind == 'CONFIG') {
           const coef = (this.parsedPayload as ConfigPayload).coef
-          return coef != null ? coef.stages.length + coef.duiQu.length + coef.liangTang.length : 0
+          return coef != null ? coef.stages.length : 0
         } else if (this.payloadKind == 'BUNDLE') {
           const coef = (this.parsedPayload as BundlePayload).coef
-          return coef != null ? coef.stages.length + coef.duiQu.length + coef.liangTang.length : 0
+          return coef != null ? coef.stages.length : 0
         }
         return 0
       },
@@ -812,13 +812,13 @@
           if (coef == null) {
             return '无'
           }
-          return `阶段 ${coef.stages.length} 项，堆曲 ${coef.duiQu.length} 项，晾堂 ${coef.liangTang.length} 项`
+          return `系数 ${coef.stages.length} 项（统一 stages）`
         } else if (this.payloadKind == 'BUNDLE') {
           const coef = (this.parsedPayload as BundlePayload).coef
           if (coef == null) {
             return '无'
           }
-          return `阶段 ${coef.stages.length} 项，堆曲 ${coef.duiQu.length} 项，晾堂 ${coef.liangTang.length} 项`
+          return `系数 ${coef.stages.length} 项（统一 stages）`
         }
 
         return '无'
@@ -841,31 +841,13 @@
           return lines
         }
 
-        const stageLimit = coef.stages.length > 3 ? 3 : coef.stages.length
+        const stageLimit = coef.stages.length > 7 ? 7 : coef.stages.length
         for (let i = 0; i < stageLimit; i++) {
           const item = coef.stages[i]
-          lines.push(`阶段: ${item.name}=${item.coef}`)
+          lines.push(`系数: ${item.name}=${item.coef}`)
         }
         if (coef.stages.length > stageLimit) {
-          lines.push(`阶段系数另有 ${coef.stages.length - stageLimit} 项未显示`)
-        }
-
-        const duiQuLimit = coef.duiQu.length > 2 ? 2 : coef.duiQu.length
-        for (let i = 0; i < duiQuLimit; i++) {
-          const item = coef.duiQu[i]
-          lines.push(`堆曲: ${item.key}=${item.value}`)
-        }
-        if (coef.duiQu.length > duiQuLimit) {
-          lines.push(`堆曲系数另有 ${coef.duiQu.length - duiQuLimit} 项未显示`)
-        }
-
-        const liangTangLimit = coef.liangTang.length > 2 ? 2 : coef.liangTang.length
-        for (let i = 0; i < liangTangLimit; i++) {
-          const item = coef.liangTang[i]
-          lines.push(`晾堂: ${item.key}=${item.value}`)
-        }
-        if (coef.liangTang.length > liangTangLimit) {
-          lines.push(`晾堂系数另有 ${coef.liangTang.length - liangTangLimit} 项未显示`)
+          lines.push(`系数另有 ${coef.stages.length - stageLimit} 项未显示`)
         }
 
         return lines

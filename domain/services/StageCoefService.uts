@@ -156,12 +156,16 @@ export function getDuiQuCoef(coefSetId: number | null = null): number {
   // 确定要使用的版本ID
   const setId = coefSetId != null ? coefSetId : (loadActiveCoefSetId() ?? DEFAULT_COEF_SET_ID)
 
-  // 尝试从版本化存储读取
+  // 尝试从统一 stages 结构读取
   const coefSet = loadCoefSet(setId)
   if (coefSet != null) {
-    const duiQu = coefSet['duiQu']
-    if (duiQu != null) {
-      return duiQu as number
+    const stages = coefSet['stages']
+    if (stages != null) {
+      const stagesObj = stages as UTSJSONObject
+      const coef = stagesObj['DUI_QU']
+      if (coef != null) {
+        return coef as number
+      }
     }
   }
 
@@ -215,9 +219,9 @@ export function getDefaultLiangTangRoleCoef(roleCode: RoleCode): number {
  */
 export function getLiangTangRoleCoefFromSnapshot(roleCode: RoleCode, snapshot: UTSJSONObject | null): number {
   if (snapshot != null) {
-    const liangTang = snapshot['liangTang'] as UTSJSONObject | null
-    if (liangTang != null) {
-      const coef = liangTang[roleCode]
+    const stages = snapshot['stages'] as UTSJSONObject | null
+    if (stages != null) {
+      const coef = stages[roleCode]
       if (coef != null) {
         return coef as number
       }
@@ -237,13 +241,13 @@ export function getLiangTangRoleCoef(roleCode: RoleCode, coefSetId: number | nul
   // 确定要使用的版本ID
   const setId = coefSetId != null ? coefSetId : (loadActiveCoefSetId() ?? DEFAULT_COEF_SET_ID)
 
-  // 尝试从版本化存储读取
+  // 尝试从统一 stages 结构读取
   const coefSet = loadCoefSet(setId)
   if (coefSet != null) {
-    const liangTang = coefSet['liangTang']
-    if (liangTang != null) {
-      const liangTangObj = liangTang as UTSJSONObject
-      const coef = liangTangObj[roleCode]
+    const stages = coefSet['stages']
+    if (stages != null) {
+      const stagesObj = stages as UTSJSONObject
+      const coef = stagesObj[roleCode]
       if (coef != null) {
         return coef as number
       }

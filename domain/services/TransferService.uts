@@ -13,8 +13,6 @@ import {
   PersonData,
   CoefData,
   StageCoefData,
-  DuiQuCoefItem,
-  LiangTangCoefItem,
   TransferEnvelope,
   RoundResolveResult,
   RoundResolveStatus,
@@ -517,62 +515,6 @@ function validateCoefData(coef: any, prefix: string = ''): TransferError | null 
     stageCodeSet.add(stageCode as string)
   }
 
-  if (!Array.isArray(coefObj['duiQu'])) {
-    return createInvalidPayloadError(`${prefix}coef.duiQu 类型错误`, '期望类型: DuiQuCoefItem[]')
-  }
-
-  const duiQuKeySet = new Set<string>()
-  const duiQu = coefObj['duiQu'] as any[]
-  for (let i = 0; i < duiQu.length; i++) {
-    const rawItem = duiQu[i]
-    if (typeof rawItem != 'object' || rawItem == null || Array.isArray(rawItem)) {
-      return createInvalidPayloadError(`${prefix}coef.duiQu[${i}] 类型错误`, '期望类型: DuiQuCoefItem')
-    }
-
-    const item = rawItem as UTSJSONObject
-    const itemKey = item['key']
-    const itemValue = item['value']
-
-    if (itemKey == null || typeof itemKey != 'string') {
-      return createInvalidPayloadError(`${prefix}coef.duiQu[${i}].key 类型错误`, '期望类型: string')
-    }
-    if (itemValue == null || typeof itemValue != 'number') {
-      return createInvalidPayloadError(`${prefix}coef.duiQu[${i}].value 类型错误`, '期望类型: number')
-    }
-    if (duiQuKeySet.has(itemKey as string)) {
-      return createInvalidPayloadError(`${prefix}coef.duiQu 存在重复 key: ${itemKey as string}`, 'duplicate coef.duiQu.key')
-    }
-    duiQuKeySet.add(itemKey as string)
-  }
-
-  if (!Array.isArray(coefObj['liangTang'])) {
-    return createInvalidPayloadError(`${prefix}coef.liangTang 类型错误`, '期望类型: LiangTangCoefItem[]')
-  }
-
-  const liangTangKeySet = new Set<string>()
-  const liangTang = coefObj['liangTang'] as any[]
-  for (let i = 0; i < liangTang.length; i++) {
-    const rawItem = liangTang[i]
-    if (typeof rawItem != 'object' || rawItem == null || Array.isArray(rawItem)) {
-      return createInvalidPayloadError(`${prefix}coef.liangTang[${i}] 类型错误`, '期望类型: LiangTangCoefItem')
-    }
-
-    const item = rawItem as UTSJSONObject
-    const itemKey = item['key']
-    const itemValue = item['value']
-
-    if (itemKey == null || typeof itemKey != 'string') {
-      return createInvalidPayloadError(`${prefix}coef.liangTang[${i}].key 类型错误`, '期望类型: string')
-    }
-    if (itemValue == null || typeof itemValue != 'number') {
-      return createInvalidPayloadError(`${prefix}coef.liangTang[${i}].value 类型错误`, '期望类型: number')
-    }
-    if (liangTangKeySet.has(itemKey as string)) {
-      return createInvalidPayloadError(`${prefix}coef.liangTang 存在重复 key: ${itemKey as string}`, 'duplicate coef.liangTang.key')
-    }
-    liangTangKeySet.add(itemKey as string)
-  }
-
   return null
 }
 
@@ -689,21 +631,7 @@ function buildCoefDataFromJSON(coefObj: UTSJSONObject): CoefData {
     })
   }
 
-  const duiQuRaw = readObjectArray(coefObj, 'duiQu')
-  const duiQu: DuiQuCoefItem[] = []
-  for (let i = 0; i < duiQuRaw.length; i++) {
-    const item = duiQuRaw[i]
-    duiQu.push({ key: item['key'] as string, value: item['value'] as number })
-  }
-
-  const liangTangRaw = readObjectArray(coefObj, 'liangTang')
-  const liangTang: LiangTangCoefItem[] = []
-  for (let i = 0; i < liangTangRaw.length; i++) {
-    const item = liangTangRaw[i]
-    liangTang.push({ key: item['key'] as string, value: item['value'] as number })
-  }
-
-  return { stages, duiQu, liangTang }
+  return { stages }
 }
 
 function buildPersonsFromJSON(payloadObj: UTSJSONObject): PersonData[] | null {
@@ -950,14 +878,8 @@ function getTransferStageName(stageCode: string): string {
  */
 export function toTransferCoefData(activeCoefSet: UTSJSONObject): CoefData {
   const rawStages = activeCoefSet['stages']
-  const rawDuiQu = activeCoefSet['duiQu']
-  const rawLiangTang = activeCoefSet['liangTang']
-
   const stages: StageCoefData[] = []
-  const duiQu: DuiQuCoefItem[] = []
-  const liangTang: LiangTangCoefItem[] = []
 
-  // stages 当前存储为 { AN_QU: 1.1, ... }；历史/导入数据可能是 { AN_QU: {stage_code, stage_name, coef} }
   if (rawStages != null && isUTSObject(rawStages)) {
     const rawStagesObj = rawStages as UTSJSONObject
     for (const key in rawStagesObj) {
@@ -985,47 +907,11 @@ export function toTransferCoefData(activeCoefSet: UTSJSONObject): CoefData {
     return 0
   })
 
-  // duiQu 当前存储为单个 number；兼容历史对象映射
-  if (rawDuiQu != null) {
-    if (typeof rawDuiQu === 'number') {
-      duiQu.push({ key: 'DUI_QU', value: rawDuiQu as number })
-    } else if (isUTSObject(rawDuiQu)) {
-      const rawDuiQuObj = rawDuiQu as UTSJSONObject
-      for (const key in rawDuiQuObj) {
-        const value = rawDuiQuObj[key]
-        if (typeof value === 'number') {
-          duiQu.push({ key, value: value as number })
-        }
-      }
-    }
-    duiQu.sort((a, b) => {
-      if (a.key < b.key) return -1
-      if (a.key > b.key) return 1
-      return 0
-    })
-  }
-
-  // liangTang 存储为 { roleCode: coef }
-  if (rawLiangTang != null && isUTSObject(rawLiangTang)) {
-    const rawLiangTangObj = rawLiangTang as UTSJSONObject
-    for (const key in rawLiangTangObj) {
-      const value = rawLiangTangObj[key]
-      if (typeof value === 'number') {
-        liangTang.push({ key, value: value as number })
-      }
-    }
-    liangTang.sort((a, b) => {
-      if (a.key < b.key) return -1
-      if (a.key > b.key) return 1
-      return 0
-    })
-  }
-
-  return { stages, duiQu, liangTang }
+  return { stages }
 }
 
 /**
- * 传输格式转换为存储系数stages
+ * 传输格式转换为存储系数 stages
  */
 export function toStorageCoefStages(stages: StageCoefData[]): UTSJSONObject {
   const result = {} as UTSJSONObject
@@ -1037,43 +923,12 @@ export function toStorageCoefStages(stages: StageCoefData[]): UTSJSONObject {
 }
 
 /**
- * 传输格式转换为存储duiQu映射
- */
-export function toStorageDuiQuMap(items: DuiQuCoefItem[]): any | null {
-  if (items.length == 0) {
-    return null
-  }
-  if (items.length == 1 && items[0].key == 'DUI_QU') {
-    return items[0].value
-  }
-  const result = {} as UTSJSONObject
-  for (let i = 0; i < items.length; i++) {
-    result[items[i].key] = items[i].value
-  }
-  return result
-}
-
-/**
- * 传输格式转换为存储liangTang映射
- */
-export function toStorageLiangTangMap(items: LiangTangCoefItem[]): UTSJSONObject {
-  const result = {} as UTSJSONObject
-  for (let i = 0; i < items.length; i++) {
-    result[items[i].key] = items[i].value
-  }
-  return result
-}
-
-/**
  * 传输格式系数转换为存储格式（完整转换）
  * 这是 toTransferCoefData 的反向函数
  */
 export function fromTransferCoefData(coef: CoefData): UTSJSONObject {
-  const normalized = normalizeTransferCoefData(coef)
   return {
-    stages: toStorageCoefStages(normalized.stages),
-    duiQu: toStorageDuiQuMap(normalized.duiQu),
-    liangTang: toStorageLiangTangMap(normalized.liangTang)
+    stages: toStorageCoefStages(coef.stages)
   } as UTSJSONObject
 }
 
@@ -1093,9 +948,7 @@ export function mergeImportedCoefIntoActiveSet(
     name: currentCoefSet['name'],
     effectiveFrom: currentCoefSet['effectiveFrom'],
     effectiveTo: currentCoefSet['effectiveTo'],
-    stages: toStorageCoefStages(importedCoef.stages),
-    duiQu: toStorageDuiQuMap(importedCoef.duiQu),
-    liangTang: toStorageLiangTangMap(importedCoef.liangTang)
+    stages: toStorageCoefStages(importedCoef.stages)
   } as UTSJSONObject
 }
 

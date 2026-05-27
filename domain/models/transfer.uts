@@ -114,33 +114,15 @@ export type PersonData = {
  */
 export type CoefData = {
   stages: StageCoefData[]
-  duiQu: DuiQuCoefItem[]
-  liangTang: LiangTangCoefItem[]
 }
 
 /**
- * 工序系数数据
+ * 系数项（所有工序/堆曲/晾堂岗位统一放在 stages 下）
  */
 export type StageCoefData = {
   code: string
   name: string
   coef: number
-}
-
-/**
- * 堆曲系数项
- */
-export type DuiQuCoefItem = {
-  key: string
-  value: number
-}
-
-/**
- * 晾堂系数项
- */
-export type LiangTangCoefItem = {
-  key: string
-  value: number
 }
 
 // ============================================

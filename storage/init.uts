@@ -113,6 +113,8 @@ function initStageRoleDefaults(): void {
  * 初始化系数配置（版本化）
  */
 function initCoefConfig(): void {
+  clearLegacyCoefStorageOnce()
+
   // 检查是否已有版本化数据
   const activeSetId = loadActiveCoefSetId()
   if (activeSetId != null) {
@@ -130,10 +132,8 @@ function initCoefConfig(): void {
       AN_QU: 1.1,
       YI_FAN: 1.25,
       ER_FAN: 0.9,
-      CHAI_QU: 1.12
-    } as UTSJSONObject,
-    duiQu: 0.29,
-    liangTang: {
+      CHAI_QU: 1.12,
+      DUI_QU: 0.29,
       WHEAT_MATERIAL: 0.85,
       MACHINE_GUARD: 0.8,
       KOJI_UNLOADER: 0.8,
@@ -143,6 +143,30 @@ function initCoefConfig(): void {
 
   saveCoefSet(DEFAULT_COEF_SET_ID, defaultCoefSet)
   saveActiveCoefSetId(DEFAULT_COEF_SET_ID)
+}
+
+/**
+ * 一次性清除测试机旧系数结构。
+ * TODO: 新系数结构稳定且测试机完成重新录入后，可删除本函数及 initCoefConfig() 中的调用。
+ */
+function clearLegacyCoefStorageOnce(): void {
+  const markerKey = 'pp:cfg:coef-structure-stages-v1-cleared'
+  const marker = uni.getStorageSync(markerKey)
+  if (marker != '' && marker != null) {
+    return
+  }
+
+  const storageInfo = uni.getStorageInfoSync()
+  const keys = storageInfo.keys
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i]
+    if (key.indexOf('pp:cfg:coef-set:') == 0 || key == 'pp:cfg:active-coef-set' || key == 'pp:idx:coef-sets') {
+      uni.removeStorageSync(key)
+    }
+  }
+
+  uni.setStorageSync(markerKey, { clearedAt: Date.now() } as UTSJSONObject)
+  console.log('旧系数结构已清除，已切换为 stages 统一结构')
 }
 
 /**

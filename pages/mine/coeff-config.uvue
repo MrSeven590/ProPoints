@@ -168,10 +168,25 @@
       this.loadSettings()
     },
     methods: {
+      formatCoefVersionLabel(setId: number): string {
+        if (setId == 260000) {
+          return '默认系数'
+        }
+
+        const date = new Date(setId)
+        const year = date.getFullYear() % 100
+        const month = date.getMonth() + 1
+        const day = date.getDate()
+        const yearText = year < 10 ? '0' + year.toString() : year.toString()
+        const monthText = month < 10 ? '0' + month.toString() : month.toString()
+        const dayText = day < 10 ? '0' + day.toString() : day.toString()
+        return yearText + monthText + dayText
+      },
+
       loadSettings() {
-        // 优先从版本化存储读取
+        // 优先从版本化存储读取；系数统一存放在 stages 下
         const activeSetId = loadActiveCoefSetId() ?? 260000
-        this.versionLabel = activeSetId == 260000 ? '默认' : activeSetId.toString()
+        this.versionLabel = this.formatCoefVersionLabel(activeSetId)
         const coefSet = loadCoefSet(activeSetId)
 
         if (coefSet != null) {
@@ -194,29 +209,23 @@
             if (chaiQu != null) {
               this.stageCoefs.CHAI_QU = (chaiQu as number).toString()
             }
-          }
-
-          const duiQu = coefSet['duiQu']
-          if (duiQu != null) {
-            this.duiQuCoef = (duiQu as number).toString()
-          }
-
-          const liangTang = coefSet['liangTang']
-          if (liangTang != null) {
-            const liangTangObj = liangTang as UTSJSONObject
-            const wheatMaterial = liangTangObj['WHEAT_MATERIAL']
+            const duiQu = stagesObj['DUI_QU']
+            if (duiQu != null) {
+              this.duiQuCoef = (duiQu as number).toString()
+            }
+            const wheatMaterial = stagesObj['WHEAT_MATERIAL']
             if (wheatMaterial != null) {
               this.liangTangCoefs.WHEAT_MATERIAL = (wheatMaterial as number).toString()
             }
-            const machineGuard = liangTangObj['MACHINE_GUARD']
+            const machineGuard = stagesObj['MACHINE_GUARD']
             if (machineGuard != null) {
               this.liangTangCoefs.MACHINE_GUARD = (machineGuard as number).toString()
             }
-            const kojiUnloader = liangTangObj['KOJI_UNLOADER']
+            const kojiUnloader = stagesObj['KOJI_UNLOADER']
             if (kojiUnloader != null) {
               this.liangTangCoefs.KOJI_UNLOADER = (kojiUnloader as number).toString()
             }
-            const microOperator = liangTangObj['MICRO_OPERATOR']
+            const microOperator = stagesObj['MICRO_OPERATOR']
             if (microOperator != null) {
               this.liangTangCoefs.MICRO_OPERATOR = (microOperator as number).toString()
             }
@@ -292,10 +301,8 @@
           AN_QU: anQu,
           YI_FAN: yiFan,
           ER_FAN: erFan,
-          CHAI_QU: chaiQu
-        } as UTSJSONObject
-
-        const liangTang = {
+          CHAI_QU: chaiQu,
+          DUI_QU: duiQu,
           WHEAT_MATERIAL: wheatMaterial,
           MACHINE_GUARD: machineGuard,
           KOJI_UNLOADER: kojiUnloader,
@@ -303,9 +310,7 @@
         } as UTSJSONObject
 
         const coefData = {
-          stages: stages,
-          duiQu: duiQu,
-          liangTang: liangTang
+          stages: stages
         } as UTSJSONObject
 
         // 只在系数变化时创建新版本
@@ -313,9 +318,10 @@
 
         // 根据变更显示提示
         if (result.changed == true) {
-          this.versionLabel = result.setId.toString()
+          const savedVersionLabel = this.formatCoefVersionLabel(result.setId as number)
+          this.versionLabel = savedVersionLabel
           uni.showToast({
-            title: '系数已保存（版本 ' + result.setId.toString() + '）',
+            title: '系数已保存（版本 ' + savedVersionLabel + '）',
             icon: 'success'
           })
         } else {

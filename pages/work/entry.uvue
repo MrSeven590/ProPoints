@@ -826,14 +826,22 @@ export default {
 
     /**
      * 获取系数版本标签
-     * @returns 系数版本标签，默认版本显示"默认"，其他版本显示日期数字
+     * @returns 系数版本标签，默认版本显示"默认系数"，其他版本显示 YYMMDD 日期数字
      */
     getCoefVersionLabel(): string {
       const id = this.coefSetId;
       if (id == null || id == DEFAULT_COEF_SET_ID) {
-        return "默认";
+        return "默认系数";
       }
-      return id.toString();
+
+      const date = new Date(id);
+      const year = date.getFullYear() % 100;
+      const month = date.getMonth() + 1;
+      const day = date.getDate();
+      const yearText = year < 10 ? "0" + year.toString() : year.toString();
+      const monthText = month < 10 ? "0" + month.toString() : month.toString();
+      const dayText = day < 10 ? "0" + day.toString() : day.toString();
+      return yearText + monthText + dayText;
     },
 
     /**
@@ -1082,9 +1090,12 @@ export default {
       // 计算堆曲总工分，优先使用快照系数
       let duiQuCoef = 0.29;
       if (this.coefSnapshot != null) {
-        const snapshotDuiQu = this.coefSnapshot['duiQu'];
-        if (snapshotDuiQu != null) {
-          duiQuCoef = snapshotDuiQu as number;
+        const stages = this.coefSnapshot['stages'] as UTSJSONObject | null;
+        if (stages != null) {
+          const snapshotDuiQu = stages['DUI_QU'];
+          if (snapshotDuiQu != null) {
+            duiQuCoef = snapshotDuiQu as number;
+          }
         }
       } else {
         duiQuCoef = getDuiQuCoef(this.coefSetId);
