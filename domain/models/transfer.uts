@@ -284,6 +284,7 @@ export type TransferError = {
 export type UnsealResult = {
   success: boolean
   payload: TransferPayload | null
+  payloadKind: PayloadKind | null
   error: TransferError | null
 }
 

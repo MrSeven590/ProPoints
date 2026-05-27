@@ -770,6 +770,7 @@ export function unseal(text: string): UnsealResult {
       return {
         success: false,
         payload: null,
+        payloadKind: null,
         error: createInvalidPayloadError('导入数据不是有效对象', '期望 JSON object')
       }
     }
@@ -783,6 +784,7 @@ export function unseal(text: string): UnsealResult {
         return {
           success: false,
           payload: null,
+          payloadKind: null,
           error: createInvalidPayloadError(
             `缺少必需字段: ${field}`,
             `期望类型: ${field == 'v' ? 'number' : field == 'kind' ? 'string' : 'number'}`
@@ -795,35 +797,41 @@ export function unseal(text: string): UnsealResult {
       return {
         success: false,
         payload: null,
+        payloadKind: null,
         error: createInvalidPayloadError('基础字段类型错误', 'v:number, kind:string, ts:number')
       }
     }
 
     const kind = payloadObj['kind'] as string
     let decodedPayload: TransferPayload | null = null
+    let decodedPayloadKind: PayloadKind | null = null
 
     if (kind == PAYLOAD_KIND_ANQ) {
       const validationError = validateAnQuPayload(payloadObj, '')
       if (validationError != null) {
-        return { success: false, payload: null, error: validationError }
+        return { success: false, payload: null, payloadKind: null, error: validationError }
       }
       decodedPayload = buildAnQuPayloadFromJSON(payloadObj)
+      decodedPayloadKind = 'ANQ'
     } else if (kind == PAYLOAD_KIND_CONFIG) {
       const validationError = validateConfigPayload(payloadObj, '')
       if (validationError != null) {
-        return { success: false, payload: null, error: validationError }
+        return { success: false, payload: null, payloadKind: null, error: validationError }
       }
       decodedPayload = buildConfigPayloadFromJSON(payloadObj)
+      decodedPayloadKind = 'CONFIG'
     } else if (kind == PAYLOAD_KIND_BUNDLE) {
       const validationError = validateBundlePayload(payloadObj, '')
       if (validationError != null) {
-        return { success: false, payload: null, error: validationError }
+        return { success: false, payload: null, payloadKind: null, error: validationError }
       }
       decodedPayload = buildBundlePayloadFromJSON(payloadObj)
+      decodedPayloadKind = 'BUNDLE'
     } else {
       return {
         success: false,
         payload: null,
+        payloadKind: null,
         error: createInvalidPayloadError(`未知的数据类型: ${kind}`, '期望: ANQ, CONFIG 或 BUNDLE')
       }
     }
@@ -831,12 +839,14 @@ export function unseal(text: string): UnsealResult {
     return {
       success: true,
       payload: decodedPayload,
+      payloadKind: decodedPayloadKind,
       error: null
     }
   } catch (e: any) {
     return {
       success: false,
       payload: null,
+      payloadKind: null,
       error: {
         code: 'DECODE_FAILED',
         message: 'JSON 解析失败',
@@ -922,42 +932,72 @@ export function fromTransferPersonData(persons: PersonData[]): UTSJSONObject[] {
   return result
 }
 
+function getTransferStageName(stageCode: string): string {
+  if (stageCode == 'AN_QU') {
+    return '安曲'
+  } else if (stageCode == 'YI_FAN') {
+    return '一次翻曲'
+  } else if (stageCode == 'ER_FAN') {
+    return '二次翻曲'
+  } else if (stageCode == 'CHAI_QU') {
+    return '拆曲'
+  }
+  return stageCode
+}
+
 /**
  * 系数数据转换为传输格式
  */
 export function toTransferCoefData(activeCoefSet: UTSJSONObject): CoefData {
-  const rawStagesObj = readObject(activeCoefSet, 'stages')
-  const rawDuiQu = readObject(activeCoefSet, 'duiQu')
-  const rawLiangTang = readObject(activeCoefSet, 'liangTang')
+  const rawStages = activeCoefSet['stages']
+  const rawDuiQu = activeCoefSet['duiQu']
+  const rawLiangTang = activeCoefSet['liangTang']
 
   const stages: StageCoefData[] = []
   const duiQu: DuiQuCoefItem[] = []
   const liangTang: LiangTangCoefItem[] = []
 
-  // stages 在存储层是以对象形式存储的 { [code]: {stage_code, stage_name, coef} }
-  if (rawStagesObj != null) {
+  // stages 当前存储为 { AN_QU: 1.1, ... }；历史/导入数据可能是 { AN_QU: {stage_code, stage_name, coef} }
+  if (rawStages != null && isUTSObject(rawStages)) {
+    const rawStagesObj = rawStages as UTSJSONObject
     for (const key in rawStagesObj) {
       const stage = rawStagesObj[key]
-      if (isUTSObject(stage)) {
+      if (typeof stage === 'number') {
+        stages.push({
+          code: key,
+          name: getTransferStageName(key),
+          coef: stage as number
+        })
+      } else if (isUTSObject(stage)) {
         const stageObj = stage as UTSJSONObject
         stages.push({
-          code: readString(stageObj, 'stage_code'),
-          name: readString(stageObj, 'stage_name'),
+          code: readString(stageObj, 'stage_code', key),
+          name: readString(stageObj, 'stage_name', getTransferStageName(key)),
           coef: readNumber(stageObj, 'coef', 1.0)
         })
       }
     }
   }
 
-  // 使用 for-in 遍历 duiQu
+  stages.sort((a, b) => {
+    if (a.code < b.code) return -1
+    if (a.code > b.code) return 1
+    return 0
+  })
+
+  // duiQu 当前存储为单个 number；兼容历史对象映射
   if (rawDuiQu != null) {
-    for (const key in rawDuiQu) {
-      const value = rawDuiQu[key]
-      if (typeof value === 'number') {
-        duiQu.push({ key, value: value as number })
+    if (typeof rawDuiQu === 'number') {
+      duiQu.push({ key: 'DUI_QU', value: rawDuiQu as number })
+    } else if (isUTSObject(rawDuiQu)) {
+      const rawDuiQuObj = rawDuiQu as UTSJSONObject
+      for (const key in rawDuiQuObj) {
+        const value = rawDuiQuObj[key]
+        if (typeof value === 'number') {
+          duiQu.push({ key, value: value as number })
+        }
       }
-   }
-    // 按 key 排序（使用简单比较，UTS 不支持 localeCompare）
+    }
     duiQu.sort((a, b) => {
       if (a.key < b.key) return -1
       if (a.key > b.key) return 1
@@ -965,15 +1005,15 @@ export function toTransferCoefData(activeCoefSet: UTSJSONObject): CoefData {
     })
   }
 
-  // 使用 for-in 遍历 liangTang
-  if (rawLiangTang != null) {
-    for (const key in rawLiangTang) {
-      const value = rawLiangTang[key]
+  // liangTang 存储为 { roleCode: coef }
+  if (rawLiangTang != null && isUTSObject(rawLiangTang)) {
+    const rawLiangTangObj = rawLiangTang as UTSJSONObject
+    for (const key in rawLiangTangObj) {
+      const value = rawLiangTangObj[key]
       if (typeof value === 'number') {
         liangTang.push({ key, value: value as number })
       }
     }
-    // 按 key 排序
     liangTang.sort((a, b) => {
       if (a.key < b.key) return -1
       if (a.key > b.key) return 1
@@ -987,15 +1027,11 @@ export function toTransferCoefData(activeCoefSet: UTSJSONObject): CoefData {
 /**
  * 传输格式转换为存储系数stages
  */
-export function toStorageCoefStages(stages: StageCoefData[]): UTSJSONObject[] {
-  const result: UTSJSONObject[] = []
+export function toStorageCoefStages(stages: StageCoefData[]): UTSJSONObject {
+  const result = {} as UTSJSONObject
   for (let i = 0; i < stages.length; i++) {
     const stage = stages[i]
-    result.push({
-      stage_code: stage.code,
-      stage_name: stage.name,
-      coef: stage.coef
-    } as UTSJSONObject)
+    result[stage.code] = stage.coef
   }
   return result
 }
@@ -1003,7 +1039,13 @@ export function toStorageCoefStages(stages: StageCoefData[]): UTSJSONObject[] {
 /**
  * 传输格式转换为存储duiQu映射
  */
-export function toStorageDuiQuMap(items: DuiQuCoefItem[]): UTSJSONObject {
+export function toStorageDuiQuMap(items: DuiQuCoefItem[]): any | null {
+  if (items.length == 0) {
+    return null
+  }
+  if (items.length == 1 && items[0].key == 'DUI_QU') {
+    return items[0].value
+  }
   const result = {} as UTSJSONObject
   for (let i = 0; i < items.length; i++) {
     result[items[i].key] = items[i].value
@@ -1181,7 +1223,10 @@ export function checkRosterConflict(
   const localMap = new Map<number, UTSJSONObject>()
   for (let i = 0; i < localPersons.length; i++) {
     const person = localPersons[i]
-    localMap.set(person['id'] as number, person)
+    const personId = readNumber(person, 'id', 0)
+    if (personId > 0) {
+      localMap.set(personId, person)
+    }
   }
 
   const importedMap = new Map<number, PersonData>()
@@ -1200,8 +1245,8 @@ export function checkRosterConflict(
     if (local == null) {
       added++
     } else {
-      const localName = local['name'] as string
-      const localSkill = local['skill_level'] as number
+      const localName = readString(local, 'name', '')
+      const localSkill = readNumber(local, 'skill_level', readNumber(local, 'skill', 0))
       if (localName != imported.name || localSkill != imported.skill) {
         modified++
       }
@@ -1210,8 +1255,8 @@ export function checkRosterConflict(
 
   for (let i = 0; i < localPersons.length; i++) {
     const local = localPersons[i]
-    const id = local['id'] as number
-    if (!importedMap.has(id)) {
+    const id = readNumber(local, 'id', 0)
+    if (id > 0 && !importedMap.has(id)) {
       removed++
     }
   }

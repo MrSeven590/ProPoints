@@ -150,13 +150,18 @@ function addUniqueNumber(target: number[], value: number | null): void {
   }
 }
 
-function addSessionWorkerPersonIds(target: number[], workersRaw: any): void {
-  if (workersRaw == null) {
+function addSessionWorkerPersonIds(target: number[], workersRaw: any | null): void {
+  if (workersRaw == null || !Array.isArray(workersRaw)) {
     return
   }
-  const workers = workersRaw as UTSJSONObject[]
+  const workers = workersRaw as any[]
   for (let i = 0; i < workers.length; i++) {
-    const personId = workers[i]['person_id'] as number | null
+    const workerRaw = workers[i]
+    if (workerRaw == null || typeof workerRaw != 'object' || Array.isArray(workerRaw)) {
+      continue
+    }
+    const worker = workerRaw as UTSJSONObject
+    const personId = worker['person_id'] as number | null
     addUniqueNumber(target, personId)
   }
 }

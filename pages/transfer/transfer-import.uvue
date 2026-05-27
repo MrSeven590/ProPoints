@@ -81,18 +81,54 @@
 
       <!-- 数据预览 -->
       <view class="section" v-if="step == 2 && parsedPayload != null">
-        <text class="section-title">数据预览</text>
-        <view class="preview-stats">
-          <text class="preview-label">数据类型</text>
-          <text class="preview-value">{{ getPayloadKindText() }}</text>
+        <view class="section-header-row">
+          <text class="section-title">数据预览</text>
+          <text class="preview-badge">{{ getPayloadKindText() }}</text>
         </view>
-        <view class="preview-stats" v-if="payloadKind == 'ANQ' || payloadKind == 'BUNDLE'">
-          <text class="preview-text">曲块数量: {{ getBinsCount() }}</text>
-          <text class="preview-text">跳过数量: {{ getSkipCount() }}</text>
+
+        <view class="preview-hero-card">
+          <text class="preview-hero-title">{{ getPreviewSummaryText() }}</text>
+          <text class="preview-hero-desc">{{ getPreviewDescText() }}</text>
         </view>
-        <view class="preview-stats" v-if="payloadKind == 'CONFIG' || payloadKind == 'BUNDLE'">
-          <text class="preview-text">包含人员: {{ hasPersonsData() ? '是' : '否' }}</text>
-          <text class="preview-text">包含系数: {{ hasCoefData() ? '是' : '否' }}</text>
+
+        <view class="preview-grid">
+          <view class="preview-metric">
+            <text class="preview-metric-value">{{ getBinsCount() }}</text>
+            <text class="preview-metric-label">曲块</text>
+          </view>
+          <view class="preview-metric">
+            <text class="preview-metric-value">{{ getPersonsCount() }}</text>
+            <text class="preview-metric-label">人员</text>
+          </view>
+          <view class="preview-metric">
+            <text class="preview-metric-value">{{ getCoefItemCount() }}</text>
+            <text class="preview-metric-label">系数项</text>
+          </view>
+        </view>
+
+        <view class="preview-card" v-if="payloadKind == 'ANQ' || payloadKind == 'BUNDLE'">
+          <view class="preview-card-header">
+            <text class="preview-card-title">曲块概览</text>
+            <text class="preview-card-extra">最多显示 5 条</text>
+          </view>
+          <text class="preview-line" v-for="(line, index) in getAnQuPreviewLines()" :key="index">{{ line }}</text>
+        </view>
+
+        <view class="preview-card" v-if="payloadKind == 'CONFIG' || payloadKind == 'BUNDLE'">
+          <view class="preview-card-header">
+            <text class="preview-card-title">人员概览</text>
+            <text class="preview-card-extra">{{ hasPersonsData() ? '最多显示 5 人' : '未包含' }}</text>
+          </view>
+          <text class="preview-line" v-for="(line, index) in getPersonsPreviewLines()" :key="index">{{ line }}</text>
+        </view>
+
+        <view class="preview-card" v-if="payloadKind == 'CONFIG' || payloadKind == 'BUNDLE'">
+          <view class="preview-card-header">
+            <text class="preview-card-title">系数概览</text>
+            <text class="preview-card-extra">{{ hasCoefData() ? '可截断预览' : '未包含' }}</text>
+          </view>
+          <text class="preview-line">{{ getCoefSummaryText() }}</text>
+          <text class="preview-line" v-for="(line, index) in getCoefPreviewLines()" :key="index">{{ line }}</text>
         </view>
       </view>
 
@@ -227,6 +263,8 @@
     AnQuPayload,
     ConfigPayload,
     BundlePayload,
+    PersonData,
+    CoefData,
     RoundCandidate,
     FloorConflictItem,
     ImportWarning,
@@ -338,10 +376,10 @@
         this.showConflictModal = false
         this.applyFloorConfig = true
 
-        // 保存完整 payload 和 kind
+        // 保存完整 payload 和 kind；CONFIG 预览没有轮次匹配状态，不能把 null 强转为 string
         this.parsedPayload = preview.payload
         this.payloadKind = preview.payloadKind as PayloadKind | null
-        this.matchStatus = preview.matchStatus as MatchStatus
+        this.matchStatus = preview.matchStatus != null ? (preview.matchStatus as MatchStatus) : 'NONE'
         this.resolvedRoundId = preview.resolvedRoundId != null ? preview.resolvedRoundId : 0
         this.candidates = preview.candidates != null ? preview.candidates : ([] as RoundCandidate[])
         this.warnings = preview.warnings
@@ -536,7 +574,7 @@
         const needsRoundId = this.payloadKind == 'ANQ' || this.payloadKind == 'BUNDLE'
         const roundIdToUse = needsRoundId ? this.resolvedRoundId : null
 
-        const result = applyTransferImport(this.parsedPayload, roundIdToUse, this.applyFloorConfig)
+        const result = applyTransferImport(this.parsedPayload, this.payloadKind as PayloadKind, roundIdToUse, this.applyFloorConfig)
 
         if (result.success) {
           let msg = '导入成功'
@@ -581,14 +619,14 @@
       },
 
       getMatchStatusClass(): string {
-        if (this.matchStatus == 'EXACT_MATCH') {
+        if (this.matchStatus == 'EXACT_MATCH' || this.matchStatus == 'NONE') {
           return 'status-success'
         } else if (this.matchStatus == 'SOFT_MATCH') {
           return 'status-warning'
         } else if (this.matchStatus == 'AMBIGUOUS' || this.matchStatus == 'NOT_FOUND') {
           return 'status-error'
         }
-        return ''
+        return 'status-success'
       },
 
       getMatchStatusTitle(): string {
@@ -601,7 +639,7 @@
         } else if (this.matchStatus == 'NOT_FOUND') {
           return '✗ 未找到匹配'
         }
-        return ''
+        return '✓ 数据已识别'
       },
 
       getMatchStatusDesc(): string {
@@ -615,7 +653,7 @@
         } else if (this.matchStatus == 'NOT_FOUND') {
           return '未找到匹配的轮次,请选择目标轮次'
         }
-        return ''
+        return '配置数据不需要匹配轮次，可查看下方预览后导入'
       },
 
       getSelectedRoundText(): string {
@@ -660,7 +698,32 @@
         return '未知'
       },
 
+      getPreviewSummaryText(): string {
+        if (this.payloadKind == 'ANQ') {
+          return `将导入 ${this.getBinsCount()} 个曲块，跳过 ${this.getSkipCount()} 个跨班曲块`
+        } else if (this.payloadKind == 'CONFIG') {
+          return `将导入 ${this.getPersonsCount()} 名人员，${this.getCoefItemCount()} 个系数项`
+        } else if (this.payloadKind == 'BUNDLE') {
+          return `将导入 ${this.getBinsCount()} 个曲块、${this.getPersonsCount()} 名人员`
+        }
+        return '已识别导入数据'
+      },
+
+      getPreviewDescText(): string {
+        if (this.payloadKind == 'ANQ') {
+          return '下方展示前 5 个曲块与楼层/序号信息，超出部分自动截断。'
+        } else if (this.payloadKind == 'CONFIG') {
+          return '下方展示人员与系数摘要，列表内容会截断，确认无误后再导入。'
+        } else if (this.payloadKind == 'BUNDLE') {
+          return '包含安曲与配置数据，下方分块展示大致内容，长列表自动截断。'
+        }
+        return '请检查预览内容后继续。'
+      },
+
       hasPersonsData(): boolean {
+        if (this.parsedPayload == null) {
+          return false
+        }
         if (this.payloadKind == 'CONFIG') {
           return (this.parsedPayload as ConfigPayload).persons != null
         } else if (this.payloadKind == 'BUNDLE') {
@@ -669,13 +732,174 @@
         return false
       },
 
+      getPersonsCount(): number {
+        if (this.parsedPayload == null) {
+          return 0
+        }
+        if (this.payloadKind == 'CONFIG') {
+          const persons = (this.parsedPayload as ConfigPayload).persons
+          return persons != null ? persons.length : 0
+        } else if (this.payloadKind == 'BUNDLE') {
+          const persons = (this.parsedPayload as BundlePayload).persons
+          return persons != null ? persons.length : 0
+        }
+        return 0
+      },
+
+      getPersonsPreviewLines(): string[] {
+        const lines: string[] = []
+        if (this.parsedPayload == null) {
+          lines.push('未包含人员数据')
+          return lines
+        }
+
+        let persons = null as PersonData[] | null
+        if (this.payloadKind == 'CONFIG') {
+          persons = (this.parsedPayload as ConfigPayload).persons
+        } else if (this.payloadKind == 'BUNDLE') {
+          persons = (this.parsedPayload as BundlePayload).persons
+        }
+
+        if (persons == null || persons.length == 0) {
+          lines.push('未包含人员数据')
+          return lines
+        }
+
+        const limit = persons.length > 5 ? 5 : persons.length
+        for (let i = 0; i < limit; i++) {
+          const person = persons[i]
+          lines.push(`${i + 1}. ${person.name}（ID ${person.id}，技能 ${person.skill}）`)
+        }
+        if (persons.length > limit) {
+          lines.push(`……另有 ${persons.length - limit} 人未显示`)
+        }
+        return lines
+      },
+
       hasCoefData(): boolean {
+        if (this.parsedPayload == null) {
+          return false
+        }
         if (this.payloadKind == 'CONFIG') {
           return (this.parsedPayload as ConfigPayload).coef != null
         } else if (this.payloadKind == 'BUNDLE') {
           return (this.parsedPayload as BundlePayload).coef != null
         }
         return false
+      },
+
+      getCoefItemCount(): number {
+        if (this.parsedPayload == null) {
+          return 0
+        }
+        if (this.payloadKind == 'CONFIG') {
+          const coef = (this.parsedPayload as ConfigPayload).coef
+          return coef != null ? coef.stages.length + coef.duiQu.length + coef.liangTang.length : 0
+        } else if (this.payloadKind == 'BUNDLE') {
+          const coef = (this.parsedPayload as BundlePayload).coef
+          return coef != null ? coef.stages.length + coef.duiQu.length + coef.liangTang.length : 0
+        }
+        return 0
+      },
+
+      getCoefSummaryText(): string {
+        if (this.parsedPayload == null) {
+          return '无'
+        }
+
+        if (this.payloadKind == 'CONFIG') {
+          const coef = (this.parsedPayload as ConfigPayload).coef
+          if (coef == null) {
+            return '无'
+          }
+          return `阶段 ${coef.stages.length} 项，堆曲 ${coef.duiQu.length} 项，晾堂 ${coef.liangTang.length} 项`
+        } else if (this.payloadKind == 'BUNDLE') {
+          const coef = (this.parsedPayload as BundlePayload).coef
+          if (coef == null) {
+            return '无'
+          }
+          return `阶段 ${coef.stages.length} 项，堆曲 ${coef.duiQu.length} 项，晾堂 ${coef.liangTang.length} 项`
+        }
+
+        return '无'
+      },
+
+      getCoefPreviewLines(): string[] {
+        const lines: string[] = []
+        if (this.parsedPayload == null) {
+          return lines
+        }
+
+        let coef = null as CoefData | null
+        if (this.payloadKind == 'CONFIG') {
+          coef = (this.parsedPayload as ConfigPayload).coef
+        } else if (this.payloadKind == 'BUNDLE') {
+          coef = (this.parsedPayload as BundlePayload).coef
+        }
+
+        if (coef == null) {
+          return lines
+        }
+
+        const stageLimit = coef.stages.length > 3 ? 3 : coef.stages.length
+        for (let i = 0; i < stageLimit; i++) {
+          const item = coef.stages[i]
+          lines.push(`阶段: ${item.name}=${item.coef}`)
+        }
+        if (coef.stages.length > stageLimit) {
+          lines.push(`阶段系数另有 ${coef.stages.length - stageLimit} 项未显示`)
+        }
+
+        const duiQuLimit = coef.duiQu.length > 2 ? 2 : coef.duiQu.length
+        for (let i = 0; i < duiQuLimit; i++) {
+          const item = coef.duiQu[i]
+          lines.push(`堆曲: ${item.key}=${item.value}`)
+        }
+        if (coef.duiQu.length > duiQuLimit) {
+          lines.push(`堆曲系数另有 ${coef.duiQu.length - duiQuLimit} 项未显示`)
+        }
+
+        const liangTangLimit = coef.liangTang.length > 2 ? 2 : coef.liangTang.length
+        for (let i = 0; i < liangTangLimit; i++) {
+          const item = coef.liangTang[i]
+          lines.push(`晾堂: ${item.key}=${item.value}`)
+        }
+        if (coef.liangTang.length > liangTangLimit) {
+          lines.push(`晾堂系数另有 ${coef.liangTang.length - liangTangLimit} 项未显示`)
+        }
+
+        return lines
+      },
+
+      getAnQuPreviewLines(): string[] {
+        const lines: string[] = []
+        if (this.parsedPayload == null) {
+          return lines
+        }
+
+        let payload = null as AnQuPayload | null
+        if (this.payloadKind == 'ANQ') {
+          payload = this.parsedPayload as AnQuPayload
+        } else if (this.payloadKind == 'BUNDLE') {
+          payload = (this.parsedPayload as BundlePayload).anqu
+        }
+
+        if (payload == null) {
+          return lines
+        }
+
+        lines.push(`班次 ${payload.c}，年度 ${payload.y}，轮次 ${payload.n}，微调 ${payload.m}`)
+        lines.push(`楼层配置 ${payload.f.length} 项，跳过 ${payload.skip.length} 个`)
+
+        const limit = payload.bins.length > 5 ? 5 : payload.bins.length
+        for (let i = 0; i < limit; i++) {
+          const bin = payload.bins[i]
+          lines.push(`${i + 1}. ${bin.id}：${bin.floor} 楼 / 序号 ${bin.seq} / koji ${bin.koji}`)
+        }
+        if (payload.bins.length > limit) {
+          lines.push(`……另有 ${payload.bins.length - limit} 个曲块未显示`)
+        }
+        return lines
       }
     }
   }
@@ -879,28 +1103,110 @@
     margin-bottom: 4px;
   }
 
-  .preview-stats {
-    padding: 12px;
+  .section-header-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .preview-badge {
+    padding: 4px 10px;
+    border-radius: 12px;
     background-color: #e8f4ff;
-    border-radius: 6px;
-    margin-bottom: 8px;
-  }
-
-  .preview-label {
-    font-size: 13px;
-    color: #666666;
-    margin-bottom: 4px;
-  }
-
-  .preview-value {
-    font-size: 15px;
     color: #007aff;
+    font-size: 12px;
     font-weight: bold;
   }
 
-  .preview-text {
-    font-size: 14px;
+  .preview-hero-card {
+    padding: 14px;
+    border-radius: 10px;
+    background-color: #f2f8ff;
+    border-width: 1px;
+    border-color: #cfe8ff;
+    border-style: solid;
+    margin-bottom: 12px;
+  }
+
+  .preview-hero-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #1f6fb2;
+    margin-bottom: 6px;
+  }
+
+  .preview-hero-desc {
+    font-size: 13px;
+    color: #5d7690;
+    line-height: 19px;
+  }
+
+  .preview-grid {
+    flex-direction: row;
+    margin-bottom: 12px;
+  }
+
+  .preview-metric {
+    flex: 1;
+    padding: 12px 6px;
+    margin-right: 8px;
+    border-radius: 8px;
+    background-color: #ffffff;
+    border-width: 1px;
+    border-color: #eeeeee;
+    border-style: solid;
+    align-items: center;
+  }
+
+  .preview-metric:last-child {
+    margin-right: 0;
+  }
+
+  .preview-metric-value {
+    font-size: 20px;
+    font-weight: bold;
     color: #007aff;
+    margin-bottom: 4px;
+  }
+
+  .preview-metric-label {
+    font-size: 12px;
+    color: #666666;
+  }
+
+  .preview-card {
+    padding: 12px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: #eeeeee;
+    border-style: solid;
+    margin-bottom: 10px;
+  }
+
+  .preview-card-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .preview-card-title {
+    font-size: 15px;
+    font-weight: bold;
+    color: #333333;
+  }
+
+  .preview-card-extra {
+    font-size: 12px;
+    color: #999999;
+  }
+
+  .preview-line {
+    font-size: 13px;
+    color: #444444;
+    line-height: 20px;
     margin-bottom: 4px;
   }
 

@@ -1113,9 +1113,8 @@ export function previewTransferImport(envelope: string): ImportPreview {
   const payloadClassNo = extractPayloadClassNo(payload)
   const classError = validateClassMatch(payloadClassNo, currentClassNo)
 
-  // 提取 payload kind（UTS 联合类型需要先转换）
-  const payloadObj = payload as UTSJSONObject
-  const payloadKind = payloadObj['kind'] as string
+  // TransferService.unseal 已返回 payloadKind；typed payload 不能反向强转为 UTSJSONObject
+  const payloadKind = unsealResult.payloadKind
 
   if (classError != null) {
     return {
@@ -1224,11 +1223,12 @@ export function previewTransferImport(envelope: string): ImportPreview {
  */
 export function applyTransferImport(
   payload: TransferPayload,
+  payloadKind: PayloadKind,
   resolvedRoundId: number | null,
   applyFloorConfig: boolean = true
 ): ImportResult {
-  const payloadObj = payload as UTSJSONObject
-  const kind = payloadObj['kind'] as string
+  // TransferPayload 是 typed payload，禁止反向强转 UTSJSONObject；由 preview 传入 kind
+  const kind = payloadKind
 
   if (kind == 'ANQ') {
     if (resolvedRoundId == null || resolvedRoundId <= 0) {

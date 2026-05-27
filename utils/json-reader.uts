@@ -183,6 +183,5 @@ export function safeErrorMessage(error: any | null): string | null {
   if (error == null) {
     return null
   }
-  const message = (error as UTSJSONObject)['message']
-  return typeof message === 'string' ? message as string : null
+  return error.toString()
 }

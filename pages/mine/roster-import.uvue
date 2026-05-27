@@ -285,6 +285,7 @@
           name_pinyin_initials: '',
           team_id: null,
           is_active: 1,
+          skill_level: 0,
           created_at: now,
           updated_at: now,
           version: 1,
@@ -292,6 +293,7 @@
         } as UTSJSONObject
 
         persons.push(newPerson)
+        this.normalizePersonSkillLevels(persons)
         savePersons(persons)
 
         this.newPersonName = ''
@@ -484,6 +486,7 @@
             name_pinyin_initials: '',
             team_id: null,
             is_active: 1,
+            skill_level: 0,
             created_at: now,
             updated_at: now,
             version: 1,
@@ -493,6 +496,7 @@
           nextId++
         }
 
+        this.normalizePersonSkillLevels(persons)
         savePersons(persons)
         this.loadPersonCount()
         this.viewMode = 'main'
@@ -555,6 +559,7 @@
             break
           }
         }
+        this.normalizePersonSkillLevels(persons)
         savePersons(persons)
         this.loadAllPersons()
         this.loadPersonCount()
@@ -577,6 +582,7 @@
                   newPersons.push(persons[i])
                 }
               }
+              this.normalizePersonSkillLevels(newPersons)
               savePersons(newPersons)
               this.loadAllPersons()
               this.loadPersonCount()
@@ -628,6 +634,7 @@
           }
         }
 
+        this.normalizePersonSkillLevels(persons)
         savePersons(persons)
         this.editingPersonId = -1
         this.editingPersonName = ''
@@ -638,6 +645,17 @@
       // ============ 通用 ============
       backToMain() {
         this.viewMode = 'main'
+      },
+
+      normalizePersonSkillLevels(persons: UTSJSONObject[]): void {
+        for (let i = 0; i < persons.length; i++) {
+          const person = persons[i]
+          const skillLevel = person['skill_level'] as number | null
+          if (skillLevel == null) {
+            const legacySkill = person['skill'] as number | null
+            person['skill_level'] = legacySkill != null ? legacySkill : 0
+          }
+        }
       },
 
       generateUUID(): string {
