@@ -106,7 +106,7 @@
           </view>
         </view>
 
-        <view class="preview-card" v-if="payloadKind == 'ANQ' || payloadKind == 'BUNDLE'">
+        <view class="preview-card" v-if="payloadKind == 'ANQ'">
           <view class="preview-card-header">
             <text class="preview-card-title">曲块概览</text>
             <text class="preview-card-extra">最多显示 5 条</text>
@@ -114,7 +114,7 @@
           <text class="preview-line" v-for="(line, index) in getAnQuPreviewLines()" :key="index">{{ line }}</text>
         </view>
 
-        <view class="preview-card" v-if="payloadKind == 'CONFIG' || payloadKind == 'BUNDLE'">
+        <view class="preview-card" v-if="payloadKind == 'CONFIG'">
           <view class="preview-card-header">
             <text class="preview-card-title">人员概览</text>
             <text class="preview-card-extra">{{ hasPersonsData() ? '最多显示 5 人' : '未包含' }}</text>
@@ -122,7 +122,7 @@
           <text class="preview-line" v-for="(line, index) in getPersonsPreviewLines()" :key="index">{{ line }}</text>
         </view>
 
-        <view class="preview-card" v-if="payloadKind == 'CONFIG' || payloadKind == 'BUNDLE'">
+        <view class="preview-card" v-if="payloadKind == 'CONFIG'">
           <view class="preview-card-header">
             <text class="preview-card-title">系数概览</text>
             <text class="preview-card-extra">{{ hasCoefData() ? '可截断预览' : '未包含' }}</text>
@@ -262,7 +262,6 @@
     TransferPayload,
     AnQuPayload,
     ConfigPayload,
-    BundlePayload,
     PersonData,
     CoefData,
     RoundCandidate,
@@ -281,7 +280,7 @@
   } from '../../domain/stores/AppStore.uts'
 
   type MatchStatus = 'NONE' | 'EXACT_MATCH' | 'SOFT_MATCH' | 'AMBIGUOUS' | 'NOT_FOUND'
-  type PayloadKind = 'ANQ' | 'CONFIG' | 'BUNDLE'
+  type PayloadKind = 'ANQ' | 'CONFIG'
 
   // 预处理的冲突展示数据（避免模板中传递联合类型参数）
   type ConflictDisplayItem = {
@@ -571,7 +570,7 @@
         }
 
         // CONFIG 不需要 roundId
-        const needsRoundId = this.payloadKind == 'ANQ' || this.payloadKind == 'BUNDLE'
+        const needsRoundId = this.payloadKind == 'ANQ'
         const roundIdToUse = needsRoundId ? this.resolvedRoundId : null
 
         const result = applyTransferImport(this.parsedPayload, this.payloadKind as PayloadKind, roundIdToUse, this.applyFloorConfig)
@@ -582,8 +581,6 @@
             msg = `导入成功: ${result.binsImported} 仓`
           } else if (this.payloadKind == 'CONFIG') {
             msg = `配置导入成功: ${result.personsImported} 人`
-          } else if (this.payloadKind == 'BUNDLE') {
-            msg = `导入成功: ${result.binsImported} 仓, ${result.personsImported} 人`
           }
           uni.showToast({
             title: msg,
@@ -669,8 +666,6 @@
         }
         if (this.payloadKind == 'ANQ') {
           return (this.parsedPayload as AnQuPayload).bins.length
-        } else if (this.payloadKind == 'BUNDLE') {
-          return (this.parsedPayload as BundlePayload).anqu.bins.length
         }
         return 0
       },
@@ -681,8 +676,6 @@
         }
         if (this.payloadKind == 'ANQ') {
           return (this.parsedPayload as AnQuPayload).skip.length
-        } else if (this.payloadKind == 'BUNDLE') {
-          return (this.parsedPayload as BundlePayload).anqu.skip.length
         }
         return 0
       },
@@ -692,8 +685,6 @@
           return '安曲数据'
         } else if (this.payloadKind == 'CONFIG') {
           return '配置数据'
-        } else if (this.payloadKind == 'BUNDLE') {
-          return '安曲+配置'
         }
         return '未知'
       },
@@ -703,8 +694,6 @@
           return `将导入 ${this.getBinsCount()} 个曲块，跳过 ${this.getSkipCount()} 个跨班曲块`
         } else if (this.payloadKind == 'CONFIG') {
           return `将导入 ${this.getPersonsCount()} 名人员，${this.getCoefItemCount()} 个系数项`
-        } else if (this.payloadKind == 'BUNDLE') {
-          return `将导入 ${this.getBinsCount()} 个曲块、${this.getPersonsCount()} 名人员`
         }
         return '已识别导入数据'
       },
@@ -714,8 +703,6 @@
           return '下方展示前 5 个曲块与楼层/序号信息，超出部分自动截断。'
         } else if (this.payloadKind == 'CONFIG') {
           return '下方展示人员与系数摘要，列表内容会截断，确认无误后再导入。'
-        } else if (this.payloadKind == 'BUNDLE') {
-          return '包含安曲与配置数据，下方分块展示大致内容，长列表自动截断。'
         }
         return '请检查预览内容后继续。'
       },
@@ -726,8 +713,6 @@
         }
         if (this.payloadKind == 'CONFIG') {
           return (this.parsedPayload as ConfigPayload).persons != null
-        } else if (this.payloadKind == 'BUNDLE') {
-          return (this.parsedPayload as BundlePayload).persons != null
         }
         return false
       },
@@ -738,9 +723,6 @@
         }
         if (this.payloadKind == 'CONFIG') {
           const persons = (this.parsedPayload as ConfigPayload).persons
-          return persons != null ? persons.length : 0
-        } else if (this.payloadKind == 'BUNDLE') {
-          const persons = (this.parsedPayload as BundlePayload).persons
           return persons != null ? persons.length : 0
         }
         return 0
@@ -756,8 +738,6 @@
         let persons = null as PersonData[] | null
         if (this.payloadKind == 'CONFIG') {
           persons = (this.parsedPayload as ConfigPayload).persons
-        } else if (this.payloadKind == 'BUNDLE') {
-          persons = (this.parsedPayload as BundlePayload).persons
         }
 
         if (persons == null || persons.length == 0) {
@@ -782,8 +762,6 @@
         }
         if (this.payloadKind == 'CONFIG') {
           return (this.parsedPayload as ConfigPayload).coef != null
-        } else if (this.payloadKind == 'BUNDLE') {
-          return (this.parsedPayload as BundlePayload).coef != null
         }
         return false
       },
@@ -794,9 +772,6 @@
         }
         if (this.payloadKind == 'CONFIG') {
           const coef = (this.parsedPayload as ConfigPayload).coef
-          return coef != null ? coef.stages.length : 0
-        } else if (this.payloadKind == 'BUNDLE') {
-          const coef = (this.parsedPayload as BundlePayload).coef
           return coef != null ? coef.stages.length : 0
         }
         return 0
@@ -809,12 +784,6 @@
 
         if (this.payloadKind == 'CONFIG') {
           const coef = (this.parsedPayload as ConfigPayload).coef
-          if (coef == null) {
-            return '无'
-          }
-          return `系数 ${coef.stages.length} 项（统一 stages）`
-        } else if (this.payloadKind == 'BUNDLE') {
-          const coef = (this.parsedPayload as BundlePayload).coef
           if (coef == null) {
             return '无'
           }
@@ -833,8 +802,6 @@
         let coef = null as CoefData | null
         if (this.payloadKind == 'CONFIG') {
           coef = (this.parsedPayload as ConfigPayload).coef
-        } else if (this.payloadKind == 'BUNDLE') {
-          coef = (this.parsedPayload as BundlePayload).coef
         }
 
         if (coef == null) {
@@ -862,8 +829,6 @@
         let payload = null as AnQuPayload | null
         if (this.payloadKind == 'ANQ') {
           payload = this.parsedPayload as AnQuPayload
-        } else if (this.payloadKind == 'BUNDLE') {
-          payload = (this.parsedPayload as BundlePayload).anqu
         }
 
         if (payload == null) {

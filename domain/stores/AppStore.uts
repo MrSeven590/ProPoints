@@ -58,7 +58,6 @@ import {
 import {
   collectAnQuPayload,
   assembleConfigPayload,
-  assembleBundlePayload,
   seal,
   unseal,
   resolveRound,
@@ -75,7 +74,6 @@ import {
 import {
   AnQuPayload,
   ConfigPayload,
-  BundlePayload,
   TransferPayload,
   PayloadKind,
   UnsealResult,
@@ -1018,50 +1016,7 @@ export function exportConfigData(
   return seal(payload)
 }
 
-/**
- * 导出完整配置包（PPX1 格式）
- * @param roundId 轮次ID
- * @param includePersons 是否包含人员数据
- * @param includeCoef 是否包含系数数据
- * @returns PPX1 格式字符串，如果轮次不存在返回 null
- */
-export function exportBundleData(
-  roundId: number,
-  includePersons: boolean = true,
-  includeCoef: boolean = true
-): string | null {
-  const classNo = getCurrentClassNo()
-  const allRounds = loadRounds()
-  const floorConfig = loadBinSeqMaxByFloor()
-  const allBins = loadBins()
-  const allSessions = toSessionStorageJsonList(getSessionsByRoundId(roundId))
-  const allPersons = includePersons ? loadPersons() : null
-  const activeCoefSet = includeCoef ? loadActiveCoefSet() : null
 
-  const payload = assembleBundlePayload(
-    roundId,
-    classNo,
-    allRounds,
-    floorConfig,
-    allBins,
-    allSessions,
-    allPersons,
-    activeCoefSet,
-    includePersons,
-    includeCoef
-  )
-  if (payload == null) {
-    return null
-  }
-  return seal(payload)
-}
-
-/**
- * 预览传输导入
- * 整合解封、轮次匹配、楼层冲突检测的完整流程
- * @param envelope PPX1 格式字符串
- * @returns 导入预览结果
- */
 /**
  * 预览传输导入
  * @param envelope PPX1 格式字符串
@@ -1135,8 +1090,8 @@ export function previewTransferImport(envelope: string): ImportPreview {
   let resolvedRoundId: number | null = null
   let candidates: RoundCandidate[] | null = null
 
-  if (payloadKind == 'ANQ' || payloadKind == 'BUNDLE') {
-    const anquPayload = payloadKind == 'ANQ' ? (payload as AnQuPayload) : ((payload as BundlePayload).anqu)
+  if (payloadKind == 'ANQ') {
+    const anquPayload = payload as AnQuPayload
     const allRounds = loadRounds()
     const roundResult = resolveRound(anquPayload, allRounds)
 
@@ -1184,13 +1139,13 @@ export function previewTransferImport(envelope: string): ImportPreview {
   const hasWarnings = warnings.length > 0
   const hasConflicts = conflictSummary != null && conflictSummary.hasConflict
 
-  // canImport 逻辑：轮次匹配成功（ANQ/BUNDLE）
+  // canImport 逻辑：轮次匹配成功（ANQ）
   let canImport = false
   if (payloadKind == 'CONFIG') {
     // CONFIG 类型：即使有冲突也可导入（用户确认后覆盖）
     canImport = true
-  } else if (payloadKind == 'ANQ' || payloadKind == 'BUNDLE') {
-    // ANQ/BUNDLE 类型：需要轮次匹配成功
+  } else if (payloadKind == 'ANQ') {
+    // ANQ 类型：需要轮次匹配成功
     if (matchStatus == 'EXACT_MATCH' || matchStatus == 'SOFT_MATCH') {
       canImport = resolvedRoundId != null
     }
@@ -1247,23 +1202,6 @@ export function applyTransferImport(
     return applyAnQuImportInStore(payload as AnQuPayload, resolvedRoundId, applyFloorConfig)
   } else if (kind == 'CONFIG') {
     return applyConfigImportInStore(payload as ConfigPayload)
-  } else if (kind == 'BUNDLE') {
-    if (resolvedRoundId == null || resolvedRoundId <= 0) {
-      return {
-        success: false,
-        payloadKind: 'BUNDLE',
-        roundId: null,
-        binsImported: 0,
-        binsSkipped: 0,
-        personsImported: 0,
-        coefUpdated: false,
-        floorConfigApplied: false,
-        snapshotSaved: false,
-        warnings: [],
-        errors: ['请选择目标轮次']
-      }
-    }
-    return applyBundleImportInStore(payload as BundlePayload, resolvedRoundId, applyFloorConfig)
   }
 
   return {
@@ -1411,50 +1349,5 @@ function applyConfigImportInStore(payload: ConfigPayload): ImportResult {
     snapshotSaved: false,
     warnings: warnings,
     errors: errors
-  }
-}
-
-function applyBundleImportInStore(payload: BundlePayload, resolvedRoundId: number, applyFloorConfig: boolean): ImportResult {
-  const configPart: ConfigPayload = {
-    v: 1,
-    kind: 'CONFIG',
-    ts: payload.ts,
-    c: payload.c,
-    persons: payload.persons,
-    coef: payload.coef
-  }
-
-  const configResult = applyConfigImportInStore(configPart)
-
-  if (!configResult.success) {
-    return {
-      success: false,
-      payloadKind: 'BUNDLE',
-      roundId: null,
-      binsImported: 0,
-      binsSkipped: 0,
-      personsImported: configResult.personsImported,
-      coefUpdated: configResult.coefUpdated,
-      floorConfigApplied: false,
-      snapshotSaved: false,
-      warnings: configResult.warnings,
-      errors: configResult.errors
-    }
-  }
-
-  const anquResult = applyAnQuImportInStore(payload.anqu, resolvedRoundId, applyFloorConfig)
-
-  return {
-    success: configResult.success && anquResult.success,
-    payloadKind: 'BUNDLE',
-    roundId: anquResult.roundId,
-    binsImported: anquResult.binsImported,
-    binsSkipped: anquResult.binsSkipped,
-    personsImported: configResult.personsImported,
-    coefUpdated: configResult.coefUpdated,
-    floorConfigApplied: anquResult.floorConfigApplied,
-    snapshotSaved: anquResult.snapshotSaved,
-    warnings: configResult.warnings.concat(anquResult.warnings),
-    errors: configResult.errors.concat(anquResult.errors)
   }
 }

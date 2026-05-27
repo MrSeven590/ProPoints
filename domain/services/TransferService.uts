@@ -6,7 +6,6 @@
 import {
   AnQuPayload,
   AnQuBinData,
-  BundlePayload,
   ConfigPayload,
   TransferPayload,
   PayloadKind,
@@ -62,7 +61,6 @@ import {
 
 const PAYLOAD_KIND_ANQ = 'ANQ'
 const PAYLOAD_KIND_CONFIG = 'CONFIG'
-const PAYLOAD_KIND_BUNDLE = 'BUNDLE'
 const SESSION_STATUS_SUBMITTED = 'submitted'
 export const MAX_ROUND_QUERY_DAYS = 180
 
@@ -230,57 +228,6 @@ export function assembleConfigPayload(
     kind: PAYLOAD_KIND_CONFIG,
     ts: getCurrentTimestamp(),
     c: classNo,
-    persons: personsData,
-    coef: coefData
-  }
-}
-
-/**
- * 组装完整配置包载荷
- * @param roundId 轮次ID
- * @param classNo 当前班次号
- * @param allRounds 所有轮次数据
- * @param allBins 所有曲块数据
- * @param allSessions 所有会话数据
- * @param allPersons 所有人员数据（可选）
- * @param activeCoefSet 当前系数集（可选）
- * @param includePersons 是否包含人员数据
- * @param includeCoef 是否包含系数数据
- * @returns Bundle载荷，如果轮次不存在返回null
- */
-export function assembleBundlePayload(
-  roundId: number,
-  classNo: number,
-  allRounds: UTSJSONObject[],
-  floorConfig: UTSJSONObject | null,
-  allBins: UTSJSONObject[],
-  allSessions: UTSJSONObject[],
-  allPersons: UTSJSONObject[] | null,
-  activeCoefSet: UTSJSONObject | null,
-  includePersons: boolean,
-  includeCoef: boolean
-): BundlePayload | null {
-  const anquPayload = collectAnQuPayload(roundId, classNo, allRounds, floorConfig, allBins, allSessions)
-  if (anquPayload == null) {
-    return null
-  }
-
-  let personsData: PersonData[] | null = null
-  if (includePersons && allPersons != null) {
-    personsData = toTransferPersonData(allPersons)
-  }
-
-  let coefData: CoefData | null = null
-  if (includeCoef && activeCoefSet != null) {
-    coefData = toTransferCoefData(activeCoefSet)
-  }
-
-  return {
-    v: 1,
-    kind: PAYLOAD_KIND_BUNDLE,
-    ts: getCurrentTimestamp(),
-    c: classNo,
-    anqu: anquPayload,
     persons: personsData,
     coef: coefData
   }
@@ -547,40 +494,6 @@ export function validateConfigPayload(payload: UTSJSONObject, prefix: string = '
   return null
 }
 
-/**
- * 验证 Bundle 载荷结构
- */
-export function validateBundlePayload(payload: UTSJSONObject, prefix: string = ''): TransferError | null {
-  if (payload['c'] == null || typeof payload['c'] != 'number') {
-    return createInvalidPayloadError(`${prefix}缺少或类型错误: c`, '期望类型: number')
-  }
-
-  if (payload['anqu'] == null || !isUTSObject(payload['anqu'])) {
-    return createInvalidPayloadError(`${prefix}字段类型错误: anqu`, '期望类型: object')
-  }
-
-  const anquPayload = payload['anqu'] as UTSJSONObject
-  const anquError = validateAnQuPayload(anquPayload, `${prefix}anqu: `)
-  if (anquError != null) {
-    return anquError
-  }
-
-  if (payload['persons'] != null) {
-    const personsError = validatePersonsArray(payload['persons'] as any, `${prefix}`)
-    if (personsError != null) {
-      return personsError
-    }
-  }
-
-  if (payload['coef'] != null) {
-    const coefError = validateCoefData(payload['coef'] as any, `${prefix}`)
-    if (coefError != null) {
-      return coefError
-    }
-  }
-
-  return null
-}
 
 function buildAnQuPayloadFromJSON(payloadObj: UTSJSONObject): AnQuPayload {
   const floorsRaw = readObjectArray(payloadObj, 'f')
@@ -663,23 +576,9 @@ function buildConfigPayloadFromJSON(payloadObj: UTSJSONObject): ConfigPayload {
   }
 }
 
-function buildBundlePayloadFromJSON(payloadObj: UTSJSONObject): BundlePayload {
-  const anquObj = readObject(payloadObj, 'anqu') as UTSJSONObject
-  const coefObj = readObject(payloadObj, 'coef')
-  return {
-    v: 1,
-    kind: PAYLOAD_KIND_BUNDLE,
-    ts: payloadObj['ts'] as number,
-    c: payloadObj['c'] as number,
-    anqu: buildAnQuPayloadFromJSON(anquObj),
-    persons: buildPersonsFromJSON(payloadObj),
-    coef: coefObj != null ? buildCoefDataFromJSON(coefObj) : null
-  }
-}
-
 /**
  * 封装载荷为 JSON 字符串（用于剪切板传输）
- * @param payload 载荷对象（AnQuPayload、ConfigPayload 或 BundlePayload）
+ * @param payload 载荷对象（AnQuPayload 或 ConfigPayload）
  * @returns JSON 格式字符串
  */
 export function seal(payload: TransferPayload): string {
@@ -748,19 +647,12 @@ export function unseal(text: string): UnsealResult {
       }
       decodedPayload = buildConfigPayloadFromJSON(payloadObj)
       decodedPayloadKind = 'CONFIG'
-    } else if (kind == PAYLOAD_KIND_BUNDLE) {
-      const validationError = validateBundlePayload(payloadObj, '')
-      if (validationError != null) {
-        return { success: false, payload: null, payloadKind: null, error: validationError }
-      }
-      decodedPayload = buildBundlePayloadFromJSON(payloadObj)
-      decodedPayloadKind = 'BUNDLE'
     } else {
       return {
         success: false,
         payload: null,
         payloadKind: null,
-        error: createInvalidPayloadError(`未知的数据类型: ${kind}`, '期望: ANQ, CONFIG 或 BUNDLE')
+        error: createInvalidPayloadError(`未知的数据类型: ${kind}`, '期望: ANQ 或 CONFIG')
       }
     }
 
@@ -1184,20 +1076,6 @@ export function detectImportConflicts(
       items.push(rosterConflict)
     }
     const coefConflict = checkCoefConflict(configPayload.coef, activeCoefSet)
-    if (coefConflict != null) {
-      items.push(coefConflict)
-    }
-  } else if (kind == 'BUNDLE') {
-    const bundlePayload = payload as BundlePayload
-    const floorConflict = checkFloorConfigConflict(bundlePayload.anqu.f, localFloorConfig)
-    if (floorConflict != null) {
-      items.push(floorConflict)
-    }
-    const rosterConflict = checkRosterConflict(bundlePayload.persons, localPersons)
-    if (rosterConflict != null) {
-      items.push(rosterConflict)
-    }
-    const coefConflict = checkCoefConflict(bundlePayload.coef, activeCoefSet)
     if (coefConflict != null) {
       items.push(coefConflict)
     }

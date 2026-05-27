@@ -77,28 +77,14 @@ export type ConfigPayload = {
 }
 
 /**
- * 完整配置包载荷
- * 包含安曲数据 + 人员 + 系数配置
- */
-export type BundlePayload = {
-  v: 1                         // 版本号（字面量类型）
-  kind: 'BUNDLE'               // 载荷类型（字面量类型）
-  ts: number                   // 时间戳
-  c: number                    // classNo 班次号（顶层）
-  anqu: AnQuPayload            // 安曲数据
-  persons: PersonData[] | null // 人员数据（可选）
-  coef: CoefData | null        // 系数数据（可选）
-}
-
-/**
  * 传输载荷联合类型
  */
-export type TransferPayload = AnQuPayload | ConfigPayload | BundlePayload
+export type TransferPayload = AnQuPayload | ConfigPayload
 
 /**
  * 载荷类型标识
  */
-export type PayloadKind = 'ANQ' | 'CONFIG' | 'BUNDLE'
+export type PayloadKind = 'ANQ' | 'CONFIG'
 
 /**
  * 人员数据（用于传输）
