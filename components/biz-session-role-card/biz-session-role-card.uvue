@@ -369,6 +369,12 @@
         if (this.currentEditingIndex >= 0) {
           this.workers[this.currentEditingIndex].personId = payload.personId
           this.workers[this.currentEditingIndex].personName = payload.personName
+          // 修复：选择人员后自动计算工分
+          // 当岗位仅1人时，自动将池子总分填入该人员（PRD 4.4.1 要求）
+          // 适用于所有岗位（严格单人和非严格单人），只要当前只有1人
+          if (this.workers.length == 1) {
+            this.workers[this.currentEditingIndex].pointsUnits = this.poolUnits as number
+          }
           this.showPersonPicker = false
           this.currentEditingIndex = -1
           this.emitChange('user')
