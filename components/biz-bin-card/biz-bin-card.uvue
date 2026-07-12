@@ -1195,17 +1195,18 @@
   }
 
   .bin-worker-selector {
-    flex: 1;
+    width: 80px;
     flex-direction: row;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
     background-color: #f5f7fa;
     border-radius: 6px;
-    padding: 8px 12px;
+    padding: 8px 2px;
     border-width: 1px;
     border-style: solid;
     border-color: #e8e8e8;
-    margin-right: 8px;
+    margin-right: 4px;
+    overflow: hidden;
   }
 
   .placeholder-text {
@@ -1405,8 +1406,7 @@
   /* ============================================ */
 
   .worker-item-wrapper {
-    flex-direction: row;
-    align-items: center;
+    flex-direction: column;
     margin-bottom: 8px;
   }
 

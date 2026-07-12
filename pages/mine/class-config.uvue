@@ -394,7 +394,7 @@
         uni.showModal({
           title: '切换轮次',
           content: '确定切换到第 ' + roundNo + ' 轮吗?\n注意：手动切换不会自动反转计分权',
-          success: (res: UniShowModalResult) => {
+          success: (res) => {
             if (res.confirm == true) {
               const newRound = switchToRound(this.classNo, roundNo)
               if (newRound != null) {
@@ -513,7 +513,7 @@
         uni.showModal({
           title: '确认结束',
           content: '确定结束 ' + this.currentYear + '年 第' + this.currentRoundNo + '轮 吗?\n下一轮将自动切换计分权。',
-          success: (res: UniShowModalResult) => {
+          success: (res) => {
             if (res.confirm == true) {
               const newRound = endAndCreateNewRound(this.classNo)
               if (newRound != null) {
@@ -537,7 +537,7 @@
         uni.showModal({
           title: '删除记录',
           content: '确定删除 ' + item.year + '年 第' + item.round + '轮 的记录吗?',
-          success: (res: UniShowModalResult) => {
+          success: (res) => {
             if (res.confirm == true) {
               const success = deleteHistoryRound(item.id)
               if (success == true) {
@@ -578,7 +578,7 @@
             content: '已存在 ' + this.initYear + '年 第' + this.initRoundNo + '轮 的历史记录，是否恢复该轮次？',
             confirmText: '恢复',
             cancelText: '取消',
-            success: (res: UniShowModalResult) => {
+            success: (res) => {
               if (res.confirm == true) {
                 const success = resumeHistoryRound(conflict.id)
                 if (success == true) {
