@@ -1,0 +1,1091 @@
+/**
+ * MiMo 大模型识图服务
+ *
+ * 调用小米 MiMo Responses API（兼容 OpenAI Responses 格式）识别草稿本手写工分。
+ * 一页草稿本照片可包含多天 × 多环节的工分记录。
+ *
+ * 流程：拍照 → Base64 → POST /v1/responses → 解析 output_text → 校验 → 返回 OcrValidatedResult
+ */
+
+import {
+  OcrResult,
+  OcrDayRecord,
+  OcrStageRecord,
+  OcrBin,
+  OcrWorker,
+  OcrCrossBin,
+  OcrLiangTang,
+  OcrValidatedResult,
+  OcrValidatedDay,
+  OcrValidatedStage,
+  OcrValidatedBin,
+  OcrValidatedWorker,
+  OcrValidatedCrossBin,
+  OcrValidatedLiangTang,
+  MiMoApiConfig,
+  MIMO_DEFAULT_MODEL,
+  VALID_STAGE_CODES,
+  mapRoleNameToCode,
+  PROTOCOL_OPENAI,
+  PROTOCOL_RESPONSES,
+  PROTOCOL_ANTHROPIC,
+  getProtocolEndpoint
+} from '../models/ocr-payload.uts'
+
+import {
+  normalizeBinCode
+} from '../models/ferment.uts'
+
+import {
+  pointsToUnits
+} from '../models/types.uts'
+
+import {
+  readString,
+  readNumber,
+  readObject,
+  readObjectArray,
+  isUTSObject,
+  safeErrorMessage
+} from '../../utils/json-reader.uts'
+
+import {
+  getMiMoApiKey,
+  getMiMoModel,
+  getMiMoProtocol,
+  getMiMoBaseUrl,
+  loadPersons
+} from '../stores/AppStore.uts'
+
+// ============================================
+// 系统提示词（动态构建，含花名册注入）
+// ============================================
+
+/**
+ * 构建识图系统提示词（含花名册注入）
+ * @param stageCode 工序代码（AN_QU | YI_FAN | ER_FAN | CHAI_QU），由用户在页面上选择
+ * @returns 完整的系统提示词
+ */
+function buildOcrInstructions(stageCode: string): string {
+  // 加载花名册，构建姓名列表
+  const persons = loadPersons()
+  let nameList = ''
+  for (let i = 0; i < persons.length; i++) {
+    const name = readString(persons[i], 'name', '')
+    if (name != '') {
+      if (i > 0) nameList = nameList + '、'
+      nameList = nameList + name
+    }
+  }
+  if (nameList == '') {
+    nameList = '（花名册为空，请按原文识别人名）'
+  }
+
+  return `你是制曲车间工分识别助手。请仔细识别草稿本照片中的手写工分记录。
+
+## 班组花名册
+以下为本班组全部人员名单，识别出的人名必须从中精确匹配，不可自行添加名单外的姓名：
+${nameList}
+
+## 图片内容结构说明
+1. 图片顶部有表头行，列从左到右依次为：日期（年月日）→ 仓号 → 完成任务内容（即人员姓名）→ 实得工分 → 备注
+2. 每日记录以日期开头（如 2026.07.08），日期下方按行排列数据
+3. 每行开头的编号（如 3-3-18）是发酵仓号，仓号后面依次是该仓当日工作的人员姓名，每位人员姓名上方标注有对应工分数值
+4. 每行末尾有一个分数形式的数字（如 1337/73.5），其中前面的数字是该仓当日曲坯数量，斜杠后面的数字是该仓总工分
+5. 单独位于当日的两间发酵仓或多间发酵仓的人员姓名之外的中部或者外部为跨仓岗位人员
+6. 含"晾堂"字样的行表示晾堂组，仓号位置写的是"晾堂"或"晾堂："，后跟晾堂人员姓名及对应工分
+7. 手写人名可能有简化、连笔或潦草情况，请以下方给出的班组名单为准进行匹配，不要自行编造名单中不存在的人名
+8. 可能存在少量的文字备注
+
+## 识别任务
+请逐日识别图中所有内容，对每一天：
+- 列出发酵仓组：仓号、每位人员姓名、每人对应的工分数值
+- 列出跨仓岗位：人员姓名、对应工分数值
+- 列出晾堂组：每位人员姓名、每人对应的工分数值
+- 如有文字备注，填入 remark 字段；如有不确定或无法辨认的项，填入 uncertain_items 字段
+
+## 输出格式（JSON）
+必须输出如下 JSON 结构，不要输出 markdown 表格：
+{
+  "days": [
+    {
+      "date": "YYYY-MM-DD",
+      "stages": [
+        {
+          "stage_code": "${stageCode}",
+          "bins": [
+            {
+              "bin_code": "3-3-18",
+              "koji_count": 1337,
+              "workers": [
+                { "name": "张三", "points": 12.5 }
+              ]
+            }
+          ],
+          "cross_bin": {
+            "role": "跨仓",
+            "worker": { "name": "赵六", "points": 10.0 },
+            "source_bins": ["3-3-18", "3-3-19"]
+          },
+          "liang_tang": {
+            "wheat_material": [{ "name": "王五", "points": 8.5 }],
+            "machine_guard": [],
+            "koji_unloader": [],
+            "micro_operator": []
+          }
+        }
+      ]
+    }
+  ],
+  "remark": "照片中的文字备注原文",
+  "uncertain_items": "列出所有不确定或无法辨认的项"
+}
+
+## 注意事项
+- 严格以班组花名册中的人名为准，不可自行添加名单外的姓名
+- 工分数值应为小数点后一位的数字（如 18.6）
+- 日期格式统一输出为 YYYY-MM-DD（如 2026-07-08），即使照片中写的是 YYYY.MM.DD 也需转换
+- stage_code 固定为 ${stageCode}，所有天数使用相同环节代码
+- koji_count 填入每行末尾分数形式中斜杠前面的数字（如 1337/73.5 中的 1337），即该仓当日曲坯数量
+- cross_bin：若当日存在跨仓岗位人员，填入其姓名、工分及涉及的来源仓号列表（source_bins 为相关仓号数组）；无跨仓岗位人员时填 null。若有多个跨仓人员，将第一个填入 cross_bin.worker，其余在 uncertain_items 中列出
+- 晾堂人员统一放入 wheat_material 数组，其他三个角色数组（machine_guard、koji_unloader、micro_operator）留空
+- remark 填入照片中的文字备注原文（如无则为空字符串）；uncertain_items 填入所有不确定或无法辨认的项（如无则为空字符串）`
+}
+
+// ============================================
+// 配置读取（通过 AppStore，不直接操作 Storage）
+// ============================================
+
+/**
+ * 加载 MiMo API 配置
+ * - 借用共享 Key 时，apiKey/protocol/baseUrl 来自内置默认
+ * - 否则来自用户自定义配置
+ * @returns 配置对象，未配置时 apiKey 为空
+ */
+export function loadMiMoConfig(): MiMoApiConfig {
+  return {
+    apiKey: getMiMoApiKey(),
+    model: getMiMoModel(),
+    protocol: getMiMoProtocol(),
+    baseUrl: getMiMoBaseUrl()
+  }
+}
+
+/**
+ * 检查 API 配置是否可用
+ * - 借用共享 Key 时视为已配置
+ * - 否则要求自定义 apiKey 非空
+ */
+export function isMiMoConfigured(): boolean {
+  return getMiMoApiKey().trim() != ''
+}
+
+// ============================================
+// 图片处理
+// ============================================
+
+/**
+ * 压缩图片到合适大小
+ * @param imagePath 原始图片路径
+ * @param onSuccess 压缩成功回调，返回压缩后路径
+ * @param onError 压缩失败回调
+ */
+export function compressImage(
+  imagePath: string,
+  onSuccess: (compressedPath: string) => void,
+  onError: (message: string) => void
+): void {
+  uni.compressImage({
+    src: imagePath,
+    quality: 80,
+    compressedWidth: 1280,
+    success: (res) => {
+      onSuccess(res.tempFilePath)
+    },
+    fail: (err) => {
+      // 压缩失败时回退使用原图
+      console.warn('compressImage failed, fallback to original: ' + err.errMsg)
+      onSuccess(imagePath)
+    }
+  })
+}
+
+/**
+ * 将图片路径转为 Base64（不含 data: 前缀）
+ *
+ * 在 App 端使用 Android 原生 java.io.File / java.io.FileInputStream + android.util.Base64 实现。
+ * UTS 中需要使用完整包名引用 Java 类。
+ *
+ * @param imagePath 图片本地路径
+ * @returns Base64 字符串，失败返回空
+ */
+export function imageToBase64(imagePath: string): string {
+  // #ifdef APP
+  try {
+    // 去除 file:// 前缀，java.io.File 不识别 URI scheme
+    let realPath = imagePath
+    if (realPath.startsWith('file://')) {
+      realPath = realPath.substring(7)
+    }
+    // 使用 Android 原生 Java API 读取文件并编码为 Base64
+    const file = new java.io.File(realPath)
+    if (!file.exists()) {
+      console.error('imageToBase64: file not found: ' + realPath)
+      return ''
+    }
+    const fileSizeLong = file.length()
+    if (fileSizeLong <= 0 || fileSizeLong > 10 * 1024 * 1024) {
+      console.error('imageToBase64: file size invalid or too large: ' + fileSizeLong.toString())
+      return ''
+    }
+    const fileSize = fileSizeLong.toInt()
+    const bytes = new ByteArray(fileSize)
+    const fis = new java.io.FileInputStream(file)
+    let offset = 0
+    let remaining = fileSize
+    while (remaining > 0) {
+      const read = fis.read(bytes, offset.toInt(), remaining.toInt())
+      if (read == -1) break
+      offset += read
+      remaining -= read
+    }
+    fis.close()
+    // 使用 android.util.Base64 编码，NO_WRAP 不换行
+    return android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+  } catch (e: Exception) {
+    console.error('imageToBase64 error: ' + e.message)
+    return ''
+  }
+  // #endif
+  // #ifndef APP
+  // 非APP端暂不支持，返回空
+  console.warn('imageToBase64: only supported on APP platform')
+  return ''
+  // #endif
+}
+
+// ============================================
+// 识图请求
+// ============================================
+
+/**
+ * 构建 MiMo API 请求体（根据协议分支）
+ * @param imageBase64 图片 Base64（不含 data: 前缀）
+ * @param model 模型名称
+ * @param protocol 协议标识（PROTOCOL_OPENAI | PROTOCOL_RESPONSES | PROTOCOL_ANTHROPIC）
+ * @param stageCode 工序代码（注入到提示词中）
+ */
+function buildRequestBody(imageBase64: string, model: string, protocol: string, stageCode: string): UTSJSONObject {
+  if (protocol == PROTOCOL_OPENAI) {
+    // OpenAI Chat Completions 协议（默认）
+    const userContent = [] as UTSJSONObject[]
+    const imageInput = {
+      type: 'image_url',
+      image_url: {
+        url: `data:image/png;base64,${imageBase64}`
+      } as UTSJSONObject
+    } as UTSJSONObject
+    userContent.push(imageInput)
+    const textInput = {
+      type: 'text',
+      text: '请识别这张草稿本照片中的手写工分记录，按规定的 JSON 格式输出。'
+    } as UTSJSONObject
+    userContent.push(textInput)
+
+    const messages = [] as UTSJSONObject[]
+    messages.push({
+      role: 'system',
+      content: buildOcrInstructions(stageCode)
+    } as UTSJSONObject)
+    messages.push({
+      role: 'user',
+      content: userContent
+    } as UTSJSONObject)
+
+    return {
+      model: model,
+      messages: messages,
+      max_completion_tokens: 8192,
+      stream: false,
+      thinking: { type: 'disabled' } as UTSJSONObject,
+      response_format: {
+        type: 'json_object'
+      } as UTSJSONObject
+    } as UTSJSONObject
+  } else if (protocol == PROTOCOL_ANTHROPIC) {
+    // Anthropic Messages 协议
+    const userContent = [] as UTSJSONObject[]
+    const imageInput = {
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: 'image/png',
+        data: imageBase64
+      } as UTSJSONObject
+    } as UTSJSONObject
+    userContent.push(imageInput)
+    const textInput = {
+      type: 'text',
+      text: '请识别这张草稿本照片中的手写工分记录，按规定的 JSON 格式输出。'
+    } as UTSJSONObject
+    userContent.push(textInput)
+
+    const messages = [] as UTSJSONObject[]
+    messages.push({
+      role: 'user',
+      content: userContent
+    } as UTSJSONObject)
+
+    return {
+      model: model,
+      max_tokens: 8192,
+      system: buildOcrInstructions(stageCode),
+      messages: messages,
+      stream: false,
+      thinking: { type: 'disabled' } as UTSJSONObject
+    } as UTSJSONObject
+  } else {
+    // Responses API 协议（默认回退）
+    const inputArray = [] as UTSJSONObject[]
+    const imageInput = {
+      type: 'input_image',
+      image_url: `data:image/png;base64,${imageBase64}`
+    } as UTSJSONObject
+    inputArray.push(imageInput)
+    const textInput = {
+      type: 'input_text',
+      text: '请识别这张草稿本照片中的手写工分记录，按规定的 JSON 格式输出。'
+    } as UTSJSONObject
+    inputArray.push(textInput)
+
+    return {
+      model: model,
+      instructions: buildOcrInstructions(stageCode),
+      input: inputArray,
+      reasoning: { effort: 'low' } as UTSJSONObject,
+      max_output_tokens: 8192,
+      stream: false,
+      text: {
+        format: {
+          type: 'json_object'
+        } as UTSJSONObject
+      } as UTSJSONObject
+    } as UTSJSONObject
+  }
+}
+
+/**
+ * 调用 MiMo 识图
+ * @param imageBase64 图片 Base64（不含 data: 前缀）
+ * @param config API 配置
+ * @param stageCode 工序代码（AN_QU | YI_FAN | ER_FAN | CHAI_QU），由用户选择
+ * @param onSuccess 成功回调，返回原始 OcrResult
+ * @param onError 失败回调
+ */
+export function recognizeHandwrittenPoints(
+  imageBase64: string,
+  config: MiMoApiConfig,
+  stageCode: string,
+  onSuccess: (result: OcrResult, outputText: string) => void,
+  onError: (message: string) => void
+): void {
+  if (config.apiKey.trim() == '') {
+    onError('请先在设置中配置 MiMo API Key')
+    return
+  }
+
+  if (imageBase64 == '') {
+    onError('图片数据为空')
+    return
+  }
+
+  const requestBody = buildRequestBody(imageBase64, config.model, config.protocol, stageCode)
+  const endpoint = getProtocolEndpoint(config.baseUrl, config.protocol)
+
+  uni.request({
+    url: endpoint,
+    method: 'POST',
+    header: {
+      'api-key': config.apiKey,
+      'Content-Type': 'application/json'
+    } as UTSJSONObject,
+    data: requestBody,
+    timeout: 60000,
+    success: (res) => {
+      try {
+        const statusCode = res.statusCode
+        if (statusCode != 200) {
+          const errData = res.data
+          let errMsg = `API 返回错误状态码: ${statusCode}`
+          if (errData != null && isUTSObject(errData)) {
+            const errObj = errData as UTSJSONObject
+            const errorField = errObj['error']
+            if (errorField != null && isUTSObject(errorField)) {
+              const errorMsg = (errorField as UTSJSONObject)['message']
+              if (errorMsg != null) {
+                errMsg = errMsg + ' - ' + (errorMsg as string)
+              }
+            }
+          }
+          onError(errMsg)
+          return
+        }
+
+        const data = res.data
+        if (data == null || !isUTSObject(data)) {
+          onError('API 返回数据格式异常')
+          return
+        }
+
+        const responseObj = data as UTSJSONObject
+        const outputText = extractResponseText(responseObj, config.protocol)
+        if (outputText == '') {
+          onError('API 未返回有效文本')
+          return
+        }
+
+        const ocrResult = parseOcrResult(outputText)
+        if (ocrResult == null) {
+          onError('识别结果解析失败，原始内容: ' + outputText.substring(0, 200))
+          return
+        }
+
+        onSuccess(ocrResult, outputText)
+      } catch (e: any) {
+        onError('处理 API 响应异常: ' + safeErrorMessage(e))
+      }
+    },
+    fail: (err) => {
+      onError('网络请求失败: ' + err.errMsg)
+    }
+  })
+}
+
+/**
+ * 从 API 响应中提取文本（根据协议分支）
+ *
+ * - OpenAI Chat Completions: choices[0].message.content
+ * - Responses API: output_text 或 output[].content[].text
+ * - Anthropic Messages: content[] 中所有 type=="text" 的 text 拼接
+ *
+ * @param responseObj API 响应对象
+ * @param protocol 协议标识
+ * @returns 提取的文本，失败返回空字符串
+ */
+function extractResponseText(responseObj: UTSJSONObject, protocol: string): string {
+  if (protocol == PROTOCOL_OPENAI) {
+    // OpenAI Chat Completions: choices[0].message.content
+    const choicesField = responseObj['choices']
+    if (choicesField == null || !Array.isArray(choicesField)) {
+      return ''
+    }
+    const choicesArray = choicesField as UTSJSONObject[]
+    if (choicesArray.length == 0) {
+      return ''
+    }
+    const message = choicesArray[0]['message']
+    if (message == null || !isUTSObject(message)) {
+      return ''
+    }
+    const content = (message as UTSJSONObject)['content']
+    if (content != null && typeof content === 'string') {
+      return content as string
+    }
+    return ''
+  } else if (protocol == PROTOCOL_ANTHROPIC) {
+    // Anthropic Messages: content[] 中所有 type=="text" 的 text 拼接
+    const contentField = responseObj['content']
+    if (contentField == null || !Array.isArray(contentField)) {
+      return ''
+    }
+    const contentArray = contentField as UTSJSONObject[]
+    let text = ''
+    for (let i = 0; i < contentArray.length; i++) {
+      const block = contentArray[i]
+      const type = block['type']
+      if (type == 'text') {
+        const blockText = block['text']
+        if (blockText != null && typeof blockText === 'string') {
+          text += blockText as string
+        }
+      }
+    }
+    return text
+  } else {
+    // Responses API: 优先 output_text，回退 output[].content[].text
+    const outputTextField = responseObj['output_text']
+    if (outputTextField != null && typeof outputTextField === 'string') {
+      return outputTextField as string
+    }
+
+    const outputField = responseObj['output']
+    if (outputField == null || !Array.isArray(outputField)) {
+      return ''
+    }
+
+    const outputArray = outputField as UTSJSONObject[]
+    for (let i = 0; i < outputArray.length; i++) {
+      const item = outputArray[i]
+      const contentField2 = item['content']
+      if (contentField2 == null || !Array.isArray(contentField2)) {
+        continue
+      }
+
+      const contentArray = contentField2 as UTSJSONObject[]
+      for (let j = 0; j < contentArray.length; j++) {
+        const content = contentArray[j]
+        const type = content['type']
+        if (type == 'output_text') {
+          const text = content['text']
+          if (text != null && typeof text === 'string') {
+            return text as string
+          }
+        }
+      }
+    }
+
+    return ''
+  }
+}
+
+// ============================================
+// 结果解析（json_object → 强类型）
+// ============================================
+
+/**
+ * 从可能夹带自然语言的文本中提取 JSON 对象子串。
+ *
+ * 模型在 json_object 模式下通常直接返回纯 JSON，但实测 mimo-v2.5 在无法识别图片时
+ * 仍可能返回自然语言说明（如"很抱歉，我无法识别..."）。本函数提取第一个 '{' 到
+ * 最后一个 '}' 之间的内容作为 JSON 文本；若无花括号则原样返回（让 JSON.parse 抛错）。
+ *
+ * @param text 模型 output_text 原始内容
+ * @returns 尽可能干净的 JSON 文本
+ */
+function extractJsonObject(text: string): string {
+  const start = text.indexOf('{')
+  if (start < 0) {
+    return text
+  }
+  const end = text.lastIndexOf('}')
+  if (end < 0 || end <= start) {
+    return text
+  }
+  return text.substring(start, end + 1)
+}
+
+/**
+ * 解析 MiMo 返回的 JSON 文本为 OcrResult
+ * 注意：逐字段构造，不直接强转，避免 UTS 运行时类型错误
+ */
+export function parseOcrResult(jsonText: string): OcrResult | null {
+  try {
+    // 模型在 json_object 模式下通常返回纯 JSON；但偶尔可能夹杂自然语言说明，
+    // 此处提取第一个 '{' 到最后一个 '}' 之间的子串再解析，增强健壮性。
+    const jsonStr = extractJsonObject(jsonText)
+    const parsed = JSON.parse(jsonStr)
+    if (!isUTSObject(parsed)) {
+      return null
+    }
+
+    const rootObj = parsed as UTSJSONObject
+
+    // 解析 days 数组
+    const daysRaw = rootObj['days']
+    if (daysRaw == null || !Array.isArray(daysRaw)) {
+      return null
+    }
+
+    const daysArray = daysRaw as UTSJSONObject[]
+    const days: OcrDayRecord[] = []
+
+    for (let i = 0; i < daysArray.length; i++) {
+      const dayObj = daysArray[i]
+      const day = parseDayRecord(dayObj)
+      if (day != null) {
+        days.push(day)
+      }
+    }
+
+    if (days.length == 0) {
+      return null
+    }
+
+    const notes = readString(rootObj, 'remark', '')
+    const uncertainItems = readString(rootObj, 'uncertain_items', '')
+
+    return {
+      days: days,
+      remark: notes,
+      uncertain_items: uncertainItems
+    }
+  } catch (e: any) {
+    console.error('parseOcrResult error: ' + safeErrorMessage(e))
+    return null
+  }
+}
+
+/**
+ * 解析单日记录
+ */
+function parseDayRecord(dayObj: UTSJSONObject): OcrDayRecord | null {
+  const date = readString(dayObj, 'date', '')
+  if (date == '') {
+    return null
+  }
+
+  const stagesRaw = dayObj['stages']
+  if (stagesRaw == null || !Array.isArray(stagesRaw)) {
+    return null
+  }
+
+  const stagesArray = stagesRaw as UTSJSONObject[]
+  const stages: OcrStageRecord[] = []
+
+  for (let i = 0; i < stagesArray.length; i++) {
+    const stageObj = stagesArray[i]
+    const stage = parseStageRecord(stageObj)
+    if (stage != null) {
+      stages.push(stage)
+    }
+  }
+
+  if (stages.length == 0) {
+    return null
+  }
+
+  return {
+    date: date,
+    stages: stages
+  }
+}
+
+/**
+ * 解析单环节记录
+ */
+function parseStageRecord(stageObj: UTSJSONObject): OcrStageRecord | null {
+  const stageCode = readString(stageObj, 'stage_code', '')
+  if (stageCode == '') {
+    return null
+  }
+
+  // 解析 bins
+  const binsRaw = readObjectArray(stageObj, 'bins')
+  const bins: OcrBin[] = []
+  for (let i = 0; i < binsRaw.length; i++) {
+    const bin = parseBin(binsRaw[i])
+    if (bin != null) {
+      bins.push(bin)
+    }
+  }
+
+  // 解析 cross_bin
+  let crossBin: OcrCrossBin | null = null
+  const crossBinObj = readObject(stageObj, 'cross_bin')
+  if (crossBinObj != null) {
+    crossBin = parseCrossBin(crossBinObj)
+  }
+
+  // 解析 liang_tang
+  let liangTang: OcrLiangTang | null = null
+  const liangTangObj = readObject(stageObj, 'liang_tang')
+  if (liangTangObj != null) {
+    liangTang = parseLiangTang(liangTangObj)
+  }
+
+  return {
+    stage_code: stageCode,
+    bins: bins,
+    cross_bin: crossBin,
+    liang_tang: liangTang
+  }
+}
+
+/**
+ * 解析发酵仓
+ */
+function parseBin(binObj: UTSJSONObject): OcrBin | null {
+  const binCode = readString(binObj, 'bin_code', '')
+  if (binCode == '') {
+    return null
+  }
+
+  const kojiCount = readNumber(binObj, 'koji_count', 0)
+
+  const workersRaw = readObjectArray(binObj, 'workers')
+  const workers: OcrWorker[] = []
+  for (let i = 0; i < workersRaw.length; i++) {
+    const worker = parseWorker(workersRaw[i])
+    if (worker != null) {
+      workers.push(worker)
+    }
+  }
+
+  return {
+    bin_code: binCode,
+    koji_count: kojiCount,
+    workers: workers
+  }
+}
+
+/**
+ * 解析工人
+ */
+function parseWorker(workerObj: UTSJSONObject): OcrWorker | null {
+  const name = readString(workerObj, 'name', '')
+  if (name == '') {
+    return null
+  }
+
+  const points = readNumber(workerObj, 'points', 0)
+
+  return {
+    name: name,
+    points: points
+  }
+}
+
+/**
+ * 解析跨仓岗位
+ */
+function parseCrossBin(crossBinObj: UTSJSONObject): OcrCrossBin | null {
+  const role = readString(crossBinObj, 'role', '')
+  if (role == '') {
+    return null
+  }
+
+  const workerObj = readObject(crossBinObj, 'worker')
+  if (workerObj == null) {
+    return null
+  }
+
+  const worker = parseWorker(workerObj)
+  if (worker == null) {
+    return null
+  }
+
+  // 解析 source_bins
+  const sourceBinsRaw = crossBinObj['source_bins']
+  const sourceBins: string[] = []
+  if (sourceBinsRaw != null && Array.isArray(sourceBinsRaw)) {
+    const sourceBinsArray = sourceBinsRaw as string[]
+    for (let i = 0; i < sourceBinsArray.length; i++) {
+      sourceBins.push(sourceBinsArray[i])
+    }
+  }
+
+  return {
+    role: role,
+    worker: worker,
+    source_bins: sourceBins
+  }
+}
+
+/**
+ * 解析晾堂岗位
+ */
+function parseLiangTang(liangTangObj: UTSJSONObject): OcrLiangTang | null {
+  return {
+    wheat_material: parseWorkerArray(liangTangObj, 'wheat_material'),
+    machine_guard: parseWorkerArray(liangTangObj, 'machine_guard'),
+    koji_unloader: parseWorkerArray(liangTangObj, 'koji_unloader'),
+    micro_operator: parseWorkerArray(liangTangObj, 'micro_operator')
+  }
+}
+
+/**
+ * 解析工人数组
+ */
+function parseWorkerArray(parentObj: UTSJSONObject, key: string): OcrWorker[] {
+  const arrRaw = readObjectArray(parentObj, key)
+  const workers: OcrWorker[] = []
+  for (let i = 0; i < arrRaw.length; i++) {
+    const worker = parseWorker(arrRaw[i])
+    if (worker != null) {
+      workers.push(worker)
+    }
+  }
+  return workers
+}
+
+// ============================================
+// 结果校验（OcrResult → OcrValidatedResult）
+// ============================================
+
+/**
+ * 校验识别结果，匹配花名册，生成警告
+ * @param ocrResult 原始识别结果
+ * @param persons 本地花名册人员列表（UTSJSONObject[]，含 id/name 字段）
+ * @returns 校验结果
+ */
+export function validateOcrResult(ocrResult: OcrResult, persons: UTSJSONObject[]): OcrValidatedResult {
+  // 构建姓名索引 Map（精确匹配）
+  const nameMap = new Map<string, UTSJSONObject>()
+  for (let i = 0; i < persons.length; i++) {
+    const p = persons[i]
+    const name = readString(p, 'name', '')
+    if (name != '') {
+      nameMap.set(name, p)
+    }
+  }
+
+  let totalWarningCount = 0
+  let hasBlockingError = false
+
+  const validatedDays: OcrValidatedDay[] = []
+
+  for (let i = 0; i < ocrResult.days.length; i++) {
+    const day = ocrResult.days[i]
+    const dateValid = isValidDateString(day.date)
+    if (!dateValid) {
+      hasBlockingError = true
+    }
+
+    let dayWarningCount = 0
+    const validatedStages: OcrValidatedStage[] = []
+
+    for (let j = 0; j < day.stages.length; j++) {
+      const stage = day.stages[j]
+      const stageCodeValid = VALID_STAGE_CODES.indexOf(stage.stage_code) != -1
+      if (!stageCodeValid) {
+        hasBlockingError = true
+      }
+
+      let stageWarningCount = 0
+
+      // 校验 bins
+      const validatedBins: OcrValidatedBin[] = []
+      for (let k = 0; k < stage.bins.length; k++) {
+        const bin = stage.bins[k]
+        const binWarning = validateBin(bin)
+        const workers = validateWorkers(bin.workers, nameMap)
+        for (let w = 0; w < workers.length; w++) {
+          if (workers[w].warning != '') {
+            stageWarningCount++
+          }
+        }
+        if (binWarning != '') {
+          stageWarningCount++
+        }
+        validatedBins.push({
+          binCode: bin.bin_code,
+          binCodeValid: binWarning == '',
+          kojiCount: bin.koji_count,
+          workers: workers,
+          warning: binWarning
+        })
+      }
+
+      // 校验 cross_bin
+      let validatedCrossBin: OcrValidatedCrossBin | null = null
+      if (stage.cross_bin != null) {
+        const roleCode = mapRoleNameToCode(stage.cross_bin.role)
+        const workerArr: OcrWorker[] = []
+        workerArr.push(stage.cross_bin.worker)
+        const validatedCrossWorkers = validateWorkers(workerArr, nameMap)
+        const crossBinWarning = roleCode == '' ? '未知跨仓岗位: ' + stage.cross_bin.role : ''
+        if (crossBinWarning != '') {
+          stageWarningCount++
+        }
+        validatedCrossBin = {
+          roleCode: roleCode,
+          roleName: stage.cross_bin.role,
+          worker: validatedCrossWorkers[0],
+          sourceBinCodes: stage.cross_bin.source_bins,
+          warning: crossBinWarning
+        }
+      }
+
+      // 校验 liang_tang
+      let validatedLiangTang: OcrValidatedLiangTang | null = null
+      if (stage.liang_tang != null) {
+        const ltWheat = validateWorkers(stage.liang_tang.wheat_material, nameMap)
+        const ltGuard = validateWorkers(stage.liang_tang.machine_guard, nameMap)
+        const ltUnloader = validateWorkers(stage.liang_tang.koji_unloader, nameMap)
+        const ltMicro = validateWorkers(stage.liang_tang.micro_operator, nameMap)
+
+        for (let w = 0; w < ltWheat.length; w++) {
+          if (ltWheat[w].warning != '') stageWarningCount++
+        }
+        for (let w = 0; w < ltGuard.length; w++) {
+          if (ltGuard[w].warning != '') stageWarningCount++
+        }
+        for (let w = 0; w < ltUnloader.length; w++) {
+          if (ltUnloader[w].warning != '') stageWarningCount++
+        }
+        for (let w = 0; w < ltMicro.length; w++) {
+          if (ltMicro[w].warning != '') stageWarningCount++
+        }
+
+        validatedLiangTang = distributeLiangTangWorkers(ltWheat, ltGuard, ltUnloader, ltMicro)
+      }
+
+      validatedStages.push({
+        stageCode: stage.stage_code,
+        stageCodeValid: stageCodeValid,
+        bins: validatedBins,
+        crossBin: validatedCrossBin,
+        liangTang: validatedLiangTang,
+        warningCount: stageWarningCount
+      })
+
+      dayWarningCount += stageWarningCount
+    }
+
+    validatedDays.push({
+      date: day.date,
+      dateValid: dateValid,
+      stages: validatedStages,
+      warningCount: dayWarningCount
+    })
+
+    totalWarningCount += dayWarningCount
+  }
+
+  return {
+    days: validatedDays,
+    remark: ocrResult.remark,
+    uncertainItems: ocrResult.uncertain_items,
+    totalWarningCount: totalWarningCount,
+    hasBlockingError: hasBlockingError
+  }
+}
+
+/**
+ * 校验发酵仓
+ */
+function validateBin(bin: OcrBin): string {
+  const normalized = normalizeBinCode(bin.bin_code)
+  if (normalized == null) {
+    return '仓号格式错误: ' + bin.bin_code
+  }
+  if (bin.koji_count <= 0) {
+    return '曲坯数量异常: ' + bin.koji_count.toString()
+  }
+  return ''
+}
+
+/**
+ * 校验工人列表，匹配花名册
+ */
+function validateWorkers(workers: OcrWorker[], nameMap: Map<string, UTSJSONObject>): OcrValidatedWorker[] {
+  const result: OcrValidatedWorker[] = []
+
+  for (let i = 0; i < workers.length; i++) {
+    const worker = workers[i]
+    const pointsUnits = pointsToUnits(worker.points)
+
+    let personId = 0
+    let matchedName = ''
+    let warning = ''
+
+    // 精确匹配姓名
+    const matchedPerson = nameMap.get(worker.name)
+    if (matchedPerson != null) {
+      personId = readNumber(matchedPerson, 'id', 0)
+      matchedName = readString(matchedPerson, 'name', '')
+    } else {
+      warning = '未匹配到花名册: ' + worker.name
+    }
+
+    // 工分合理性检查
+    if (worker.points < 0) {
+      warning = warning + (warning != '' ? '；' : '') + '工分为负数'
+    }
+
+    result.push({
+      name: worker.name,
+      points: worker.points,
+      pointsUnits: pointsUnits,
+      personId: personId,
+      matchedName: matchedName,
+      warning: warning
+    })
+  }
+
+  return result
+}
+
+/**
+ * 将晾堂人员按识别顺序分发到四个固定岗位
+ *
+ * 提示词要求模型将晾堂人员统一放入 wheat_material（其余角色数组留空），
+ * 此处按顺序重排：第1人→麦料参数(WHEAT_MATERIAL)，第2人→守机(MACHINE_GUARD)，
+ * 第3人→下曲(KOJI_UNLOADER)，第4人及以后→微机(MICRO_OPERATOR)。
+ * 若模型已按角色填入，则按 麦料→守机→下曲→微机 的读取顺序合并后重排，结果不变。
+ */
+function distributeLiangTangWorkers(
+  ltWheat: OcrValidatedWorker[],
+  ltGuard: OcrValidatedWorker[],
+  ltUnloader: OcrValidatedWorker[],
+  ltMicro: OcrValidatedWorker[]
+): OcrValidatedLiangTang {
+  const all: OcrValidatedWorker[] = []
+  appendValidatedWorkers(all, ltWheat)
+  appendValidatedWorkers(all, ltGuard)
+  appendValidatedWorkers(all, ltUnloader)
+  appendValidatedWorkers(all, ltMicro)
+
+  const wheatMaterial: OcrValidatedWorker[] = []
+  const machineGuard: OcrValidatedWorker[] = []
+  const kojiUnloader: OcrValidatedWorker[] = []
+  const microOperator: OcrValidatedWorker[] = []
+
+  for (let i = 0; i < all.length; i++) {
+    const worker = all[i]
+    if (i == 0) {
+      wheatMaterial.push(worker)
+    } else if (i == 1) {
+      machineGuard.push(worker)
+    } else if (i == 2) {
+      kojiUnloader.push(worker)
+    } else {
+      microOperator.push(worker)
+    }
+  }
+
+  return {
+    wheatMaterial: wheatMaterial,
+    machineGuard: machineGuard,
+    kojiUnloader: kojiUnloader,
+    microOperator: microOperator
+  } as OcrValidatedLiangTang
+}
+
+/**
+ * 将 source 中的工人追加到 target（UTS 不支持 spread，逐项 push）
+ */
+function appendValidatedWorkers(target: OcrValidatedWorker[], source: OcrValidatedWorker[]): void {
+  for (let i = 0; i < source.length; i++) {
+    target.push(source[i])
+  }
+}
+
+/**
+ * 校验日期字符串格式（YYYY-MM-DD）
+ */
+function isValidDateString(dateStr: string): boolean {
+  if (dateStr.length != 10) {
+    return false
+  }
+  const parts = dateStr.split('-')
+  if (parts.length != 3) {
+    return false
+  }
+  const year = parseInt(parts[0])
+  const month = parseInt(parts[1])
+  const day = parseInt(parts[2])
+  if (isNaN(year) || isNaN(month) || isNaN(day)) {
+    return false
+  }
+  if (year < 2020 || year > 2100) {
+    return false
+  }
+  if (month < 1 || month > 12) {
+    return false
+  }
+  if (day < 1 || day > 31) {
+    return false
+  }
+  return true
+}

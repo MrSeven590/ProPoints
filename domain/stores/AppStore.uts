@@ -39,10 +39,31 @@ import {
   loadBins as loadBinsFromRepo,
   saveData as saveDataToRepo,
   loadData as loadDataFromRepo,
-  removeData as removeDataFromRepo
+  removeData as removeDataFromRepo,
+  saveMiMoApiKey as saveMiMoApiKeyToRepo,
+  loadMiMoApiKey as loadMiMoApiKeyFromRepo,
+  saveMiMoModel as saveMiMoModelToRepo,
+  loadMiMoModel as loadMiMoModelFromRepo,
+  saveMiMoProtocol as saveMiMoProtocolToRepo,
+  loadMiMoProtocol as loadMiMoProtocolFromRepo,
+  saveMiMoBaseUrl as saveMiMoBaseUrlToRepo,
+  loadMiMoBaseUrl as loadMiMoBaseUrlFromRepo,
+  saveMiMoUseBuiltin as saveMiMoUseBuiltinToRepo,
+  loadMiMoUseBuiltin as loadMiMoUseBuiltinFromRepo,
+  saveOcrHistory as saveOcrHistoryToRepo,
+  loadOcrHistory as loadOcrHistoryFromRepo,
+  clearOcrHistory as clearOcrHistoryToRepo
 } from '../../storage/storage-repository.uts'
 
 import { getAnQuImportSnapshotKey } from '../../storage/storage-keys.uts'
+
+import {
+  PROTOCOL_OPENAI,
+  MIMO_DEFAULT_BASE_URL,
+  MIMO_BUILTIN_API_KEY,
+  MIMO_BUILTIN_BASE_URL,
+  MIMO_BUILTIN_PROTOCOL
+} from '../models/ocr-payload.uts'
 
 import { resetAllStorage as resetAllStorageFromInit } from '../../storage/init.uts'
 
@@ -197,6 +218,189 @@ export function setManagerName(name: string): void {
 }
 
 // ============================================
+// MiMo AI 识图配置
+// ============================================
+
+/**
+ * 是否借用内置共享 Key 配置
+ * @returns true=借用内置共享配置（API Key / Base URL / 协议均用内置默认）
+ */
+export function getMiMoUseBuiltin(): boolean {
+  const useBuiltin = loadMiMoUseBuiltinFromRepo()
+  return useBuiltin != null ? useBuiltin as boolean : false
+}
+
+/**
+ * 设置是否借用内置共享 Key 配置
+ * @param useBuiltin true=借用内置共享配置
+ */
+export function setMiMoUseBuiltin(useBuiltin: boolean): void {
+  saveMiMoUseBuiltinToRepo(useBuiltin)
+}
+
+/**
+ * 获取 MiMo API Key
+ * - 借用共享 Key 时，返回内置共享 API Key
+ * - 否则返回用户自定义 API Key，未配置返回空字符串
+ * @returns API Key
+ */
+export function getMiMoApiKey(): string {
+  if (getMiMoUseBuiltin()) {
+    return MIMO_BUILTIN_API_KEY
+  }
+  const apiKey = loadMiMoApiKeyFromRepo()
+  return apiKey != null ? apiKey : ''
+}
+
+/**
+ * 设置 MiMo API Key
+ * @param apiKey API Key
+ */
+export function setMiMoApiKey(apiKey: string): void {
+  saveMiMoApiKeyToRepo(apiKey)
+}
+
+/**
+ * 获取 MiMo 模型
+ * @returns 模型 ID，未配置返回默认值
+ */
+export function getMiMoModel(): string {
+  const model = loadMiMoModelFromRepo()
+  // mimo-v2.5-pro 不支持图像输入，必须回退到 mimo-v2.5
+  return model != null && model != '' ? model : 'mimo-v2.5'
+}
+
+/**
+ * 设置 MiMo 模型
+ * @param model 模型 ID
+ */
+export function setMiMoModel(model: string): void {
+  saveMiMoModelToRepo(model)
+}
+
+/**
+ * 获取 MiMo API 协议
+ * - 借用共享 Key 时，返回内置共享协议
+ * - 否则返回用户自定义协议，未配置返回默认值 PROTOCOL_OPENAI
+ * @returns 协议标识
+ */
+export function getMiMoProtocol(): string {
+  if (getMiMoUseBuiltin()) {
+    return MIMO_BUILTIN_PROTOCOL
+  }
+  const protocol = loadMiMoProtocolFromRepo()
+  if (protocol != null && protocol != '') {
+    return protocol
+  }
+  return PROTOCOL_OPENAI
+}
+
+/**
+ * 设置 MiMo API 协议
+ * @param protocol 协议标识
+ */
+export function setMiMoProtocol(protocol: string): void {
+  saveMiMoProtocolToRepo(protocol)
+}
+
+/**
+ * 获取 MiMo API Base URL
+ * - 借用共享 Key 时，返回内置共享 Base URL
+ * - 否则返回用户自定义 Base URL，未配置返回空字符串
+ * @returns Base URL
+ */
+export function getMiMoBaseUrl(): string {
+  if (getMiMoUseBuiltin()) {
+    return MIMO_BUILTIN_BASE_URL
+  }
+  const baseUrl = loadMiMoBaseUrlFromRepo()
+  if (baseUrl != null && baseUrl != '') {
+    return baseUrl
+  }
+  return MIMO_DEFAULT_BASE_URL
+}
+
+/**
+ * 设置 MiMo API Base URL
+ * @param baseUrl Base URL
+ */
+export function setMiMoBaseUrl(baseUrl: string): void {
+  saveMiMoBaseUrlToRepo(baseUrl)
+}
+
+// ============================================
+// OCR 识图历史记录（最多5条，FIFO 循环覆盖）
+// ============================================
+
+/** OCR 历史记录最大保存条数 */
+const OCR_HISTORY_MAX = 5
+
+/**
+ * 添加一条 OCR 识图历史记录
+ * 存储原始 JSON 文本 + stageCode + 摘要信息，加载时重新解析+校验
+ * @param outputText API 返回的原始 JSON 文本
+ * @param stageCode 工序代码
+ * @param daysCount 识别天数
+ * @param stageName 工序中文名
+ * @param imagePath 识别原图的应用沙盒持久化路径（旧记录可为空）
+ */
+export function addOcrHistoryEntry(outputText: string, stageCode: string, daysCount: number, stageName: string, imagePath: string = ''): void {
+  const history = loadOcrHistoryFromRepo()
+  const entry = {
+    outputText: outputText,
+    stageCode: stageCode,
+    daysCount: daysCount,
+    stageName: stageName,
+    imagePath: imagePath,
+    timestamp: Date.now()
+  } as UTSJSONObject
+  // 新记录插到头部
+  history.unshift(entry)
+  // 超过上限则删除最旧记录及其原图，避免应用沙盒文件持续增长
+  while (history.length > OCR_HISTORY_MAX) {
+    const removed = history.pop()
+    if (removed != null) {
+      removeOcrHistoryImage(removed)
+    }
+  }
+  saveOcrHistoryToRepo(history)
+}
+
+/**
+ * 删除 OCR 历史记录关联的持久化原图。
+ * 旧版本历史记录没有 imagePath，直接跳过以保持兼容。
+ */
+function removeOcrHistoryImage(entry: UTSJSONObject): void {
+  const imagePath = entry['imagePath']
+  if (imagePath == null || typeof imagePath !== 'string' || imagePath == '') {
+    return
+  }
+  const fileManager = uni.getFileSystemManager()
+  fileManager.unlink({
+    filePath: imagePath as string
+  })
+}
+
+/**
+ * 获取 OCR 识图历史记录列表
+ * @returns 历史记录数组（最新在前），每条含 outputText/stageCode/daysCount/stageName/timestamp
+ */
+export function getOcrHistory(): UTSJSONObject[] {
+  return loadOcrHistoryFromRepo()
+}
+
+/**
+ * 清空 OCR 识图历史记录
+ */
+export function clearOcrHistory(): void {
+  const history = loadOcrHistoryFromRepo()
+  for (let i = 0; i < history.length; i++) {
+    removeOcrHistoryImage(history[i])
+  }
+  clearOcrHistoryToRepo()
+}
+
+// ============================================
 // 发酵仓配置
 // ============================================
 
@@ -250,12 +454,24 @@ function saveDraftSessionRaw(sessionDate: string, stageCode: string, roundId: nu
  * 保存草稿会话（公开强类型版本）
  * @param sessionDate 会话日期
  * @param stageCode 环节代码
- * @param roundId 轮次ID
  * @param sessionData 会话数据
  */
 export function saveDraftSession(sessionDate: string, stageCode: string, roundId: number | null, sessionData: SessionData): void {
   saveDraftSessionToRepo(sessionDate, stageCode, roundId, sessionDataToStorageJson(sessionData))
   uni.$emit(EVENT_SESSION_SAVED, { sessionDate: sessionData.session_date, stageCode, roundId } as SessionEventPayload)
+}
+
+/**
+ * 保存草稿会话（OCR 导入专用，接收弱类型 UTSJSONObject）
+ * OCR SessionBuilder 构造的数据为 UTSJSONObject 格式，直接写入存储。
+ * @param sessionDate 会话日期
+ * @param stageCode 环节代码
+ * @param roundId 轮次ID
+ * @param sessionData 会话数据（UTSJSONObject 格式，符合 SessionStorageJson 结构）
+ */
+export function saveDraftSessionFromOcr(sessionDate: string, stageCode: string, roundId: number | null, sessionData: UTSJSONObject): void {
+  saveDraftSessionToRepo(sessionDate, stageCode, roundId, sessionData)
+  uni.$emit(EVENT_SESSION_SAVED, { sessionDate: sessionDate, stageCode, roundId } as SessionEventPayload)
 }
 
 /**

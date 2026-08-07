@@ -1,0 +1,313 @@
+/**
+ * AI 识图（MiMo）返回的数据模型定义
+ *
+ * 场景：用户拍照草稿本一整页，一页可能包含多天 × 多环节的手写工分。
+ * 模型按 json_object 格式输出，本模块定义强类型契约与服务层校验后的内部类型。
+ */
+
+// ============================================
+// MiMo API 原始返回 JSON 契约（json_object 输出）
+// ============================================
+
+/**
+ * MiMo 识图返回的顶层 JSON 对象
+ * - days: 多天记录数组（一页草稿本可含多天）
+ * - notes: 模型对不确定项的备注
+ */
+export type OcrResult = {
+  days: OcrDayRecord[]
+  remark: string
+  uncertain_items: string
+}
+
+/**
+ * 单日工分记录
+ * - date: YYYY-MM-DD 格式
+ * - stages: 该日各环节记录（安曲/一翻/二翻/拆曲等）
+ */
+export type OcrDayRecord = {
+  date: string
+  stages: OcrStageRecord[]
+}
+
+/**
+ * 单环节记录
+ * - stage_code: AN_QU | YI_FAN | ER_FAN | CHAI_QU
+ * - bins: 发酵仓列表（仓内工人 + 曲坯数）
+ * - cross_bin: 跨仓岗位（拉车/打杂），可为 null
+ * - liang_tang: 晾堂岗位（仅安曲），可为 null
+ */
+export type OcrStageRecord = {
+  stage_code: string
+  bins: OcrBin[]
+  cross_bin: OcrCrossBin | null
+  liang_tang: OcrLiangTang | null
+}
+
+/**
+ * 发酵仓记录
+ * - bin_code: 仓号，如 "3-3-1"
+ * - koji_count: 曲坯数量
+ * - workers: 仓内工人列表（含站位顺序，按照片从门口到里面）
+ */
+export type OcrBin = {
+  bin_code: string
+  koji_count: number
+  workers: OcrWorker[]
+}
+
+/**
+ * 工人记录
+ * - name: 手写姓名（原文，不做自动修正）
+ * - points: 工分（显示分，0.1精度，如 12.5）
+ */
+export type OcrWorker = {
+  name: string
+  points: number
+}
+
+/**
+ * 跨仓岗位记录
+ * - role: 岗位名称（拉车/打杂）
+ * - worker: 工人
+ * - source_bins: 分摊来源仓号列表
+ */
+export type OcrCrossBin = {
+  role: string
+  worker: OcrWorker
+  source_bins: string[]
+}
+
+/**
+ * 晾堂岗位记录（仅安曲环节）
+ * 四个固定岗位：麦料参数、守机、下曲、微机
+ */
+export type OcrLiangTang = {
+  wheat_material: OcrWorker[]
+  machine_guard: OcrWorker[]
+  koji_unloader: OcrWorker[]
+  micro_operator: OcrWorker[]
+}
+
+// ============================================
+// 服务层校验后的内部类型（带校验状态，供校对页使用）
+// ============================================
+
+/**
+ * 校验后的工人项（带匹配状态）
+ */
+export type OcrValidatedWorker = {
+  name: string           // 原始识别姓名
+  points: number          // 工分（显示分）
+  pointsUnits: number     // 工分单位（整数，×10）
+  personId: number         // 匹配到花名册的人员ID，0=未匹配
+  matchedName: string      // 匹配到的人员姓名，未匹配为空
+  warning: string          // 校验警告（空=无警告）
+}
+
+/**
+ * 校验后的发酵仓
+ */
+export type OcrValidatedBin = {
+  binCode: string
+  binCodeValid: boolean    // 仓号格式是否合法
+  kojiCount: number
+  workers: OcrValidatedWorker[]
+  warning: string
+}
+
+/**
+ * 校验后的跨仓岗位
+ */
+export type OcrValidatedCrossBin = {
+  roleCode: string         // CART_PULLER | HELPER
+  roleName: string
+  worker: OcrValidatedWorker
+  sourceBinCodes: string[]
+  warning: string
+}
+
+/**
+ * 校验后的晾堂岗位（按角色分组的工人列表）
+ */
+export type OcrValidatedLiangTang = {
+  wheatMaterial: OcrValidatedWorker[]
+  machineGuard: OcrValidatedWorker[]
+  kojiUnloader: OcrValidatedWorker[]
+  microOperator: OcrValidatedWorker[]
+}
+
+/**
+ * 校验后的环节记录
+ */
+export type OcrValidatedStage = {
+  stageCode: string        // AN_QU | YI_FAN | ER_FAN | CHAI_QU
+  stageCodeValid: boolean
+  bins: OcrValidatedBin[]
+  crossBin: OcrValidatedCrossBin | null
+  liangTang: OcrValidatedLiangTang | null
+  warningCount: number
+}
+
+/**
+ * 校验后的单日记录
+ */
+export type OcrValidatedDay = {
+  date: string
+  dateValid: boolean       // 日期格式是否合法
+  stages: OcrValidatedStage[]
+  warningCount: number
+}
+
+/**
+ * 完整校验结果
+ */
+export type OcrValidatedResult = {
+  days: OcrValidatedDay[]
+  remark: string
+  uncertainItems: string
+  totalWarningCount: number
+  hasBlockingError: boolean  // 存在无法导入的严重错误
+}
+
+// ============================================
+// API 配置类型
+// ============================================
+
+/**
+ * MiMo API 配置
+ */
+export type MiMoApiConfig = {
+  apiKey: string
+  model: string             // mimo-v2.5（支持图像输入）
+  protocol: string          // PROTOCOL_OPENAI | PROTOCOL_RESPONSES | PROTOCOL_ANTHROPIC
+  baseUrl: string           // 如 'https://api.xiaomimimo.com' 或 'https://fufu.iqach.top'
+}
+
+// ============================================
+// 常量
+// ============================================
+
+/** @deprecated 旧端点常量，保留向后兼容，实际使用 getProtocolEndpoint 动态计算 */
+export const MIMO_DEFAULT_ENDPOINT = 'https://api.xiaomimimo.com/v1/responses'
+
+/** 默认 baseUrl（空，需用户配置或勾选借用共享 Key） */
+export const MIMO_DEFAULT_BASE_URL = ''
+
+/** 默认模型（必须使用 mimo-v2.5，mimo-v2.5-pro 不支持图像输入） */
+export const MIMO_DEFAULT_MODEL = 'mimo-v2.5'
+
+/** 可选模型列表（mimo-v2.5 支持图像，排在首位） */
+export const MIMO_MODEL_OPTIONS: string[] = ['mimo-v2.5', 'mimo-v2.5-pro']
+
+// ---- API 协议常量 ----
+
+/** OpenAI Chat Completions 协议（默认，兼容性最好） */
+export const PROTOCOL_OPENAI = 'openai_chat'
+
+/** MiMo Responses API 协议 */
+export const PROTOCOL_RESPONSES = 'responses'
+
+/** Anthropic Messages API 协议 */
+export const PROTOCOL_ANTHROPIC = 'anthropic'
+
+/** 可选协议列表 */
+export const MIMO_PROTOCOL_OPTIONS: string[] = [PROTOCOL_OPENAI, PROTOCOL_RESPONSES, PROTOCOL_ANTHROPIC]
+
+// ---- 内置共享配置（勾选「借用共享 Key」时使用） ----
+
+/** 内置共享 API Key（fufu.iqach.top 中转站） */
+export const MIMO_BUILTIN_API_KEY = 'sk-mimo-b831dd23481ecb6f3b1127e52c40aefc21159469e58348bf8fd1eea4d83c8371'
+
+/** 内置共享 baseUrl（fufu.iqach.top 中转站） */
+export const MIMO_BUILTIN_BASE_URL = 'https://fufu.iqach.top'
+
+/** 内置共享协议（OpenAI Chat Completions，兼容性最好） */
+export const MIMO_BUILTIN_PROTOCOL = PROTOCOL_OPENAI
+
+/** 协议中文显示名 */
+export function getProtocolDisplayName(protocol: string): string {
+  if (protocol == PROTOCOL_OPENAI) {
+    return 'OpenAI Chat'
+  } else if (protocol == PROTOCOL_RESPONSES) {
+    return 'Responses'
+  } else if (protocol == PROTOCOL_ANTHROPIC) {
+    return 'Anthropic'
+  }
+  return protocol
+}
+
+/**
+ * 根据 baseUrl 和协议计算完整 endpoint
+ * @param baseUrl 如 'https://api.xiaomimimo.com' 或 'https://fufu.iqach.top'
+ * @param protocol PROTOCOL_OPENAI | PROTOCOL_RESPONSES | PROTOCOL_ANTHROPIC
+ * @returns 完整 endpoint URL
+ */
+export function getProtocolEndpoint(baseUrl: string, protocol: string): string {
+  let path = '/v1/chat/completions'
+  if (protocol == PROTOCOL_RESPONSES) {
+    path = '/v1/responses'
+  } else if (protocol == PROTOCOL_ANTHROPIC) {
+    path = '/anthropic/v1/messages'
+  }
+  let base = baseUrl
+  if (base.endsWith('/')) {
+    base = base.substring(0, base.length - 1)
+  }
+  return base + path
+}
+
+/** 合法环节代码集合 */
+export const VALID_STAGE_CODES: string[] = ['AN_QU', 'YI_FAN', 'ER_FAN', 'CHAI_QU']
+
+/** 跨仓岗位名称到角色代码的映射 */
+export function mapRoleNameToCode(roleName: string): string {
+  const trimmed = roleName.trim()
+  if (trimmed == '拉车') {
+    return 'CART_PULLER'
+  } else if (trimmed == '打杂') {
+    return 'HELPER'
+  } else if (trimmed == '跨仓') {
+    return 'CROSS_BIN'
+  }
+  return ''
+}
+
+/**
+ * 晾堂岗位中文 → 角色代码
+ */
+export function mapLiangTangNameToCode(name: string): string {
+  const trimmed = name.trim()
+  if (trimmed == '麦料' || trimmed == '麦料参数') {
+    return 'WHEAT_MATERIAL'
+  } else if (trimmed == '守机') {
+    return 'MACHINE_GUARD'
+  } else if (trimmed == '下曲') {
+    return 'KOJI_UNLOADER'
+  } else if (trimmed == '微机') {
+    return 'MICRO_OPERATOR'
+  }
+  return ''
+}
+
+/**
+ * 角色代码 → 中文名称
+ */
+export function getRoleCodeName(roleCode: string): string {
+  if (roleCode == 'CART_PULLER') {
+    return '拉车'
+  } else if (roleCode == 'HELPER') {
+    return '打杂'
+  } else if (roleCode == 'CROSS_BIN') {
+    return '跨仓'
+  } else if (roleCode == 'WHEAT_MATERIAL') {
+    return '麦料参数'
+  } else if (roleCode == 'MACHINE_GUARD') {
+    return '守机'
+  } else if (roleCode == 'KOJI_UNLOADER') {
+    return '下曲'
+  } else if (roleCode == 'MICRO_OPERATOR') {
+    return '微机'
+  }
+  return roleCode
+}

@@ -1,0 +1,278 @@
+/**
+ * OCR 识图结果 → SessionData 转换服务
+ *
+ * 将 MiMo AI 识别并校验后的 OcrValidatedResult 转换为可写入草稿的 SessionData。
+ * 页面层不直接构造 SessionData，统一通过本服务转换。
+ */
+
+import {
+  OcrValidatedResult,
+  OcrValidatedDay,
+  OcrValidatedStage,
+  OcrValidatedBin,
+  OcrValidatedWorker
+} from '../models/ocr-payload.uts'
+
+import {
+  getCurrentRoundId
+} from './RoundService.uts'
+
+import {
+  parseBinCode
+} from '../models/ferment.uts'
+
+import {
+  getCurrentClassNo,
+  getManagerName,
+  loadActiveCoefSetId,
+  saveDraftSessionFromOcr
+} from '../stores/AppStore.uts'
+
+// ============================================
+// 类型定义
+// ============================================
+
+/**
+ * 批量导入结果
+ */
+export type OcrImportResult = {
+  successCount: number
+  failCount: number
+}
+
+// ============================================
+// 环节名称辅助
+// ============================================
+
+/**
+ * 获取环节中文名称
+ */
+export function getStageName(stageCode: string): string {
+  if (stageCode == 'AN_QU') {
+    return '安曲'
+  } else if (stageCode == 'YI_FAN') {
+    return '一次翻曲'
+  } else if (stageCode == 'ER_FAN') {
+    return '二次翻曲'
+  } else if (stageCode == 'CHAI_QU') {
+    return '拆曲'
+  }
+  return '未知环节(' + stageCode + ')'
+}
+
+// ============================================
+// 核心：批量导入
+// ============================================
+
+/**
+ * 将校验后的识别结果批量写入草稿
+ *
+ * @param result 校验后的完整识别结果
+ * @returns 导入结果（成功/失败条数）
+ */
+export function importOcrResultToDrafts(result: OcrValidatedResult): OcrImportResult {
+  const remark = result.remark
+  const classNo = getCurrentClassNo()
+  const managerName = getManagerName()
+  const coefSetIdRaw = loadActiveCoefSetId()
+  const coefSetId = coefSetIdRaw != null ? (coefSetIdRaw as number) : 0
+
+  let successCount = 0
+  let failCount = 0
+
+  for (let i = 0; i < result.days.length; i++) {
+    const day = result.days[i]
+    if (!day.dateValid) {
+      failCount++
+      continue
+    }
+
+    for (let j = 0; j < day.stages.length; j++) {
+      const stage = day.stages[j]
+      if (!stage.stageCodeValid) {
+        failCount++
+        continue
+      }
+
+      // 获取轮次
+      const roundId = getCurrentRoundId(classNo)
+      if (roundId == 0) {
+        failCount++
+        continue
+      }
+
+      try {
+        const sessionData = buildSessionData(day.date, classNo, stage, coefSetId, managerName, roundId, remark)
+        if (sessionData != null) {
+          saveDraftSessionFromOcr(day.date, stage.stageCode, roundId, sessionData)
+          successCount++
+        } else {
+          failCount++
+        }
+      } catch (e) {
+        console.error('importOcrResultToDrafts error: ' + (e != null ? e.toString() : ''))
+        failCount++
+      }
+    }
+  }
+
+  return {
+    successCount: successCount,
+    failCount: failCount
+  }
+}
+
+// ============================================
+// SessionData 构造
+// ============================================
+
+/**
+ * 从单个环节的 OCR 校验结果构建 SessionData
+ *
+ * @param date 日期 YYYY-MM-DD
+ * @param classNo 班级号
+ * @param stage 校验后的环节数据
+ * @param coefSetId 系数集ID
+ * @param managerName 管理员姓名
+ * @param roundId 轮次ID
+ * @returns SessionData（UTSJSONObject 格式），构建失败返回 null
+ */
+function buildSessionData(
+  date: string,
+  classNo: number,
+  stage: OcrValidatedStage,
+  coefSetId: number,
+  managerName: string,
+  roundId: number,
+  remark: string
+): UTSJSONObject | null {
+  const sessionData = {
+    session_date: date,
+    class_no: classNo,
+    stage_code: stage.stageCode,
+    stage_name: getStageName(stage.stageCode),
+    round_id: roundId > 0 ? roundId : null,
+    coef_set_id: coefSetId,
+    coef_snapshot: null,
+    bins: buildSessionBins(stage),
+    cross_bin: buildSessionCrossBin(stage),
+    liang_tang: buildSessionLiangTang(stage),
+    dui_qu: null,
+    status: 'draft',
+    remark: remark,
+    session_bonus_units: 0,
+    created_by_manager: managerName,
+    updated_by_manager: managerName,
+    timestamp: Date.now()
+  } as UTSJSONObject
+
+  return sessionData
+}
+
+/**
+ * 构建发酵仓列表（bins）
+ */
+function buildSessionBins(stage: OcrValidatedStage): UTSJSONObject[] {
+  const bins: UTSJSONObject[] = []
+  for (let i = 0; i < stage.bins.length; i++) {
+    const bin = stage.bins[i]
+    if (!bin.binCodeValid) continue
+
+    // 解析仓号结构化字段（class_no/floor_no/seq_no），解析失败回退 0
+    const parsedBinCode = parseBinCode(bin.binCode)
+    const classNo = parsedBinCode != null ? parsedBinCode.class_no : 0
+    const floorNo = parsedBinCode != null ? parsedBinCode.floor_no : 0
+    const seqNo = parsedBinCode != null ? parsedBinCode.seq_no : 0
+
+    bins.push({
+      // 必须为每个仓分配唯一 ID：录入页以 stage_bin_id 作为 binCardsData Map 的 key，
+      // 若全部为 0 会导致所有仓卡片共享最后一张仓的数据（人员错乱）
+      bin_id: i + 1,
+      stage_bin_id: i + 1,
+      koji_count: bin.kojiCount,
+      bin_code: bin.binCode,
+      class_no: classNo,
+      floor_no: floorNo,
+      seq_no: seqNo,
+      total_points_units: 0,
+      assigned_points_units: 0,
+      workers: buildBinWorkers(bin.workers)
+    } as UTSJSONObject)
+  }
+  return bins
+}
+
+/**
+ * 构建单个仓的工人列表（独立函数，避免 UTS 闭包变量共享导致 workers 数组引用重复）
+ */
+function buildBinWorkers(workers: OcrValidatedWorker[]): UTSJSONObject[] {
+  const result: UTSJSONObject[] = []
+  for (let j = 0; j < workers.length; j++) {
+    const w = workers[j]
+    result.push({
+      person_id: w.personId > 0 ? w.personId : null,
+      person_name: w.name,
+      points_units: w.pointsUnits,
+      position_index: j + 1,
+      deducted_units: 0,
+      penalty_reason: '',
+      penalty_id: null
+    } as UTSJSONObject)
+  }
+  return result
+}
+
+/**
+ * 构建跨仓岗位（cross_bin）
+ */
+function buildSessionCrossBin(stage: OcrValidatedStage): UTSJSONObject | null {
+  if (stage.crossBin == null) return null
+  if (stage.crossBin.roleCode == '') return null
+
+  const w = stage.crossBin.worker
+  return {
+    enabled: true,
+    role_code: stage.crossBin.roleCode,
+    role_name: stage.crossBin.roleName,
+    person_id: w.personId > 0 ? w.personId : null,
+    person_name: w.name,
+    points_units: w.pointsUnits,
+    deducted_units: 0,
+    penalty_reason: '',
+    penalty_id: null,
+    sources: [] as UTSJSONObject[]
+  } as UTSJSONObject
+}
+
+/**
+ * 构建晾堂岗位（liang_tang）
+ */
+function buildSessionLiangTang(stage: OcrValidatedStage): UTSJSONObject | null {
+  if (stage.liangTang == null) return null
+
+  return {
+    WHEAT_MATERIAL: workersToStorageArray(stage.liangTang.wheatMaterial),
+    MACHINE_GUARD: workersToStorageArray(stage.liangTang.machineGuard),
+    KOJI_UNLOADER: workersToStorageArray(stage.liangTang.kojiUnloader),
+    MICRO_OPERATOR: workersToStorageArray(stage.liangTang.microOperator)
+  } as UTSJSONObject
+}
+
+/**
+ * 将校验后的工人数组转为存储层数据
+ */
+function workersToStorageArray(workers: OcrValidatedWorker[]): UTSJSONObject[] {
+  const arr: UTSJSONObject[] = []
+  for (let i = 0; i < workers.length; i++) {
+    const w = workers[i]
+    arr.push({
+      person_id: w.personId > 0 ? w.personId : null,
+      person_name: w.name,
+      points_units: w.pointsUnits,
+      deducted_units: 0,
+      penalty_reason: '',
+      penalty_id: null
+    } as UTSJSONObject)
+  }
+  return arr
+}
