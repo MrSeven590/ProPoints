@@ -14,6 +14,7 @@ import {
   saveBinSeqMaxByFloor,
   saveDraftSession as saveDraftSessionToRepo,
   saveSubmittedSession as saveSubmittedSessionToRepo,
+  hasSubmittedSession as hasSubmittedSessionFromRepo,
   loadSessionForEdit as loadSessionForEditFromRepo,
   deleteDraftSession as deleteDraftSessionFromRepo,
   deleteAllDraftSessions as deleteAllDraftSessionsFromRepo,
@@ -496,6 +497,13 @@ function saveSubmittedSessionRaw(sessionDate: string, stageCode: string, roundId
 export function saveSubmittedSession(sessionDate: string, stageCode: string, roundId: number | null, sessionData: SessionData): void {
   saveSubmittedSessionToRepo(sessionDate, stageCode, roundId, sessionDataToStorageJson(sessionData))
   uni.$emit(EVENT_SESSION_SUBMITTED, { sessionDate: sessionData.session_date, stageCode, roundId } as SessionEventPayload)
+}
+
+/**
+ * 判断指定日期、环节和轮次是否已有已提交会话。
+ */
+export function hasSubmittedSession(sessionDate: string, stageCode: string, roundId: number | null): boolean {
+  return hasSubmittedSessionFromRepo(sessionDate, stageCode, roundId)
 }
 
 /**

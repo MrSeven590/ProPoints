@@ -148,7 +148,8 @@ ${nameList}
 - stage_code 固定为 ${stageCode}，所有天数使用相同环节代码
 - koji_count 填入每行末尾分数形式中斜杠前面的数字（如 1337/73.5 中的 1337），即该仓当日曲坯数量
 - cross_bin：若当日存在跨仓岗位人员，填入其姓名、工分及涉及的来源仓号列表（source_bins 为相关仓号数组）；无跨仓岗位人员时填 null。若有多个跨仓人员，将第一个填入 cross_bin.worker，其余在 uncertain_items 中列出
-- 晾堂人员统一放入 wheat_material 数组，其他三个角色数组（machine_guard、koji_unloader、micro_operator）留空
+- 晾堂岗位必须按照片中人员的书写顺序直接分配到对应数组：第1人放入 wheat_material（麦料参数），第2人放入 machine_guard（守机），第3人放入 koji_unloader（下曲），第4人放入 micro_operator（微机）
+- 每个岗位数组最多放1人；少于4人时后续岗位留空；第5人及以后不要擅自分配到已有岗位，必须在 uncertain_items 中说明
 - remark 填入照片中的文字备注原文（如无则为空字符串）；uncertain_items 填入所有不确定或无法辨认的项（如无则为空字符串）`
 }
 
@@ -917,7 +918,12 @@ export function validateOcrResult(ocrResult: OcrResult, persons: UTSJSONObject[]
           if (ltMicro[w].warning != '') stageWarningCount++
         }
 
-        validatedLiangTang = distributeLiangTangWorkers(ltWheat, ltGuard, ltUnloader, ltMicro)
+        validatedLiangTang = {
+          wheatMaterial: ltWheat,
+          machineGuard: ltGuard,
+          kojiUnloader: ltUnloader,
+          microOperator: ltMicro
+        } as OcrValidatedLiangTang
       }
 
       validatedStages.push({
@@ -1004,61 +1010,6 @@ function validateWorkers(workers: OcrWorker[], nameMap: Map<string, UTSJSONObjec
   }
 
   return result
-}
-
-/**
- * 将晾堂人员按识别顺序分发到四个固定岗位
- *
- * 提示词要求模型将晾堂人员统一放入 wheat_material（其余角色数组留空），
- * 此处按顺序重排：第1人→麦料参数(WHEAT_MATERIAL)，第2人→守机(MACHINE_GUARD)，
- * 第3人→下曲(KOJI_UNLOADER)，第4人及以后→微机(MICRO_OPERATOR)。
- * 若模型已按角色填入，则按 麦料→守机→下曲→微机 的读取顺序合并后重排，结果不变。
- */
-function distributeLiangTangWorkers(
-  ltWheat: OcrValidatedWorker[],
-  ltGuard: OcrValidatedWorker[],
-  ltUnloader: OcrValidatedWorker[],
-  ltMicro: OcrValidatedWorker[]
-): OcrValidatedLiangTang {
-  const all: OcrValidatedWorker[] = []
-  appendValidatedWorkers(all, ltWheat)
-  appendValidatedWorkers(all, ltGuard)
-  appendValidatedWorkers(all, ltUnloader)
-  appendValidatedWorkers(all, ltMicro)
-
-  const wheatMaterial: OcrValidatedWorker[] = []
-  const machineGuard: OcrValidatedWorker[] = []
-  const kojiUnloader: OcrValidatedWorker[] = []
-  const microOperator: OcrValidatedWorker[] = []
-
-  for (let i = 0; i < all.length; i++) {
-    const worker = all[i]
-    if (i == 0) {
-      wheatMaterial.push(worker)
-    } else if (i == 1) {
-      machineGuard.push(worker)
-    } else if (i == 2) {
-      kojiUnloader.push(worker)
-    } else {
-      microOperator.push(worker)
-    }
-  }
-
-  return {
-    wheatMaterial: wheatMaterial,
-    machineGuard: machineGuard,
-    kojiUnloader: kojiUnloader,
-    microOperator: microOperator
-  } as OcrValidatedLiangTang
-}
-
-/**
- * 将 source 中的工人追加到 target（UTS 不支持 spread，逐项 push）
- */
-function appendValidatedWorkers(target: OcrValidatedWorker[], source: OcrValidatedWorker[]): void {
-  for (let i = 0; i < source.length; i++) {
-    target.push(source[i])
-  }
 }
 
 /**

@@ -118,10 +118,11 @@
       loadSettings() {
         this.managerName = getManagerName()
         this.mimoUseBuiltin = getMiMoUseBuiltin()
-        this.mimoApiKey = getMiMoApiKey()
+        // 内置共享配置只供请求层使用，绝不回填到 UI，避免暴露敏感信息。
+        this.mimoApiKey = this.mimoUseBuiltin ? '' : getMiMoApiKey()
         this.mimoModel = getMiMoModel()
         this.mimoProtocol = getMiMoProtocol()
-        this.mimoBaseUrl = getMiMoBaseUrl()
+        this.mimoBaseUrl = this.mimoUseBuiltin ? '' : getMiMoBaseUrl()
       },
 
       onManagerNameInput(e: UniInputEvent) {
@@ -130,12 +131,12 @@
 
       onToggleUseBuiltin() {
         this.mimoUseBuiltin = !this.mimoUseBuiltin
-        // 立即持久化，保证后续 getMiMoApiKey/Protocol/BaseUrl 取值一致
+        // 勾选时由请求层直接使用内置共享 Key 和服务地址，UI 不显示它们。
+        // 取消勾选时清空 API Key，并预填官方服务地址供用户继续配置。
         setMiMoUseBuiltin(this.mimoUseBuiltin)
-        // 切换后同步刷新各字段显示（借用时显示内置值，取消借用时显示自定义值）
-        this.mimoApiKey = getMiMoApiKey()
+        this.mimoApiKey = ''
+        this.mimoBaseUrl = this.mimoUseBuiltin ? '' : 'https://api.xiaomimimo.com'
         this.mimoProtocol = getMiMoProtocol()
-        this.mimoBaseUrl = getMiMoBaseUrl()
       },
 
       onMimoApiKeyInput(e: UniInputEvent) {

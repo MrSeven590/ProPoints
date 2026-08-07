@@ -363,6 +363,19 @@ export function saveSubmittedSession(
 }
 
 /**
+ * 判断指定日期、环节和轮次是否已有已提交会话。
+ * 注意：只检查正式 submitted key，不读取 draft key。
+ */
+export function hasSubmittedSession(
+  date: string,
+  stageCode: string,
+  roundId: number | null
+): boolean {
+  const key = getSessionKey(date, stageCode, roundId)
+  return loadData(key) != null
+}
+
+/**
  * 加载会话数据用于编辑（draft 优先，不存在则读取 submitted）
  * @param date 日期 YYYY-MM-DD
  * @param stageCode 环节代码

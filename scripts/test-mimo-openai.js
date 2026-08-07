@@ -111,7 +111,9 @@ ${nameList}
 - stage_code 固定为 ${stageCode}，所有天数使用相同环节代码
 - koji_count 填入每行末尾分数形式中斜杠前面的数字（如 1337/73.5 中的 1337），即该仓当日曲坯数量
 - cross_bin：若当日存在跨仓岗位人员，填入其姓名、工分及涉及的来源仓号列表（source_bins 为相关仓号数组）；无跨仓岗位人员时填 null。若有多个跨仓人员，将第一个填入 cross_bin.worker，其余在 uncertain_items 中列出
-- 晾堂人员统一放入 wheat_material 数组，其他三个角色数组（machine_guard、koji_unloader、micro_operator）留空
+- 晾堂岗位必须按照片中人员的书写顺序直接分配到对应数组：第1人放入 wheat_material（麦料参数），第2人放入 machine_guard（守机），第3人放入 koji_unloader（下曲），第4人放入 micro_operator（微机）
+- 每个岗位数组最多放1人；少于4人时后续岗位留空；第5人及以后不要擅自分配到已有岗位，必须在 uncertain_items 中说明
+- 重要：不要把所有晾堂人员都放入 wheat_material，必须在模型输出阶段完成岗位分配；代码不会对岗位结果进行二次重排
 - remark 填入照片中的文字备注原文（如无则为空字符串）；uncertain_items 填入所有不确定或无法辨认的项（如无则为空字符串）
 - 重要：你的回复必须只包含一个 JSON 对象，不要包含任何其他文字或 markdown 代码块`;
 }

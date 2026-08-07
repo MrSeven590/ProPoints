@@ -462,6 +462,7 @@ import { deriveEntryDerivedState } from "../../domain/services/entry-state-deriv
 import {
   saveDraftSession,
   saveSubmittedSession,
+  hasSubmittedSession,
   loadSessionForEdit,
   saveLiangTangDefault,
   loadLiangTangDefault,
@@ -1771,7 +1772,9 @@ export default {
         showCrossBinSection: this.showCrossBinSection,
         stageBinInfos: this.stageBinInfos,
         crossBinPointsUnits: this.crossBinPointsUnits,
+        stageCoef: this.getStageCoefForBin(),
       });
+      this.binCardsData = derivedState.binCardsData;
       this.occupiedIds = derivedState.occupiedIds;
       this.crossBinSources = derivedState.crossBinSources;
 
@@ -2567,9 +2570,20 @@ export default {
     },
 
     confirmAndSubmit(sessionData: SessionData) {
+      const hasExistingSubmitted = hasSubmittedSession(
+        this.sessionDate,
+        this.stageCode,
+        this.roundId,
+      );
+      const title = hasExistingSubmitted ? "发现重复提交" : "提示";
+      const content = hasExistingSubmitted
+        ? "当前日期、环节和轮次已经存在已提交数据。继续提交将覆盖原数据，是否继续？"
+        : "确认提交工分录入？";
       uni.showModal({
-        title: "提示",
-        content: "确认提交工分录入？",
+        title: title,
+        content: content,
+        confirmText: hasExistingSubmitted ? "覆盖并提交" : "确认提交",
+        cancelText: "返回修改",
         success: (res) => {
           if (res.confirm == true) {
             this.doSubmit(sessionData);

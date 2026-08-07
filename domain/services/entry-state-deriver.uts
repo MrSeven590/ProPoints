@@ -10,6 +10,7 @@ import type { AssignmentSourceCreateParams } from '../models/assignment.uts'
 import type { EntryBinCardState, LiangTangRoleData, DuiQuWorkerData } from '../models/session.uts'
 import type { BinInfo } from './ScoreAllocator.uts'
 import { allocateCrossBinPoints } from './ScoreAllocator.uts'
+import { calcBinTotalPointsUnits } from './ScoreCalculator.uts'
 
 export type EntryDerivedStateInput = {
   crossBinPersonId: number | null
@@ -19,9 +20,11 @@ export type EntryDerivedStateInput = {
   showCrossBinSection: boolean
   stageBinInfos: StageBinInfo[]
   crossBinPointsUnits: number
+  stageCoef: number
 }
 
 export type EntryDerivedState = {
+  binCardsData: Map<number, EntryBinCardState>
   occupiedIds: number[]
   crossBinSources: AssignmentSourceCreateParams[]
 }
@@ -100,10 +103,38 @@ export function deriveCrossBinSources(
 }
 
 export function deriveEntryDerivedState(input: EntryDerivedStateInput): EntryDerivedState {
+  const derivedBinCards = new Map<number, EntryBinCardState>()
+  input.binCardsData.forEach((cardData: EntryBinCardState, stageBinId: number) => {
+    let kojiCount = cardData.kojiCount
+    for (let i = 0; i < input.stageBinInfos.length; i++) {
+      const info = input.stageBinInfos[i]
+      if (info.stage_bin_id == stageBinId) {
+        kojiCount = info.koji_count
+        break
+      }
+    }
+
+    let assignedUnits = 0
+    for (let i = 0; i < cardData.workers.length; i++) {
+      assignedUnits = assignedUnits + cardData.workers[i].pointsUnits
+    }
+
+    derivedBinCards.set(stageBinId, {
+      stageBinId: cardData.stageBinId,
+      binId: cardData.binId,
+      binCode: cardData.binCode,
+      kojiCount: kojiCount,
+      totalPointsUnits: calcBinTotalPointsUnits(kojiCount, input.stageCoef),
+      assignedUnits: assignedUnits,
+      workers: cardData.workers
+    } as EntryBinCardState)
+  })
+
   return {
+    binCardsData: derivedBinCards,
     occupiedIds: deriveOccupiedPersonIds(
       input.crossBinPersonId,
-      input.binCardsData,
+      derivedBinCards,
       input.liangTangRolesData,
       input.duiQuWorkers
     ),
