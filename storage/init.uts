@@ -134,6 +134,7 @@ function initCoefConfig(): void {
       ER_FAN: 0.9,
       CHAI_QU: 1.12,
       DUI_QU: 0.29,
+      DUI_QU_LOADING: 0.21,
       WHEAT_MATERIAL: 0.85,
       MACHINE_GUARD: 0.8,
       KOJI_UNLOADER: 0.8,

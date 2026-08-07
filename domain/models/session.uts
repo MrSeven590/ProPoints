@@ -151,11 +151,17 @@ export type DuiQuWorkerData = {
 }
 
 /**
+ * 堆曲模式：stacking=堆曲，loading=上车
+ */
+export type DuiQuMode = 'stacking' | 'loading'
+
+/**
  * 会话堆曲数据（用于存储和传输，存储层 DTO）
  */
 export type SessionDuiQuData = {
   total_koji_count: number
   total_pool_units: PointsUnits
+  mode: DuiQuMode
   workers: DuiQuStorageWorkerData[]
 }
 
@@ -239,6 +245,7 @@ export type EntryPageState = {
   duiQuWorkers: DuiQuWorkerData[]
   duiQuTotalKojiCount: number
   duiQuTotalPoolUnits: PointsUnits
+  duiQuMode: DuiQuMode
   sessionStatus: SessionStatus
   viewMode: EntryViewMode
   sessionRemark: string

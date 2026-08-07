@@ -401,6 +401,16 @@ export type BinPenaltyChangePayload = {
 }
 
 /**
+ * 仓号变更 Payload（biz-bin-card 组件 → entry 页面）
+ * 仅修改发酵仓号，仓内人员分配与工分分配保持不变。
+ */
+export type BinCodeChangePayload = {
+  stageBinId: number
+  binId: number
+  binCode: string
+}
+
+/**
  * 会话角色卡片变更 Payload（biz-session-role-card 组件）
  */
 export type SessionRoleCardChangePayload = {

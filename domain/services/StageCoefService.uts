@@ -41,6 +41,12 @@ const DEFAULT_STAGE_COEFS: StageCoefConfig[] = [
 const DEFAULT_DUI_QU_COEF = 0.29
 
 /**
+ * 默认上车系数（硬编码备用）
+ * 上车模式与堆曲逻辑相同，但系数不同
+ */
+const DEFAULT_DUI_QU_LOADING_COEF = 0.21
+
+/**
  * 获取工序系数的硬编码默认值
  * @param stageCode 工序代码
  * @returns 工序系数，未找到返回 1.0
@@ -153,6 +159,27 @@ export function getDefaultDuiQuCoef(): number {
  * @returns 堆曲系数，未找到返回默认值 0.29
  */
 export function getDuiQuCoef(coefSetId: number | null = null): number {
+  return getDuiQuCoefByMode('stacking', coefSetId)
+}
+
+/**
+ * 获取上车模式系数
+ * 支持按版本ID读取，未指定则使用当前生效版本
+ * @param coefSetId 系数版本ID（可选）
+ * @returns 上车系数，未找到返回默认值 0.21
+ */
+export function getDuiQuLoadingCoef(coefSetId: number | null = null): number {
+  return getDuiQuCoefByMode('loading', coefSetId)
+}
+
+/**
+ * 根据模式获取堆曲/上车系数
+ * 支持按版本ID读取，未指定则使用当前生效版本
+ * @param mode 模式：stacking=堆曲，loading=上车
+ * @param coefSetId 系数版本ID（可选）
+ * @returns 对应系数
+ */
+export function getDuiQuCoefByMode(mode: string, coefSetId: number | null = null): number {
   // 确定要使用的版本ID
   const setId = coefSetId != null ? coefSetId : (loadActiveCoefSetId() ?? DEFAULT_COEF_SET_ID)
 
@@ -162,7 +189,8 @@ export function getDuiQuCoef(coefSetId: number | null = null): number {
     const stages = coefSet['stages']
     if (stages != null) {
       const stagesObj = stages as UTSJSONObject
-      const coef = stagesObj['DUI_QU']
+      const key = mode == 'loading' ? 'DUI_QU_LOADING' : 'DUI_QU'
+      const coef = stagesObj[key]
       if (coef != null) {
         return coef as number
       }
@@ -170,7 +198,7 @@ export function getDuiQuCoef(coefSetId: number | null = null): number {
   }
 
   // 回退到硬编码默认值
-  return DEFAULT_DUI_QU_COEF
+  return mode == 'loading' ? DEFAULT_DUI_QU_LOADING_COEF : DEFAULT_DUI_QU_COEF
 }
 
 // ============================================

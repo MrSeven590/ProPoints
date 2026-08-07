@@ -16,7 +16,8 @@ import {
   EntryBinCardState,
   LiangTangRoleData,
   LiangTangWorkerData,
-  DuiQuWorkerData
+  DuiQuWorkerData,
+  DuiQuMode
 } from '../models/session.uts'
 import {
   StageCode,
@@ -402,9 +403,13 @@ function parseDuiQu(duiQuRaw: UTSJSONObject | null): SessionDuiQuData | null {
     }
   }
 
+  const modeRaw = duiQuRaw['mode'] as string | null
+  const mode = modeRaw == 'loading' ? 'loading' : 'stacking'
+
   return {
     total_koji_count: duiQuRaw['total_koji_count'] != null ? (duiQuRaw['total_koji_count'] as number) : 0,
     total_pool_units: duiQuRaw['total_pool_units'] != null ? (duiQuRaw['total_pool_units'] as number) : 0,
+    mode: mode,
     workers: workers
   } as SessionDuiQuData
 }
@@ -534,6 +539,7 @@ export function sessionDataToStorageJson(data: SessionData): UTSJSONObject {
     duiQuRaw = {
       total_koji_count: data.dui_qu.total_koji_count,
       total_pool_units: data.dui_qu.total_pool_units,
+      mode: data.dui_qu.mode,
       workers: workersRaw
     } as UTSJSONObject
   }
@@ -644,10 +650,12 @@ export function sessionDataToEntryPageState(
   const duiQuWorkers: DuiQuWorkerData[] = []
   let duiQuTotalKojiCount = 0
   let duiQuTotalPoolUnits: PointsUnits = 0
+  let duiQuMode: DuiQuMode = 'stacking'
 
   if (data.dui_qu != null) {
     duiQuTotalKojiCount = data.dui_qu.total_koji_count
     duiQuTotalPoolUnits = data.dui_qu.total_pool_units
+    duiQuMode = data.dui_qu.mode
 
     for (let i = 0; i < data.dui_qu.workers.length; i++) {
       const w = data.dui_qu.workers[i]
@@ -706,6 +714,7 @@ export function sessionDataToEntryPageState(
     duiQuWorkers: duiQuWorkers,
     duiQuTotalKojiCount: duiQuTotalKojiCount,
     duiQuTotalPoolUnits: duiQuTotalPoolUnits,
+    duiQuMode: duiQuMode,
     sessionStatus: data.status,
     viewMode: data.status == 'submitted' ? 'view' : 'edit',
     sessionRemark: data.remark,
@@ -834,6 +843,7 @@ export function entryPageStateToSessionData(
     duiQu = {
       total_koji_count: state.duiQuTotalKojiCount,
       total_pool_units: state.duiQuTotalPoolUnits,
+      mode: state.duiQuMode,
       workers: workers
     } as SessionDuiQuData
   }

@@ -13,7 +13,7 @@ import type {
   BinCardChangePayload
 } from '../models/assignment.uts'
 import type { RoleCode, PointsUnits } from '../models/types.uts'
-import type { LiangTangRoleData, DuiQuWorkerData } from '../models/session.uts'
+import type { LiangTangRoleData, DuiQuWorkerData, DuiQuMode, SessionBinData } from '../models/session.uts'
 import { DEFAULT_PENALTY_UNITS, DEFAULT_PENALTY_REASON, DEFAULT_PENALTY_ID } from '../models/session.uts'
 import { LIANG_TANG_ROLES } from '../models/types.uts'
 
@@ -188,14 +188,25 @@ export function parseDuiQuWorkerDataArray(rawWorkers: UTSJSONObject[] | null): D
 
 /**
  * 解析堆曲默认人员数据
+ * @param raw 原始默认人员数据
+ * @param mode 模式：stacking=堆曲（默认3人），loading=上车（默认2人）
  */
-export function parseDuiQuDefaults(raw: UTSJSONObject[] | null): DuiQuWorkerData[] {
+export function parseDuiQuDefaults(raw: UTSJSONObject[] | null, mode: DuiQuMode = 'stacking'): DuiQuWorkerData[] {
   if (raw == null) {
-    return [
-      { personId: null, personName: '', pointsUnits: 0, positionIndex: 1, deductedUnits: DEFAULT_PENALTY_UNITS, penaltyReason: DEFAULT_PENALTY_REASON, penaltyId: DEFAULT_PENALTY_ID } as DuiQuWorkerData,
-      { personId: null, personName: '', pointsUnits: 0, positionIndex: 2, deductedUnits: DEFAULT_PENALTY_UNITS, penaltyReason: DEFAULT_PENALTY_REASON, penaltyId: DEFAULT_PENALTY_ID } as DuiQuWorkerData,
-      { personId: null, personName: '', pointsUnits: 0, positionIndex: 3, deductedUnits: DEFAULT_PENALTY_UNITS, penaltyReason: DEFAULT_PENALTY_REASON, penaltyId: DEFAULT_PENALTY_ID } as DuiQuWorkerData
-    ]
+    const defaultCount = mode == 'loading' ? 2 : 3
+    const result: DuiQuWorkerData[] = []
+    for (let i = 0; i < defaultCount; i++) {
+      result.push({
+        personId: null,
+        personName: '',
+        pointsUnits: 0,
+        positionIndex: i + 1,
+        deductedUnits: DEFAULT_PENALTY_UNITS,
+        penaltyReason: DEFAULT_PENALTY_REASON,
+        penaltyId: DEFAULT_PENALTY_ID
+      } as DuiQuWorkerData)
+    }
+    return result
   }
 
   const workers = parseDuiQuWorkerDataArray(raw)
@@ -408,4 +419,91 @@ export function parseBinCardChangePayload(payload: UTSJSONObject): BinCardChange
     assignedUnits: payload['assignedUnits'] as number,
     workers: parsePenaltyWorkerDataArray(payload['workers'] as UTSJSONObject[] | null)
   } as BinCardChangePayloadResult
+}
+
+// ============================================
+// 安曲 BIN 人员继承（直接从上次已提交会话逆序回填）
+// ============================================
+
+/**
+ * 从上次已提交安曲会话的各仓人员，按"逆序"回填到新建会话的各仓。
+ *
+ * 逆序回填规则：
+ *   上次提交 bins[0]（仓1, abc 组）, bins[1]（仓2, def 组）
+ *   本次新建 bins[0]（新仓1）, bins[1]（新仓2）
+ *   回填结果：新仓1 ← def 组（bins[last]），新仓2 ← abc 组（bins[0]）
+ *
+ * 即：上次会话的最后一仓 → 新会话第一仓，上次会话第一仓 → 新会话第二仓，以此类推。
+ * 当新仓数量超过上次仓数量时，超出部分回填为空行。
+ * 只回填人员（personId/personName），不回填分值/扣分（重置为默认值）。
+ *
+ * @param savedBins 上次已提交安曲会话的 bins 数组（SessionBinData[]）
+ * @param newBinCount 本次新建会话的仓数
+ * @param defaultWorkerCount 每仓默认工人数（用于补齐空行）
+ * @returns 按新仓顺序排列的工人列表数组
+ */
+export function buildAnQuBinInheritedWorkers(
+  savedBins: SessionBinData[],
+  newBinCount: number,
+  defaultWorkerCount: number
+): SessionPenaltyWorkerData[][] {
+  const result: SessionPenaltyWorkerData[][] = []
+  const savedCount = savedBins.length
+
+  // 为每个新仓构建工人列表
+  for (let i = 0; i < newBinCount; i++) {
+    // 逆序映射：新仓 i 对应上次仓 (savedCount - 1 - i)
+    const savedIndex = savedCount - 1 - i
+    if (savedIndex >= 0 && savedIndex < savedCount) {
+      const savedBin = savedBins[savedIndex]
+      const savedWorkers = savedBin.workers
+      // 复制已保存的人员，重置 positionIndex 为新仓内顺序，工分/扣分重置为默认值
+      const workers: SessionPenaltyWorkerData[] = []
+      // 先回填已保存的有效人员
+      for (let k = 0; k < savedWorkers.length; k++) {
+        const w = savedWorkers[k]
+        if (w.person_id != null) {
+          workers.push({
+            personId: w.person_id,
+            personName: w.person_name,
+            pointsUnits: 0,
+            positionIndex: k + 1,
+            deductedUnits: DEFAULT_PENALTY_UNITS,
+            penaltyReason: DEFAULT_PENALTY_REASON,
+            penaltyId: DEFAULT_PENALTY_ID
+          } as SessionPenaltyWorkerData)
+        }
+      }
+      // 若回填的人员不足默认工人数，补齐空行
+      while (workers.length < defaultWorkerCount) {
+        workers.push({
+          personId: null,
+          personName: '',
+          pointsUnits: 0,
+          positionIndex: workers.length + 1,
+          deductedUnits: DEFAULT_PENALTY_UNITS,
+          penaltyReason: DEFAULT_PENALTY_REASON,
+          penaltyId: DEFAULT_PENALTY_ID
+        } as SessionPenaltyWorkerData)
+      }
+      result.push(workers)
+    } else {
+      // 无对应上次仓，创建默认空行
+      const workers: SessionPenaltyWorkerData[] = []
+      for (let j = 0; j < defaultWorkerCount; j++) {
+        workers.push({
+          personId: null,
+          personName: '',
+          pointsUnits: 0,
+          positionIndex: j + 1,
+          deductedUnits: DEFAULT_PENALTY_UNITS,
+          penaltyReason: DEFAULT_PENALTY_REASON,
+          penaltyId: DEFAULT_PENALTY_ID
+        } as SessionPenaltyWorkerData)
+      }
+      result.push(workers)
+    }
+  }
+
+  return result
 }
