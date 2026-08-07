@@ -78,6 +78,11 @@
             <text class="section-title">识别结果</text>
             <text class="warning-badge" v-if="totalWarningCount > 0">{{ totalWarningCount }} 项警告</text>
           </view>
+          <view class="source-image-box" v-if="currentImagePath != ''" @click="onPreviewCurrentImage">
+            <text class="source-image-title">识别原图</text>
+            <image class="source-image" :src="currentImagePath" mode="widthFix"></image>
+            <text class="source-image-hint">点击图片可全屏查看</text>
+          </view>
           <view class="summary-grid">
             <view class="summary-metric">
               <text class="summary-metric-value">{{ daysCount }}</text>
@@ -213,9 +218,16 @@
           :key="'ocr-history-' + idx"
           @click="onClickHistoryItem(idx)"
         >
+          <image
+            class="history-item-thumb"
+            v-if="getHistoryImagePath(item) != ''"
+            :src="getHistoryImagePath(item)"
+            mode="aspectFill"
+          ></image>
           <view class="history-item-info">
             <text class="history-item-title">{{ getHistoryStageName(item) }} · {{ getHistoryDaysCount(item) }}天</text>
             <text class="history-item-time">{{ formatHistoryTime(item) }}</text>
+            <text class="history-item-image-status">{{ getHistoryImagePath(item) != '' ? '含识别原图' : '旧记录无原图' }}</text>
           </view>
           <text class="history-item-arrow">›</text>
         </view>
@@ -258,6 +270,8 @@
         ocrResult: null as OcrResult | null,
         validatedResult: null as OcrValidatedResult | null,
         imageBase64: '' as string,
+        currentImagePath: '' as string,
+        pendingImagePath: '' as string,
         importing: false as boolean,
         selectedStageCode: 'AN_QU' as string,
         ocrHistory: [] as UTSJSONObject[]
@@ -343,7 +357,22 @@
 
       processImage(imagePath: string) {
         this.step = 'loading'
-        this.compressAndRecognize(imagePath)
+        this.pendingImagePath = ''
+        // uni-app x 当前 Android 端不提供 uni.saveFile，使用文件管理器复制原图到用户数据目录
+        const savedPath = `${uni.env.USER_DATA_PATH}/ocr-source-${Date.now()}.jpg`
+        const fileManager = uni.getFileSystemManager()
+        fileManager.copyFile({
+          srcPath: imagePath,
+          destPath: savedPath,
+          success: () => {
+            this.pendingImagePath = savedPath
+            this.compressAndRecognize(imagePath)
+          },
+          fail: () => {
+            // 保存失败不阻断识别，但该条历史记录将没有可回看的原图
+            this.compressAndRecognize(imagePath)
+          }
+        })
       },
 
       compressAndRecognize(imagePath: string) {
@@ -378,7 +407,9 @@
 
           // 保存到历史记录
           const stageName = getStageNameFromBuilder(this.selectedStageCode)
-          addOcrHistoryEntry(outputText, this.selectedStageCode, result.days.length, stageName)
+          addOcrHistoryEntry(outputText, this.selectedStageCode, result.days.length, stageName, this.pendingImagePath)
+          this.currentImagePath = this.pendingImagePath
+          this.pendingImagePath = ''
           this.ocrHistory = getOcrHistory()
 
           if (this.validatedResult.hasBlockingError) {
@@ -403,6 +434,16 @@
         this.ocrResult = null
         this.validatedResult = null
         this.imageBase64 = ''
+        this.currentImagePath = ''
+        this.pendingImagePath = ''
+      },
+
+      onPreviewCurrentImage() {
+        if (this.currentImagePath == '') return
+        uni.previewImage({
+          urls: [this.currentImagePath],
+          current: this.currentImagePath
+        })
       },
 
       onClickHistoryItem(idx: number) {
@@ -428,6 +469,8 @@
         this.ocrResult = ocrResult
         this.validatedResult = validateOcrResult(ocrResult, persons)
         this.imageBase64 = ''
+        this.currentImagePath = this.getHistoryImagePath(item)
+        this.pendingImagePath = ''
         this.step = 'review'
 
         if (this.validatedResult.hasBlockingError) {
@@ -479,6 +522,12 @@
         const count = item['daysCount']
         if (count == null) return 0
         return count as number
+      },
+
+      getHistoryImagePath(item: UTSJSONObject): string {
+        const imagePath = item['imagePath']
+        if (imagePath == null || typeof imagePath !== 'string') return ''
+        return imagePath as string
       },
 
       getTotalStagesCount(): number {
@@ -726,6 +775,34 @@
     color: #ff9800;
     font-size: 12px;
     font-weight: bold;
+  }
+
+  .source-image-box {
+    margin-bottom: 12px;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    align-items: center;
+  }
+
+  .source-image-title {
+    align-self: flex-start;
+    font-size: 14px;
+    font-weight: bold;
+    color: #333333;
+    margin-bottom: 8px;
+  }
+
+  .source-image {
+    width: 100%;
+    max-height: 240px;
+    border-radius: 6px;
+  }
+
+  .source-image-hint {
+    font-size: 12px;
+    color: #999999;
+    margin-top: 6px;
   }
 
   .summary-grid {
@@ -981,6 +1058,14 @@
     border-bottom-style: solid;
   }
 
+  .history-item-thumb {
+    width: 52px;
+    height: 52px;
+    border-radius: 6px;
+    margin-right: 10px;
+    background-color: #f0f0f0;
+  }
+
   .history-item-info {
     flex: 1;
   }
@@ -995,6 +1080,12 @@
   .history-item-time {
     font-size: 12px;
     color: #999999;
+  }
+
+  .history-item-image-status {
+    font-size: 11px;
+    color: #007aff;
+    margin-top: 3px;
   }
 
   .history-item-arrow {
