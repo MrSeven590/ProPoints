@@ -45,14 +45,11 @@
     </view>
 
     <!-- 考核区域 -->
-    <view class="input-row">
-      <text class="row-label">考核</text>
-      <view
-        :class="['penalty-btn', deductedUnits > 0 ? 'penalty-btn-active' : '']"
-        @click="onTogglePenalty"
-      >
-        <text :class="['penalty-btn-text', deductedUnits > 0 ? 'penalty-btn-text-active' : '']">考核</text>
-      </view>
+    <view
+      :class="['penalty-btn', deductedUnits > 0 ? 'penalty-btn-active' : '']"
+      @click="onTogglePenalty"
+    >
+      <text :class="['penalty-btn-text', deductedUnits > 0 ? 'penalty-btn-text-active' : '']">考核</text>
     </view>
 
     <!-- 考核摘要（保存后显示，面板未展开时） -->
@@ -828,7 +825,8 @@
   /* ============================================ */
 
   .penalty-btn {
-    margin-left: 8px;
+    align-self: flex-start;
+    margin-top: 8px;
     padding: 4px 8px;
     background-color: #f5f7fa;
     border-radius: 4px;
@@ -853,7 +851,6 @@
 
   .penalty-panel {
     margin-top: 8px;
-    margin-left: 50px;
     padding: 12px;
     background-color: #fafafa;
     border-radius: 8px;

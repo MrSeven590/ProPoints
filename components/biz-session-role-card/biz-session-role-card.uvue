@@ -432,14 +432,21 @@
         if (this.readonly == true) {
           return
         }
-        if (this.workers.length > 1) {
-          this.workers.splice(index, 1)
-          // 如果只剩1人，自动填满工分
-          if (this.workers.length == 1) {
-            this.workers[0].pointsUnits = this.poolUnits as number
-          }
-          this.emitChange('user')
+        // 至少保留1人
+        if (this.workers.length <= 1) {
+          return
         }
+        // 始终移除最下面的人员（最后一个），忽略传入的 index
+        this.workers.splice(this.workers.length - 1, 1)
+        // 如果只剩1人，自动填满工分
+        if (this.workers.length == 1) {
+          this.workers[0].pointsUnits = this.poolUnits as number
+        }
+        // 如果当前展开的考核面板索引已越界，则收起
+        if (this.expandedPenaltyIndex != null && (this.expandedPenaltyIndex as number) >= this.workers.length) {
+          this.expandedPenaltyIndex = null
+        }
+        this.emitChange('user')
       },
 
       /**

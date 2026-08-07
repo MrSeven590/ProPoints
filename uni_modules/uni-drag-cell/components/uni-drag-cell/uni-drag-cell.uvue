@@ -911,12 +911,12 @@
 
 	.drag-cell-handle {
 		position: absolute;
-		right: 0;
+		left: 0;
 		top: 0;
 		z-index: 2;
 		display: flex;
 		flex-direction: column;
-		align-items: flex-end;
+		align-items: flex-start;
 		justify-content: flex-start;
 		opacity: 0.82;
 		transition-property: transform, opacity;
