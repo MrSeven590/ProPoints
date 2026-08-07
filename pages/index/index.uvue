@@ -114,13 +114,21 @@
         todayDate: '',
         drafts: [] as SessionListItem[],
         submitted: [] as SessionListItem[],
-        rounds: [] as FermentRound[]
+        rounds: [] as FermentRound[],
+        // 页面跳转期间禁止重复触发 navigateTo，避免原生页面栈处于 locked 状态
+        isNavigating: false as boolean,
+        hasShown: false as boolean
       }
     },
     onLoad() {
       this.todayDate = getTodayDateString()
     },
     onShow() {
+      // 返回工作台时才解除跳转锁；navigateTo 发起后不会触发当前页 onShow
+      if (this.hasShown == true) {
+        this.isNavigating = false
+      }
+      this.hasShown = true
       // 刷新今日日期（防止跨午夜后日期过期）
       this.todayDate = getTodayDateString()
       // 基础配置未完成时跳转到"我的"，不执行后续加载
@@ -271,6 +279,24 @@
       },
 
       /**
+       * 统一跳转到录入页。
+       * 页面转场尚未完成时再次调用 navigateTo 会触发原生页面栈 locked。
+       */
+      navigateToEntryPage(url: string) {
+        if (this.isNavigating == true) {
+          return
+        }
+        this.isNavigating = true
+        uni.navigateTo({
+          url: url,
+          fail: (error) => {
+            console.error('[Navigation] 打开录入页失败:', error)
+            // 失败后允许用户重试；成功时等返回工作台 onShow 再解锁，覆盖整个转场生命周期。
+            this.isNavigating = false
+          }
+        })
+      },
+      /**
        * 跳转到录入页
        */
       goToEntry(stageCode: string) {
@@ -284,11 +310,10 @@
           })
           return
         }
-        uni.navigateTo({
-          url: `/pages/work/entry?stage=${stageCode}&roundId=${roundId}`
-        })
+        this.navigateToEntryPage(
+          `/pages/work/entry?stage=${stageCode}&date=${this.todayDate}&roundId=${roundId}`
+        )
       },
-
       /**
        * 跳转到会话详情
        */
@@ -297,9 +322,7 @@
         if (item.round_id != null) {
           url = url + `&roundId=${item.round_id}`
         }
-        uni.navigateTo({
-          url: url
-        })
+        this.navigateToEntryPage(url)
       },
 
       /**
