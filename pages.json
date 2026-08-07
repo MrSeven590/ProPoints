@@ -83,6 +83,12 @@
       "style": {
         "navigationBarTitleText": "数据导入"
       }
+    },
+    {
+      "path": "pages/mine/ocr-import",
+      "style": {
+        "navigationBarTitleText": "拍照识图导入"
+      }
     }
   ],
   "globalStyle": {

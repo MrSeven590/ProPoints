@@ -15,6 +15,57 @@
     </view>
 
     <view class="section">
+      <text class="section-title">AI 识图配置</text>
+      <text class="section-hint">配置小米 MiMo 大模型 API Key 后，可使用「拍照识图导入」功能识别草稿本手写工分。API Key 获取请访问 mimo.mi.com</text>
+      <view class="form-item" @click="onToggleUseBuiltin">
+        <text class="form-label">借用共享 Key</text>
+        <view class="model-picker">
+          <text class="model-picker-text">{{ mimoUseBuiltin ? '已借用' : '未借用' }}</text>
+          <text class="model-picker-arrow">{{ mimoUseBuiltin ? '☑' : '☐' }}</text>
+        </view>
+      </view>
+      <text class="section-hint" v-if="mimoUseBuiltin">已借用内置共享配置，无需自行填写 Key 和服务地址。</text>
+      <view class="form-item" v-if="!mimoUseBuiltin">
+        <text class="form-label">API Key</text>
+        <input
+          class="form-input"
+          type="safe-password"
+          placeholder="请输入 MiMo API Key"
+          :value="mimoApiKey"
+          @input="onMimoApiKeyInput"
+        />
+      </view>
+      <view class="form-item">
+        <text class="form-label">模型</text>
+        <view class="model-picker" @click="onPickModel">
+          <text class="model-picker-text">{{ mimoModel }}</text>
+          <text class="model-picker-arrow">▼</text>
+        </view>
+      </view>
+      <view class="form-item" v-if="!mimoUseBuiltin">
+        <text class="form-label">API 协议</text>
+        <view class="model-picker" @click="onPickProtocol">
+          <text class="model-picker-text">{{ getProtocolDisplay() }}</text>
+          <text class="model-picker-arrow">▼</text>
+        </view>
+      </view>
+      <view class="form-item" v-if="!mimoUseBuiltin">
+        <text class="form-label">服务地址</text>
+        <input
+          class="form-input"
+          type="text"
+          placeholder="https://api.xiaomimimo.com 或 https://fufu.iqach.top"
+          :value="mimoBaseUrl"
+          @input="onMimoBaseUrlInput"
+        />
+      </view>
+      <view class="form-item" v-if="!mimoUseBuiltin">
+        <text class="form-label">完整端点</text>
+        <text class="form-hint">{{ getEndpointPreview() }}</text>
+      </view>
+    </view>
+
+    <view class="section">
       <text class="section-title">数据管理</text>
       <view class="danger-item" @click="clearAllData">
         <text class="danger-icon">清</text>
@@ -35,13 +86,29 @@
   import {
     getManagerName,
     setManagerName,
-    resetAllStorage
+    resetAllStorage,
+    getMiMoApiKey,
+    setMiMoApiKey,
+    getMiMoModel,
+    setMiMoModel,
+    getMiMoProtocol,
+    setMiMoProtocol,
+    getMiMoBaseUrl,
+    setMiMoBaseUrl,
+    getMiMoUseBuiltin,
+    setMiMoUseBuiltin
   } from '../../domain/stores/AppStore.uts'
+  import { MIMO_MODEL_OPTIONS, MIMO_PROTOCOL_OPTIONS, PROTOCOL_OPENAI, getProtocolDisplayName, getProtocolEndpoint } from '../../domain/models/ocr-payload.uts'
 
   export default {
     data() {
       return {
-        managerName: '' as string
+        managerName: '' as string,
+        mimoUseBuiltin: false as boolean,
+        mimoApiKey: '' as string,
+        mimoModel: 'mimo-v2.5' as string,
+        mimoProtocol: PROTOCOL_OPENAI as string,
+        mimoBaseUrl: '' as string
       }
     },
     onLoad() {
@@ -50,15 +117,82 @@
     methods: {
       loadSettings() {
         this.managerName = getManagerName()
+        this.mimoUseBuiltin = getMiMoUseBuiltin()
+        this.mimoApiKey = getMiMoApiKey()
+        this.mimoModel = getMiMoModel()
+        this.mimoProtocol = getMiMoProtocol()
+        this.mimoBaseUrl = getMiMoBaseUrl()
       },
 
       onManagerNameInput(e: UniInputEvent) {
         this.managerName = e.detail.value
       },
 
+      onToggleUseBuiltin() {
+        this.mimoUseBuiltin = !this.mimoUseBuiltin
+        // 立即持久化，保证后续 getMiMoApiKey/Protocol/BaseUrl 取值一致
+        setMiMoUseBuiltin(this.mimoUseBuiltin)
+        // 切换后同步刷新各字段显示（借用时显示内置值，取消借用时显示自定义值）
+        this.mimoApiKey = getMiMoApiKey()
+        this.mimoProtocol = getMiMoProtocol()
+        this.mimoBaseUrl = getMiMoBaseUrl()
+      },
+
+      onMimoApiKeyInput(e: UniInputEvent) {
+        this.mimoApiKey = e.detail.value
+      },
+
+      onPickModel() {
+        uni.showActionSheet({
+          itemList: MIMO_MODEL_OPTIONS,
+          success: (res) => {
+            const tapIndex = res.tapIndex
+            if (tapIndex >= 0 && tapIndex < MIMO_MODEL_OPTIONS.length) {
+              this.mimoModel = MIMO_MODEL_OPTIONS[tapIndex]
+            }
+          }
+        })
+      },
+
+      onPickProtocol() {
+        // 构建协议显示名列表
+        const displayNames = [] as string[]
+        for (let i = 0; i < MIMO_PROTOCOL_OPTIONS.length; i++) {
+          displayNames.push(getProtocolDisplayName(MIMO_PROTOCOL_OPTIONS[i]))
+        }
+        uni.showActionSheet({
+          itemList: displayNames,
+          success: (res) => {
+            const tapIndex = res.tapIndex
+            if (tapIndex >= 0 && tapIndex < MIMO_PROTOCOL_OPTIONS.length) {
+              this.mimoProtocol = MIMO_PROTOCOL_OPTIONS[tapIndex]
+            }
+          }
+        })
+      },
+
+      onMimoBaseUrlInput(e: UniInputEvent) {
+        this.mimoBaseUrl = e.detail.value
+      },
+
+      getProtocolDisplay(): string {
+        return getProtocolDisplayName(this.mimoProtocol)
+      },
+
+      getEndpointPreview(): string {
+        return getProtocolEndpoint(this.mimoBaseUrl, this.mimoProtocol)
+      },
+
       saveSettings() {
         // 保存管理员姓名
         setManagerName(this.managerName.trim())
+
+        // 保存 MiMo 配置（借用共享 Key 时自定义项被忽略，但仍持久化以备取消借用时恢复）
+        setMiMoUseBuiltin(this.mimoUseBuiltin)
+        setMiMoApiKey(this.mimoApiKey.trim())
+        setMiMoModel(this.mimoModel)
+        setMiMoProtocol(this.mimoProtocol)
+        setMiMoBaseUrl(this.mimoBaseUrl.trim())
 
         uni.showToast({
           title: '设置已保存',
@@ -183,5 +317,31 @@
   .danger-arrow {
     font-size: 20px;
     color: #cccccc;
+  }
+
+  .section-hint {
+    font-size: 12px;
+    color: #999999;
+    line-height: 18px;
+    margin-bottom: 8px;
+  }
+
+  .model-picker {
+    flex: 1;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .model-picker-text {
+    font-size: 14px;
+    color: #333333;
+    text-align: right;
+  }
+
+  .model-picker-arrow {
+    font-size: 10px;
+    color: #999999;
+    margin-left: 6px;
   }
 </style>

@@ -113,6 +113,11 @@
       <!-- 数据管理 -->
       <text class="group-label">数据管理</text>
       <view class="section">
+        <view class="menu-item" @click="goToOcrImport">
+          <text class="menu-icon">📷</text>
+          <text class="menu-text">拍照识图导入</text>
+          <text class="menu-arrow">›</text>
+        </view>
         <view class="menu-item" @click="goToPPX1Import">
           <text class="menu-icon">入</text>
           <text class="menu-text">数据导入</text>
@@ -226,6 +231,10 @@
 
       goToPPX1Import() {
         uni.navigateTo({ url: '/pages/transfer/transfer-import' })
+      },
+
+      goToOcrImport() {
+        uni.navigateTo({ url: '/pages/mine/ocr-import' })
       },
 
       goToPPX1Export() {

@@ -1,0 +1,1004 @@
+<template>
+  <view class="page-container">
+    <view class="header">
+      <text class="header-title">拍照识图导入</text>
+    </view>
+
+    <scroll-view class="content" scroll-y="true">
+      <!-- Step 1: 拍照区 -->
+      <view class="section" v-if="step == 'capture'">
+        <text class="section-title">拍照识别</text>
+        <text class="hint-text">拍摄草稿本一整页工分记录，AI 将自动识别多天工分数据。一张照片可包含多天的工分记录。</text>
+
+        <!-- 工序选择器 -->
+        <view class="stage-selector-box">
+          <text class="stage-selector-label">选择工序</text>
+          <view class="stage-selector-options">
+            <view
+              class="stage-option"
+              :class="selectedStageCode == 'AN_QU' ? 'stage-option-active' : ''"
+              @click="onSelectStage('AN_QU')"
+            >
+              <text class="stage-option-text" :class="selectedStageCode == 'AN_QU' ? 'stage-option-text-active' : ''">安曲</text>
+            </view>
+            <view
+              class="stage-option"
+              :class="selectedStageCode == 'YI_FAN' ? 'stage-option-active' : ''"
+              @click="onSelectStage('YI_FAN')"
+            >
+              <text class="stage-option-text" :class="selectedStageCode == 'YI_FAN' ? 'stage-option-text-active' : ''">一次翻曲</text>
+            </view>
+            <view
+              class="stage-option"
+              :class="selectedStageCode == 'ER_FAN' ? 'stage-option-active' : ''"
+              @click="onSelectStage('ER_FAN')"
+            >
+              <text class="stage-option-text" :class="selectedStageCode == 'ER_FAN' ? 'stage-option-text-active' : ''">二次翻曲</text>
+            </view>
+            <view
+              class="stage-option"
+              :class="selectedStageCode == 'CHAI_QU' ? 'stage-option-active' : ''"
+              @click="onSelectStage('CHAI_QU')"
+            >
+              <text class="stage-option-text" :class="selectedStageCode == 'CHAI_QU' ? 'stage-option-text-active' : ''">拆曲</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="capture-btn-group">
+          <view class="action-btn primary-btn" @click="onTakePhoto">
+            <text class="action-btn-text">📷 拍照</text>
+          </view>
+          <view class="action-btn secondary-btn" @click="onChooseFromAlbum">
+            <text class="action-btn-text secondary-text">相册选择</text>
+          </view>
+        </view>
+
+        <view class="config-hint" v-if="!apiConfigured">
+          <text class="config-hint-text">⚠️ 请先在「设置 → AI 识图配置」中填写 MiMo API Key</text>
+          <view class="config-btn" @click="goToSettings">
+            <text class="config-btn-text">去配置</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- Step 2: 识别中 -->
+      <view class="section" v-if="step == 'loading'">
+        <view class="loading-container">
+          <text class="loading-text">AI 识图中...</text>
+          <text class="loading-hint">正在识别手写工分记录，请稍候</text>
+        </view>
+      </view>
+
+      <!-- Step 3: 校对预览 -->
+      <view v-if="step == 'review' && validatedResult != null">
+        <!-- 识别概览 -->
+        <view class="section">
+          <view class="section-header-row">
+            <text class="section-title">识别结果</text>
+            <text class="warning-badge" v-if="totalWarningCount > 0">{{ totalWarningCount }} 项警告</text>
+          </view>
+          <view class="summary-grid">
+            <view class="summary-metric">
+              <text class="summary-metric-value">{{ daysCount }}</text>
+              <text class="summary-metric-label">天</text>
+            </view>
+            <view class="summary-metric">
+              <text class="summary-metric-value">{{ getTotalStagesCount() }}</text>
+              <text class="summary-metric-label">环节</text>
+            </view>
+            <view class="summary-metric">
+              <text class="summary-metric-value">{{ getTotalBinsCount() }}</text>
+              <text class="summary-metric-label">仓</text>
+            </view>
+          </view>
+          <view class="notes-box" v-if="notesText != ''">
+            <text class="notes-label">备注：</text>
+            <text class="notes-text">{{ notesText }}</text>
+          </view>
+          <view class="notes-box uncertain-box" v-if="uncertainItemsText != ''">
+            <text class="notes-label uncertain-label">不确定项：</text>
+            <text class="notes-text uncertain-text">{{ uncertainItemsText }}</text>
+          </view>
+        </view>
+
+        <!-- 多天数据列表 -->
+        <view class="section" v-for="(day, dayIdx) in validatedDays" :key="'day-' + dayIdx">
+          <!-- 日期标题 -->
+          <view class="day-header">
+            <text class="day-date" :class="day.dateValid ? '' : 'text-error'">{{ day.date }}</text>
+            <text class="day-warning" v-if="day.warningCount > 0">{{ day.warningCount }} 项警告</text>
+          </view>
+          <text class="error-hint" v-if="!day.dateValid">⚠️ 日期格式有误，请修改</text>
+
+          <!-- 各环节 -->
+          <view class="stage-block" v-for="(stage, stageIdx) in day.stages" :key="'stage-' + dayIdx + '-' + stageIdx">
+            <view class="stage-header">
+              <text class="stage-name" :class="stage.stageCodeValid ? '' : 'text-error'">{{ getStageName(stage.stageCode) }}</text>
+              <text class="stage-warning" v-if="stage.warningCount > 0">{{ stage.warningCount }} 警告</text>
+            </view>
+
+            <!-- 发酵仓列表 -->
+            <view class="bin-card" v-for="(bin, binIdx) in stage.bins" :key="'bin-' + dayIdx + '-' + stageIdx + '-' + binIdx">
+              <view class="bin-card-header">
+                <text class="bin-code" :class="bin.binCodeValid ? '' : 'text-error'">{{ bin.binCode }}</text>
+                <text class="bin-koji">曲坯 {{ bin.kojiCount }}</text>
+              </view>
+              <text class="error-hint" v-if="!bin.binCodeValid">⚠️ {{ bin.warning }}</text>
+
+              <!-- 工人列表 -->
+              <view class="worker-row" v-for="(worker, wIdx) in bin.workers" :key="'w-' + dayIdx + '-' + stageIdx + '-' + binIdx + '-' + wIdx">
+                <text class="worker-name" :class="worker.warning != '' ? 'text-warning' : ''">{{ worker.name }}</text>
+                <text class="worker-points">{{ worker.points.toFixed(1) }} 分</text>
+                <text class="worker-match" :class="worker.personId > 0 ? 'match-ok' : 'match-fail'">{{ worker.personId > 0 ? '✓' : '✗' }}</text>
+              </view>
+            </view>
+
+            <!-- 跨仓岗位 -->
+            <view class="cross-bin-box" v-if="stage.crossBin != null">
+              <text class="cross-bin-title">跨仓岗位 - {{ stage.crossBin.roleName }}</text>
+              <text class="error-hint" v-if="stage.crossBin.warning != ''">⚠️ {{ stage.crossBin.warning }}</text>
+              <view class="worker-row">
+                <text class="worker-name">{{ stage.crossBin.worker.name }}</text>
+                <text class="worker-points">{{ stage.crossBin.worker.points.toFixed(1) }} 分</text>
+                <text class="worker-match" :class="stage.crossBin.worker.personId > 0 ? 'match-ok' : 'match-fail'">{{ stage.crossBin.worker.personId > 0 ? '✓' : '✗' }}</text>
+              </view>
+            </view>
+
+            <!-- 晾堂岗位 -->
+            <view class="liangtang-box" v-if="stage.liangTang != null">
+              <text class="liangtang-title">晾堂岗位</text>
+              <view class="liangtang-role" v-if="stage.liangTang.wheatMaterial.length > 0">
+                <text class="liangtang-role-name">麦料参数</text>
+                <view class="worker-row" v-for="(worker, wIdx) in stage.liangTang.wheatMaterial" :key="'lt-w-' + wIdx">
+                  <text class="worker-name">{{ worker.name }}</text>
+                  <text class="worker-points">{{ worker.points.toFixed(1) }} 分</text>
+                  <text class="worker-match" :class="worker.personId > 0 ? 'match-ok' : 'match-fail'">{{ worker.personId > 0 ? '✓' : '✗' }}</text>
+                </view>
+              </view>
+              <view class="liangtang-role" v-if="stage.liangTang.machineGuard.length > 0">
+                <text class="liangtang-role-name">守机</text>
+                <view class="worker-row" v-for="(worker, wIdx) in stage.liangTang.machineGuard" :key="'lt-g-' + wIdx">
+                  <text class="worker-name">{{ worker.name }}</text>
+                  <text class="worker-points">{{ worker.points.toFixed(1) }} 分</text>
+                  <text class="worker-match" :class="worker.personId > 0 ? 'match-ok' : 'match-fail'">{{ worker.personId > 0 ? '✓' : '✗' }}</text>
+                </view>
+              </view>
+              <view class="liangtang-role" v-if="stage.liangTang.kojiUnloader.length > 0">
+                <text class="liangtang-role-name">下曲</text>
+                <view class="worker-row" v-for="(worker, wIdx) in stage.liangTang.kojiUnloader" :key="'lt-u-' + wIdx">
+                  <text class="worker-name">{{ worker.name }}</text>
+                  <text class="worker-points">{{ worker.points.toFixed(1) }} 分</text>
+                  <text class="worker-match" :class="worker.personId > 0 ? 'match-ok' : 'match-fail'">{{ worker.personId > 0 ? '✓' : '✗' }}</text>
+                </view>
+              </view>
+              <view class="liangtang-role" v-if="stage.liangTang.microOperator.length > 0">
+                <text class="liangtang-role-name">微机</text>
+                <view class="worker-row" v-for="(worker, wIdx) in stage.liangTang.microOperator" :key="'lt-m-' + wIdx">
+                  <text class="worker-name">{{ worker.name }}</text>
+                  <text class="worker-points">{{ worker.points.toFixed(1) }} 分</text>
+                  <text class="worker-match" :class="worker.personId > 0 ? 'match-ok' : 'match-fail'">{{ worker.personId > 0 ? '✓' : '✗' }}</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <!-- 底部操作 -->
+        <view class="section">
+          <text class="import-hint">确认无误后点击「写入草稿」，可在工分录入页继续编辑后提交。未匹配的人员将标记为待处理。</text>
+          <view class="action-btn secondary-btn" @click="onReCapture">
+            <text class="action-btn-text secondary-text">重新拍照</text>
+          </view>
+          <view class="action-btn primary-btn" @click="onConfirmImport" :class="hasBlockingError ? 'disabled-btn' : ''">
+            <text class="action-btn-text">写入草稿</text>
+          </view>
+        </view>
+      </view>
+
+      <!-- 空状态 -->
+      <view class="section hint-section" v-if="step == 'capture' && ocrHistory.length == 0">
+        <text class="hint-text">支持一页草稿本多天工分记录的识别</text>
+      </view>
+
+      <!-- 历史记录列表 -->
+      <view class="section" v-if="step == 'capture' && ocrHistory.length > 0">
+        <view class="section-header-row">
+          <text class="section-title">历史识图记录</text>
+          <text class="clear-history-btn" @click="onClearHistory">清空</text>
+        </view>
+        <view
+          class="history-item"
+          v-for="(item, idx) in ocrHistory"
+          :key="'ocr-history-' + idx"
+          @click="onClickHistoryItem(idx)"
+        >
+          <view class="history-item-info">
+            <text class="history-item-title">{{ getHistoryStageName(item) }} · {{ getHistoryDaysCount(item) }}天</text>
+            <text class="history-item-time">{{ formatHistoryTime(item) }}</text>
+          </view>
+          <text class="history-item-arrow">›</text>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+</template>
+
+<script lang="uts">
+  import {
+    loadMiMoConfig,
+    isMiMoConfigured,
+    compressImage,
+    imageToBase64,
+    recognizeHandwrittenPoints,
+    parseOcrResult,
+    validateOcrResult
+  } from '../../domain/services/MiMoOcrService.uts'
+  import {
+    importOcrResultToDrafts,
+    getStageName as getStageNameFromBuilder
+  } from '../../domain/services/OcrSessionBuilder.uts'
+  import {
+    OcrResult,
+    OcrValidatedResult,
+    OcrValidatedDay
+  } from '../../domain/models/ocr-payload.uts'
+  import {
+    loadPersons,
+    addOcrHistoryEntry,
+    getOcrHistory,
+    clearOcrHistory
+  } from '../../domain/stores/AppStore.uts'
+
+  export default {
+    data() {
+      return {
+        step: 'capture' as string,
+        apiConfigured: false as boolean,
+        ocrResult: null as OcrResult | null,
+        validatedResult: null as OcrValidatedResult | null,
+        imageBase64: '' as string,
+        importing: false as boolean,
+        selectedStageCode: 'AN_QU' as string,
+        ocrHistory: [] as UTSJSONObject[]
+      }
+    },
+    onShow() {
+      this.apiConfigured = isMiMoConfigured()
+      this.ocrHistory = getOcrHistory()
+    },
+    computed: {
+      totalWarningCount(): number {
+        if (this.validatedResult == null) return 0
+        return this.validatedResult.totalWarningCount
+      },
+      daysCount(): number {
+        if (this.validatedResult == null) return 0
+        return this.validatedResult.days.length
+      },
+      notesText(): string {
+        if (this.validatedResult == null) return ''
+        return this.validatedResult.remark
+      },
+      uncertainItemsText(): string {
+        if (this.validatedResult == null) return ''
+        return this.validatedResult.uncertainItems
+      },
+      validatedDays(): OcrValidatedDay[] {
+        if (this.validatedResult == null) return [] as OcrValidatedDay[]
+        return this.validatedResult.days
+      },
+      hasBlockingError(): boolean {
+        if (this.validatedResult == null) return false
+        return this.validatedResult.hasBlockingError
+      }
+    },
+    methods: {
+      goToSettings() {
+        uni.navigateTo({ url: '/pages/mine/settings' })
+      },
+
+      onSelectStage(stageCode: string) {
+        this.selectedStageCode = stageCode
+      },
+
+      onTakePhoto() {
+        if (!this.checkConfig()) return
+        uni.chooseImage({
+          count: 1,
+          sourceType: ['camera'],
+          success: (res) => {
+            this.processImage(res.tempFilePaths[0])
+          }
+        })
+      },
+
+      onChooseFromAlbum() {
+        if (!this.checkConfig()) return
+        uni.chooseImage({
+          count: 1,
+          sourceType: ['album'],
+          success: (res) => {
+            this.processImage(res.tempFilePaths[0])
+          }
+        })
+      },
+
+      checkConfig(): boolean {
+        if (!isMiMoConfigured()) {
+          uni.showModal({
+            title: '未配置 API Key',
+            content: '请先在「设置 → AI 识图配置」中填写 MiMo API Key',
+            confirmText: '去配置',
+            success: (res) => {
+              if (res.confirm) {
+                this.goToSettings()
+              }
+            }
+          })
+          return false
+        }
+        return true
+      },
+
+      processImage(imagePath: string) {
+        this.step = 'loading'
+        this.compressAndRecognize(imagePath)
+      },
+
+      compressAndRecognize(imagePath: string) {
+        // 压缩图片后转 Base64 再调用 API
+        compressImage(imagePath, (compressedPath) => {
+          const base64 = imageToBase64(compressedPath)
+          if (base64 == '') {
+            this.step = 'capture'
+            uni.showToast({ title: '图片处理失败', icon: 'none' })
+            return
+          }
+          this.imageBase64 = base64
+          this.callMiMoApi()
+        }, (msg) => {
+          this.step = 'capture'
+          uni.showToast({ title: '图片处理失败: ' + msg, icon: 'none' })
+        })
+      },
+
+      onShow() {
+        this.apiConfigured = isMiMoConfigured()
+      },
+
+      callMiMoApi() {
+        const config = loadMiMoConfig()
+        recognizeHandwrittenPoints(this.imageBase64, config, this.selectedStageCode, (result, outputText) => {
+          this.ocrResult = result
+          // 校验
+          const persons = loadPersons()
+          this.validatedResult = validateOcrResult(result, persons)
+          this.step = 'review'
+
+          // 保存到历史记录
+          const stageName = getStageNameFromBuilder(this.selectedStageCode)
+          addOcrHistoryEntry(outputText, this.selectedStageCode, result.days.length, stageName)
+          this.ocrHistory = getOcrHistory()
+
+          if (this.validatedResult.hasBlockingError) {
+            uni.showToast({ title: '识别结果有严重错误，请校对', icon: 'none', duration: 2000 })
+          } else if (this.validatedResult.totalWarningCount > 0) {
+            uni.showToast({ title: '识别完成，有 ' + this.validatedResult.totalWarningCount + ' 项警告', icon: 'none', duration: 2000 })
+          } else {
+            uni.showToast({ title: '识别完成', icon: 'success' })
+          }
+        }, (msg) => {
+          this.step = 'capture'
+          uni.showModal({
+            title: '识别失败',
+            content: msg,
+            showCancel: false
+          })
+        })
+      },
+
+      onReCapture() {
+        this.step = 'capture'
+        this.ocrResult = null
+        this.validatedResult = null
+        this.imageBase64 = ''
+      },
+
+      onClickHistoryItem(idx: number) {
+        const item = this.ocrHistory[idx]
+        const outputText = item['outputText']
+        if (outputText == null) {
+          uni.showToast({ title: '历史记录已损坏', icon: 'none' })
+          return
+        }
+        const outputTextStr = outputText as string
+        const ocrResult = parseOcrResult(outputTextStr)
+        if (ocrResult == null) {
+          uni.showToast({ title: '历史记录解析失败', icon: 'none' })
+          return
+        }
+        // 恢复工序选择
+        const stageCode = item['stageCode']
+        if (stageCode != null) {
+          this.selectedStageCode = stageCode as string
+        }
+        // 重新校验
+        const persons = loadPersons()
+        this.ocrResult = ocrResult
+        this.validatedResult = validateOcrResult(ocrResult, persons)
+        this.imageBase64 = ''
+        this.step = 'review'
+
+        if (this.validatedResult.hasBlockingError) {
+          uni.showToast({ title: '该记录有严重错误，请校对', icon: 'none', duration: 2000 })
+        } else if (this.validatedResult.totalWarningCount > 0) {
+          uni.showToast({ title: '已加载，有 ' + this.validatedResult.totalWarningCount + ' 项警告', icon: 'none', duration: 2000 })
+        } else {
+          uni.showToast({ title: '已加载历史记录', icon: 'success' })
+        }
+      },
+
+      onClearHistory() {
+        uni.showModal({
+          title: '清空历史',
+          content: '确定清空所有识图历史记录吗？',
+          success: (res) => {
+            if (res.confirm) {
+              clearOcrHistory()
+              this.ocrHistory = [] as UTSJSONObject[]
+              uni.showToast({ title: '已清空', icon: 'success' })
+            }
+          }
+        })
+      },
+
+      formatHistoryTime(item: UTSJSONObject): string {
+        const ts = item['timestamp']
+        if (ts == null) return ''
+        const tsNum = ts as number
+        const date = new Date(tsNum)
+        const month = date.getMonth() + 1
+        const day = date.getDate()
+        const hours = date.getHours()
+        const minutes = date.getMinutes()
+        const monthStr = month < 10 ? '0' + month : '' + month
+        const dayStr = day < 10 ? '0' + day : '' + day
+        const hoursStr = hours < 10 ? '0' + hours : '' + hours
+        const minutesStr = minutes < 10 ? '0' + minutes : '' + minutes
+        return monthStr + '-' + dayStr + ' ' + hoursStr + ':' + minutesStr
+      },
+
+      getHistoryStageName(item: UTSJSONObject): string {
+        const name = item['stageName']
+        if (name == null) return '未知'
+        return name as string
+      },
+
+      getHistoryDaysCount(item: UTSJSONObject): number {
+        const count = item['daysCount']
+        if (count == null) return 0
+        return count as number
+      },
+
+      getTotalStagesCount(): number {
+        if (this.validatedResult == null) return 0
+        let count = 0
+        for (let i = 0; i < this.validatedResult.days.length; i++) {
+          count += this.validatedResult.days[i].stages.length
+        }
+        return count
+      },
+
+      getTotalBinsCount(): number {
+        if (this.validatedResult == null) return 0
+        let count = 0
+        for (let i = 0; i < this.validatedResult.days.length; i++) {
+          for (let j = 0; j < this.validatedResult.days[i].stages.length; j++) {
+            count += this.validatedResult.days[i].stages[j].bins.length
+          }
+        }
+        return count
+      },
+
+      getStageName(stageCode: string): string {
+        return getStageNameFromBuilder(stageCode)
+      },
+
+      onConfirmImport() {
+        if (this.importing) return
+        if (this.validatedResult == null) return
+
+        if (this.validatedResult.hasBlockingError) {
+          uni.showToast({ title: '存在严重错误，请修正后再导入', icon: 'none' })
+          return
+        }
+
+        uni.showModal({
+          title: '确认导入',
+          content: `将识别结果写入草稿？\n共 ${this.validatedResult.days.length} 天数据。\n可在工分录入页继续编辑后提交。`,
+          success: (res) => {
+            if (res.confirm) {
+              this.doImport()
+            }
+          }
+        })
+      },
+
+      doImport() {
+        this.importing = true
+        if (this.validatedResult == null) {
+          this.importing = false
+          return
+        }
+
+        // 调用 OcrSessionBuilder 批量写入草稿
+        const result = importOcrResultToDrafts(this.validatedResult)
+
+        this.importing = false
+
+        let msg = `导入完成：成功 ${result.successCount} 条`
+        if (result.failCount > 0) {
+          msg = msg + `，失败 ${result.failCount} 条`
+        }
+        uni.showToast({ title: msg, icon: 'none', duration: 3000 })
+
+        setTimeout(() => {
+          uni.navigateBack({})
+        }, 2000)
+      }
+    }
+  }
+</script>
+
+<style>
+  .page-container {
+    flex: 1;
+    background-color: #f5f5f5;
+  }
+
+  .header {
+    background-color: #007aff;
+    padding: 20px 16px;
+  }
+
+  .header-title {
+    font-size: 24px;
+    font-weight: bold;
+    color: #ffffff;
+  }
+
+  .content {
+    flex: 1;
+  }
+
+  .section {
+    margin: 12px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  .section-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333333;
+    margin-bottom: 12px;
+  }
+
+  .stage-selector-box {
+    margin-bottom: 16px;
+  }
+
+  .stage-selector-label {
+    font-size: 14px;
+    color: #666666;
+    margin-bottom: 8px;
+  }
+
+  .stage-selector-options {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .stage-option {
+    padding: 8px 16px;
+    border-radius: 6px;
+    background-color: #f0f0f0;
+    margin-right: 8px;
+    margin-bottom: 8px;
+  }
+
+  .stage-option-active {
+    background-color: #007aff;
+  }
+
+  .stage-option-text {
+    font-size: 14px;
+    color: #333333;
+  }
+
+  .stage-option-text-active {
+    color: #ffffff;
+  }
+
+  .section-header-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .hint-text {
+    font-size: 13px;
+    color: #999999;
+    line-height: 20px;
+    margin-bottom: 12px;
+  }
+
+  .capture-btn-group {
+    margin-top: 8px;
+  }
+
+  .action-btn {
+    padding: 14px;
+    border-radius: 6px;
+    align-items: center;
+    justify-content: center;
+    margin-top: 12px;
+  }
+
+  .primary-btn {
+    background-color: #007aff;
+  }
+
+  .secondary-btn {
+    background-color: #ffffff;
+    border-width: 1px;
+    border-color: #007aff;
+    border-style: solid;
+  }
+
+  .disabled-btn {
+    background-color: #cccccc;
+  }
+
+  .action-btn-text {
+    font-size: 16px;
+    color: #ffffff;
+    font-weight: bold;
+  }
+
+  .secondary-text {
+    color: #007aff;
+  }
+
+  .config-hint {
+    margin-top: 16px;
+    padding: 12px;
+    background-color: #fff3e0;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: #ffcc80;
+    border-style: solid;
+  }
+
+  .config-hint-text {
+    font-size: 13px;
+    color: #e65100;
+  }
+
+  .config-btn {
+    margin-top: 8px;
+    padding: 8px 16px;
+    background-color: #ff9800;
+    border-radius: 4px;
+    align-self: flex-start;
+  }
+
+  .config-btn-text {
+    font-size: 14px;
+    color: #ffffff;
+    font-weight: bold;
+  }
+
+  .loading-container {
+    padding: 40px 16px;
+    align-items: center;
+  }
+
+  .loading-text {
+    font-size: 18px;
+    font-weight: bold;
+    color: #007aff;
+    margin-bottom: 12px;
+  }
+
+  .loading-hint {
+    font-size: 14px;
+    color: #999999;
+  }
+
+  .warning-badge {
+    padding: 4px 10px;
+    border-radius: 12px;
+    background-color: #fff3e0;
+    color: #ff9800;
+    font-size: 12px;
+    font-weight: bold;
+  }
+
+  .summary-grid {
+    flex-direction: row;
+    margin-bottom: 12px;
+  }
+
+  .summary-metric {
+    flex: 1;
+    padding: 12px 6px;
+    margin-right: 8px;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+    align-items: center;
+    border-width: 1px;
+    border-color: #eeeeee;
+    border-style: solid;
+  }
+
+  .summary-metric-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #007aff;
+    margin-bottom: 4px;
+  }
+
+  .summary-metric-label {
+    font-size: 12px;
+    color: #666666;
+  }
+
+  .notes-box {
+    padding: 10px;
+    background-color: #fff8e1;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: #ffe082;
+    border-style: solid;
+  }
+
+  .notes-label {
+    font-size: 12px;
+    font-weight: bold;
+    color: #795548;
+  }
+
+  .notes-text {
+    font-size: 12px;
+    color: #5d4037;
+    line-height: 18px;
+  }
+
+  .uncertain-box {
+    background-color: #fff3e0;
+    border-color: #ffab91;
+    margin-top: 8px;
+  }
+
+  .uncertain-label {
+    color: #bf360c;
+  }
+
+  .uncertain-text {
+    color: #d84315;
+  }
+
+  .day-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom-width: 1px;
+    border-bottom-color: #e0e0e0;
+    border-bottom-style: solid;
+    margin-bottom: 8px;
+  }
+
+  .day-date {
+    font-size: 18px;
+    font-weight: bold;
+    color: #333333;
+  }
+
+  .day-warning {
+    font-size: 12px;
+    color: #ff9800;
+  }
+
+  .stage-block {
+    margin-top: 12px;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+  }
+
+  .stage-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .stage-name {
+    font-size: 15px;
+    font-weight: bold;
+    color: #333333;
+  }
+
+  .stage-warning {
+    font-size: 11px;
+    color: #ff9800;
+  }
+
+  .bin-card {
+    margin-top: 8px;
+    padding: 10px;
+    background-color: #ffffff;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: #eeeeee;
+    border-style: solid;
+  }
+
+  .bin-card-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .bin-code {
+    font-size: 15px;
+    font-weight: bold;
+    color: #333333;
+  }
+
+  .bin-koji {
+    font-size: 13px;
+    color: #666666;
+  }
+
+  .worker-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-top-width: 1px;
+    border-top-color: #f5f5f5;
+    border-top-style: solid;
+  }
+
+  .worker-name {
+    flex: 1;
+    font-size: 14px;
+    color: #333333;
+  }
+
+  .worker-points {
+    font-size: 13px;
+    color: #666666;
+    margin-right: 12px;
+  }
+
+  .worker-match {
+    font-size: 14px;
+    font-weight: bold;
+  }
+
+  .match-ok {
+    color: #4caf50;
+  }
+
+  .match-fail {
+    color: #f44336;
+  }
+
+  .cross-bin-box {
+    margin-top: 10px;
+    padding: 10px;
+    background-color: #e3f2fd;
+    border-radius: 6px;
+  }
+
+  .cross-bin-title {
+    font-size: 14px;
+    font-weight: bold;
+    color: #1976d2;
+    margin-bottom: 6px;
+  }
+
+  .liangtang-box {
+    margin-top: 10px;
+    padding: 10px;
+    background-color: #f3e5f5;
+    border-radius: 6px;
+  }
+
+  .liangtang-title {
+    font-size: 14px;
+    font-weight: bold;
+    color: #7b1fa2;
+    margin-bottom: 6px;
+  }
+
+  .liangtang-role {
+    margin-top: 6px;
+  }
+
+  .liangtang-role-name {
+    font-size: 13px;
+    font-weight: bold;
+    color: #6a1b9a;
+  }
+
+  .error-hint {
+    font-size: 12px;
+    color: #f44336;
+    margin-top: 4px;
+  }
+
+  .text-error {
+    color: #f44336;
+  }
+
+  .text-warning {
+    color: #ff9800;
+  }
+
+  .import-hint {
+    font-size: 13px;
+    color: #666666;
+    line-height: 20px;
+    margin-bottom: 12px;
+  }
+
+  .hint-section {
+    align-items: center;
+    padding: 40px 16px;
+  }
+
+  .clear-history-btn {
+    font-size: 13px;
+    color: #ff3b30;
+  }
+
+  .history-item {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom-width: 1px;
+    border-bottom-color: #f0f0f0;
+    border-bottom-style: solid;
+  }
+
+  .history-item-info {
+    flex: 1;
+  }
+
+  .history-item-title {
+    font-size: 14px;
+    font-weight: bold;
+    color: #333333;
+    margin-bottom: 4px;
+  }
+
+  .history-item-time {
+    font-size: 12px;
+    color: #999999;
+  }
+
+  .history-item-arrow {
+    font-size: 20px;
+    color: #cccccc;
+  }
+</style>
