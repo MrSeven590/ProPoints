@@ -145,6 +145,8 @@
             :initialKojiCount="binInfo.koji_count"
             :initialWorkers="getBinWorkers(binInfo.stage_bin_id)"
             :occupiedPersonIds="occupiedIds"
+            :occupiedBinCodes="getOccupiedBinCodes(binInfo.stage_bin_id)"
+            :binSeqMax="getBinSeqMaxForCard(binInfo)"
             :defaultWorkerCount="defaultBinWorkerCount"
             :crossBinDeduction="getCrossBinDeduction(binInfo.stage_bin_id)"
             :readonly="viewMode == 'view' || isRestoring == true"
@@ -152,6 +154,7 @@
             @change="onBinCardChange"
             @kojiChange="onBinKojiChange"
             @penaltyChange="onBinPenaltyChange"
+            @binCodeChange="onBinCodeChange"
           />
         </view>
       </view>
@@ -234,6 +237,9 @@
             <text class="duiqu-info-text"
               >总曲坯: {{ duiQuTotalKojiCount }} | 总工分: {{ formatPoints(duiQuTotalPoolUnits) }}</text
             >
+          </view>
+          <view class="mode-switch" @click="onToggleDuiQuMode">
+            <text class="mode-switch-text">{{ duiQuModeText }}</text>
           </view>
         </view>
 
@@ -426,8 +432,10 @@ import {
   getStageCoef,
   getStageCoefFromSnapshot,
   getDuiQuCoef,
+  getDuiQuCoefByMode,
 } from "../../domain/services/StageCoefService.uts";
 import type { BinCode, StageBinInfo, FermentRound } from "../../domain/models/ferment.uts";
+import { normalizeBinCode, parseBinCode } from "../../domain/models/ferment.uts";
 import type {
   AssignmentSourceCreateParams,
   CrossBinChangePayload,
@@ -437,6 +445,7 @@ import type {
   BinCardChangePayload,
   BinKojiChangePayload,
   BinPenaltyChangePayload,
+  BinCodeChangePayload,
   BinsChangeMetaPayload
 } from "../../domain/models/assignment.uts";
 import type {
@@ -444,7 +453,8 @@ import type {
   EntryBinCardState,
   SessionData,
   LiangTangRoleData,
-  DuiQuWorkerData
+  DuiQuWorkerData,
+  DuiQuMode
 } from "../../domain/models/session.uts";
 import { getRoleName as _getRoleName } from "../../domain/models/assignment.uts";
 import type { SessionStatus } from "../../domain/models/types.uts";
@@ -468,7 +478,7 @@ import {
   formatErrorsForModal,
 } from "../../domain/services/Validator.uts";
 import type { ValidationContext } from "../../domain/services/Validator.uts";
-import { calcLiangTangPoolUnits, calcSessionTotalPointsUnits } from "../../domain/services/ScoreCalculator.uts";
+import { calcLiangTangPoolUnits, calcSessionTotalPointsUnits, calcBinTotalPointsUnits } from "../../domain/services/ScoreCalculator.uts";
 import {
   isMicroEnabledForCurrentRound,
   isMicroEnabledByRoundId,
@@ -491,6 +501,7 @@ import {
   parseBinsChangeMetaPayload,
   serializeLiangTangDefaults,
   serializeDuiQuWorkerDataArray,
+  buildAnQuBinInheritedWorkers,
   type LiangTangDefaultsData,
   type LiangTangDefaultsSerializeResult,
 } from "../../domain/services/default-data-parser.uts";
@@ -498,6 +509,7 @@ import {
   mapLiangTangInitialWorkers,
   mapDuiQuWorkersForRoleCard,
 } from "../../domain/services/entry-component-mappers.uts";
+import { getLastSubmittedAnQuBinWorkers, getSeqMaxForFloor } from "../../domain/services/BinService.uts";
 
 // 系数版本常量
 const DEFAULT_COEF_SET_ID = 260000;
@@ -568,6 +580,7 @@ export default {
       duiQuWorkers: [] as DuiQuWorkerData[],
       duiQuTotalKojiCount: 0 as number,
       duiQuTotalPoolUnits: 0 as PointsUnits,
+      duiQuMode: "stacking" as DuiQuMode,
       // 备注弹窗相关状态
       showRemarkPopup: false as boolean,
       tempRemark: "" as string,
@@ -733,6 +746,12 @@ export default {
      */
     duiQuWorkersForCard(): SessionWorkerData[] {
       return mapDuiQuWorkersForRoleCard(this.duiQuWorkers)
+    },
+    /**
+     * 堆曲模式显示文本
+     */
+    duiQuModeText(): string {
+      return this.duiQuMode == 'loading' ? '上车' : '堆曲'
     }
   },
   methods: {
@@ -1061,6 +1080,7 @@ export default {
      * 加载堆曲默认人员（继承上次录入）
      * 用于新建会话时的状态初始化
      * C4修复：使用 parseDuiQuDefaults 统一解析
+     * 上车模式默认2人，堆曲模式默认3人
      */
     loadDuiQuDefaultsForNewSession(): DuiQuWorkerData[] {
       // 仅拆曲环节加载堆曲默认人员
@@ -1069,7 +1089,7 @@ export default {
       }
       const classNo = getCurrentClassNo();
       const defaults = loadDuiQuDefault(classNo);
-      return parseDuiQuDefaults(defaults);
+      return parseDuiQuDefaults(defaults, this.duiQuMode);
     },
 
     /**
@@ -1087,20 +1107,26 @@ export default {
       }
       this.duiQuTotalKojiCount = total;
 
-      // 计算堆曲总工分，优先使用快照系数
-      let duiQuCoef = 0.29;
+      // 计算堆曲/上车总工分，优先使用快照系数
+      const duiQuCoef = this.getDuiQuCoefForMode();
+      this.duiQuTotalPoolUnits = calcSessionTotalPointsUnits(total, duiQuCoef);
+    },
+
+    /**
+     * 获取当前堆曲模式对应的系数（优先使用快照）
+     */
+    getDuiQuCoefForMode(): number {
       if (this.coefSnapshot != null) {
         const stages = this.coefSnapshot['stages'] as UTSJSONObject | null;
         if (stages != null) {
-          const snapshotDuiQu = stages['DUI_QU'];
+          const key = this.duiQuMode == 'loading' ? 'DUI_QU_LOADING' : 'DUI_QU';
+          const snapshotDuiQu = stages[key];
           if (snapshotDuiQu != null) {
-            duiQuCoef = snapshotDuiQu as number;
+            return snapshotDuiQu as number;
           }
         }
-      } else {
-        duiQuCoef = getDuiQuCoef(this.coefSetId);
       }
-      this.duiQuTotalPoolUnits = calcSessionTotalPointsUnits(total, duiQuCoef);
+      return getDuiQuCoefByMode(this.duiQuMode, this.coefSetId);
     },
 
     /**
@@ -1126,6 +1152,49 @@ export default {
         this.duiQuWorkers = workers;
         this.afterAssignmentStateChanged(payload.source != "system");
       }
+    },
+
+    /**
+     * 切换堆曲/上车模式
+     */
+    onToggleDuiQuMode() {
+      if (this.canMutateEntryState() == false) {
+        return;
+      }
+
+      const newMode = this.duiQuMode == 'loading' ? 'stacking' : 'loading';
+      this.duiQuMode = newMode;
+
+      // 重新计算池子总分
+      this.updateDuiQuPoolCache();
+
+      // 根据新模式调整人员数量
+      const targetCount = newMode == 'loading' ? 2 : 3;
+      if (this.duiQuWorkers.length > targetCount) {
+        // 人员过多时截断到目标数量
+        this.duiQuWorkers = this.duiQuWorkers.slice(0, targetCount);
+      } else if (this.duiQuWorkers.length < targetCount) {
+        // 人员不足时补充空槽位
+        while (this.duiQuWorkers.length < targetCount) {
+          this.duiQuWorkers.push({
+            personId: null,
+            personName: '',
+            pointsUnits: 0,
+            positionIndex: this.duiQuWorkers.length + 1,
+            deductedUnits: 0,
+            penaltyReason: '',
+            penaltyId: null
+          } as DuiQuWorkerData);
+        }
+      }
+
+      // 重新调整 positionIndex
+      for (let i = 0; i < this.duiQuWorkers.length; i++) {
+        this.duiQuWorkers[i].positionIndex = i + 1;
+      }
+
+      // 触发自动保存
+      this.afterAssignmentStateChanged(true);
     },
 
     /**
@@ -1220,8 +1289,13 @@ export default {
       this.crossBinPersonId = null;
       this.crossBinPersonName = "";
       this.crossBinPointsUnits = 0;
+      this.crossBinDeductedUnits = 0;
+      this.crossBinPenaltyReason = "";
+      this.crossBinPenaltyId = null;
       this.crossBinSources = [] as AssignmentSourceCreateParams[];
       this.afterCrossBinStateChanged(true);
+      // 跨仓岗位删除是明确操作，立即执行一次自动保存，避免用户快速返回导致未保存
+      this.doAutoSave();
     },
 
     /**
@@ -1294,6 +1368,15 @@ export default {
         oldCardsByBinCode.set(cardData.binCode, cardData)
       })
 
+      // 安曲 BIN 人员继承：仅在完全新建会话（无任何旧卡片）时，从上次提交逆序回填人员
+      // 逆序规则：上次 仓1(abc)/仓2(def) → 本次 仓1(def)/仓2(abc)
+      let anQuBinInheritedWorkers: SessionPenaltyWorkerData[][] = [] as SessionPenaltyWorkerData[][]
+      const isInheritAnQuBin = (this.stageCode == 'AN_QU') && (oldCardsByBinCode.size == 0) && (bins.length > 0)
+      if (isInheritAnQuBin) {
+        const savedBins = getLastSubmittedAnQuBinWorkers()
+        anQuBinInheritedWorkers = buildAnQuBinInheritedWorkers(savedBins, bins.length, this.defaultBinWorkerCount)
+      }
+
       // 清空并重建 binCardsData
       this.binCardsData.clear()
 
@@ -1355,17 +1438,22 @@ export default {
           const totalPointsUnits = kojiCount * stageCoef;
 
           // 创建默认工人数组
-          const workers: SessionPenaltyWorkerData[] = [];
-          for (let j = 0; j < this.defaultBinWorkerCount; j++) {
-            workers.push({
-              personId: null,
-              personName: '',
-              pointsUnits: 0,
-              positionIndex: j + 1,
-              deductedUnits: 0,
-              penaltyReason: '',
-              penaltyId: null
-            } as SessionPenaltyWorkerData);
+          // 安曲环节且新建会话：使用逆序回填的继承人员；否则创建空行
+          let workers: SessionPenaltyWorkerData[] = [];
+          if (isInheritAnQuBin && i < anQuBinInheritedWorkers.length) {
+            workers = anQuBinInheritedWorkers[i]
+          } else {
+            for (let j = 0; j < this.defaultBinWorkerCount; j++) {
+              workers.push({
+                personId: null,
+                personName: '',
+                pointsUnits: 0,
+                positionIndex: j + 1,
+                deductedUnits: 0,
+                penaltyReason: '',
+                penaltyId: null
+              } as SessionPenaltyWorkerData);
+            }
           }
 
           this.binCardsData.set(binId, {
@@ -1440,6 +1528,132 @@ export default {
         return cardData.workers;
       }
       return [] as SessionPenaltyWorkerData[];
+    },
+
+    /**
+     * 获取本会话中除指定仓之外的其他仓号列表
+     * 用于仓号修改时的唯一性校验（组件内弹窗使用）
+     */
+    getOccupiedBinCodes(stageBinId: number): string[] {
+      const codes: string[] = [];
+      for (let i = 0; i < this.stageBinInfos.length; i++) {
+        const info = this.stageBinInfos[i];
+        if (info.stage_bin_id != stageBinId) {
+          codes.push(info.bin_code);
+        }
+      }
+      return codes;
+    },
+
+    /**
+     * 获取指定仓所在楼层的最大仓数（seq_max，班级配置默认与历史最大取大值）
+     * 用于修改仓号时校验"仓号是否存在"，0 表示未知（不校验）
+     */
+    getBinSeqMaxForCard(binInfo: StageBinInfo): number {
+      const parsed = parseBinCode(binInfo.bin_code);
+      if (parsed == null) {
+        return 0;
+      }
+      return getSeqMaxForFloor(getCurrentClassNo(), parsed.floor_no, this.stageCode);
+    },
+
+    /**
+     * 修改发酵仓号（biz-bin-card 触发）
+     * 仅更新仓号及相关结构化字段（class_no/floor_no/seq_no），
+     * 仓内人员分配与工分分配保持不变。
+     */
+    onBinCodeChange(payload: BinCodeChangePayload) {
+      if (this.canMutateEntryState() == false) {
+        return;
+      }
+      const stageBinId = payload.stageBinId;
+      const newCode = normalizeBinCode(payload.binCode);
+      if (newCode == null) {
+        uni.showToast({ title: "仓号格式错误", icon: "none" });
+        return;
+      }
+
+      // 防御性校验：本会话内仓号唯一（组件内已校验，此处兜底）
+      for (let i = 0; i < this.stageBinInfos.length; i++) {
+        const info = this.stageBinInfos[i];
+        if (info.stage_bin_id != stageBinId && info.bin_code == newCode) {
+          uni.showToast({ title: "仓号已被本会话其他仓使用", icon: "none" });
+          return;
+        }
+      }
+
+      const parsed = parseBinCode(newCode);
+
+      // 防御性校验：楼层仓数上限（组件内弹窗已校验，此处兜底，防止"不存在的仓号"）
+      if (parsed != null) {
+        const seqMax = getSeqMaxForFloor(getCurrentClassNo(), parsed.floor_no, this.stageCode);
+        if (parsed.seq_no > seqMax) {
+          uni.showToast({
+            title: "仓号超出 " + parsed.floor_no.toString() + " 楼最大仓数 " + seqMax.toString() + "，请核对仓号",
+            icon: "none",
+          });
+          return;
+        }
+      }
+
+      // 更新 stageBinInfos（bin_code）与 selectedBins（class_no/floor_no/seq_no）
+      let binIndex = -1;
+      for (let i = 0; i < this.stageBinInfos.length; i++) {
+        if (this.stageBinInfos[i].stage_bin_id == stageBinId) {
+          this.stageBinInfos[i].bin_code = newCode;
+          binIndex = i;
+          if (parsed != null && i < this.selectedBins.length) {
+            this.selectedBins[i].class_no = parsed.class_no;
+            this.selectedBins[i].floor_no = parsed.floor_no;
+            this.selectedBins[i].seq_no = parsed.seq_no;
+          }
+          break;
+        }
+      }
+
+      // 同步 binCardsData 中的 binCode（用于重建时按仓号保留旧卡片数据）
+      const cardData = this.binCardsData.get(stageBinId);
+      if (cardData != null) {
+        cardData.binCode = newCode;
+      }
+
+      // 非安曲环节（一翻/二翻/拆曲）：曲坯数来自安曲记录，选错仓号场景下必须重新按新仓号查询带出；
+      // 安曲环节：曲坯数为现场录入值，保持用户输入不变，由用户自行修正（卡片内可编辑）。
+      let kojiNotice = "";
+      if (
+        binIndex >= 0 &&
+        (this.stageCode == "YI_FAN" || this.stageCode == "ER_FAN" || this.stageCode == "CHAI_QU")
+      ) {
+        const kojiLookup = lookupKojiCount(
+          this.roundId ?? 0,
+          newCode,
+          cardData != null ? cardData.binId : null
+        );
+        if (kojiLookup.kojiCount != null) {
+          const newKojiCount = kojiLookup.kojiCount as number;
+          this.stageBinInfos[binIndex].koji_count = newKojiCount;
+          if (cardData != null) {
+            cardData.kojiCount = newKojiCount;
+            // 与 biz-bin-card 组件内部 recalculateTotalPoints 保持一致的仓总分口径
+            cardData.totalPointsUnits = calcBinTotalPointsUnits(newKojiCount, this.getStageCoefForBin());
+          }
+          kojiNotice = "，曲坯数已按新仓号更新为 " + newKojiCount.toString();
+        } else {
+          // 新仓号无安曲记录：曲坯数置 0，避免"新仓号 + 旧仓号曲坯数"错配，并标记缺失
+          this.stageBinInfos[binIndex].koji_count = 0;
+          if (cardData != null) {
+            cardData.kojiCount = 0;
+            cardData.totalPointsUnits = 0;
+          }
+          if (this.missingAnQuBins.indexOf(newCode) == -1) {
+            this.missingAnQuBins.push(newCode);
+          }
+          kojiNotice = "，新仓号暂无安曲曲坯记录，请补录安曲";
+        }
+      }
+
+      uni.showToast({ title: "仓号已修改为 " + newCode + kojiNotice, icon: "none" });
+      this.afterBinStateChanged(true);
     },
 
     /**
@@ -1755,6 +1969,7 @@ export default {
         duiQuWorkers: defaultDuiQuWorkers,
         duiQuTotalKojiCount: 0,
         duiQuTotalPoolUnits: 0,
+        duiQuMode: 'stacking',
         sessionStatus: 'draft',
         viewMode: 'edit',
         sessionRemark: '',
@@ -1868,6 +2083,7 @@ export default {
         this.duiQuWorkers = nextState.duiQuWorkers;
         this.duiQuTotalKojiCount = nextState.duiQuTotalKojiCount;
         this.duiQuTotalPoolUnits = nextState.duiQuTotalPoolUnits;
+        this.duiQuMode = nextState.duiQuMode;
 
         this.sessionStatus = nextState.sessionStatus;
         this.viewMode = nextState.viewMode;
@@ -2209,6 +2425,7 @@ export default {
         duiQuWorkers: this.duiQuWorkers,
         duiQuTotalKojiCount: this.duiQuTotalKojiCount,
         duiQuTotalPoolUnits: this.duiQuTotalPoolUnits,
+        duiQuMode: this.duiQuMode,
         sessionStatus: status,
         viewMode: this.viewMode,
         sessionRemark: this.sessionRemark,
@@ -3165,5 +3382,18 @@ export default {
 .duiqu-info-text {
   font-size: 12px;
   color: #666666;
+}
+
+.mode-switch {
+  padding: 4px 10px;
+  background-color: #e6f7ff;
+  border-radius: 4px;
+  margin-left: 8px;
+}
+
+.mode-switch-text {
+  font-size: 12px;
+  color: #1890ff;
+  font-weight: 500;
 }
 </style>

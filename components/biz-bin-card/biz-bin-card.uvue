@@ -4,6 +4,9 @@
     <view class="card-header">
       <view class="header-left">
         <text class="bin-code">{{ binCode }}</text>
+        <view v-if="readonly == false" class="bin-code-edit-btn" @click.stop="onOpenBinCodeEditor">
+          <text class="bin-code-edit-text">✎</text>
+        </view>
         <view class="scope-badge">
           <text class="scope-text">仓内</text>
         </view>
@@ -85,6 +88,10 @@
               >
                 <text :class="['penalty-btn-text', (item as BinWorkerItem).deductedUnits > 0 ? 'penalty-btn-text-active' : '']">考核</text>
               </view>
+              <!-- 删除按钮（始终显示） -->
+              <view class="remove-worker-btn" @click.stop="onRemoveWorker(index as number)">
+                <text class="remove-worker-text">×</text>
+              </view>
             </view>
 
             <!-- 考核摘要（保存后显示，面板未展开时） -->
@@ -157,16 +164,13 @@
         </template>
       </uni-drag-cell>
 
-      <!-- 添加/删除人员按钮 -->
-      <view class="worker-actions">
-        <view class="action-btn add-btn" @click="onAddWorker">
-          <text class="action-btn-text">+ 添加</text>
+      <!-- 添加人员 / 平分按钮 -->
+      <view v-if="readonly == false" class="worker-actions-row">
+        <view class="add-worker-row" @click="onAddWorker">
+          <text class="add-worker-text">+ 添加人员</text>
         </view>
-        <view v-if="workerList.length > 2" class="action-btn remove-btn" @click="onRemoveWorker">
-          <text class="action-btn-text remove-text">- 移除</text>
-        </view>
-        <view class="action-btn split-btn" @click="onEqualSplit">
-          <text class="action-btn-text split-text">= 平分</text>
+        <view class="split-worker-row" @click="onEqualSplit">
+          <text class="split-worker-text">= 平分</text>
         </view>
       </view>
     </view>
@@ -205,6 +209,37 @@
         />
       </view>
     </view>
+
+    <!-- 修改发酵仓号弹窗 -->
+    <view v-if="showBinCodeEditor" class="picker-mask" @click="onCloseBinCodeEditor">
+      <view class="picker-container bin-code-editor-container" @click.stop="">
+        <view class="picker-header">
+          <text class="picker-title">修改发酵仓号</text>
+          <view class="picker-close" @click="onCloseBinCodeEditor">
+            <text class="picker-close-text">X</text>
+          </view>
+        </view>
+        <view class="bin-code-editor-body">
+          <text class="bin-code-editor-hint">当前仓号：{{ binCode }}（人员与工分分配保持不变）</text>
+          <input
+            class="bin-code-editor-input"
+            type="text"
+            :value="binCodeDraft"
+            placeholder="如 3-3-18"
+            @input="onBinCodeInput"
+          />
+          <text v-if="binCodeError != ''" class="bin-code-editor-error">{{ binCodeError }}</text>
+        </view>
+        <view class="bin-code-editor-actions">
+          <view class="penalty-cancel-btn" @click="onCloseBinCodeEditor">
+            <text class="penalty-cancel-text">取消</text>
+          </view>
+          <view class="penalty-save-btn" @click="onConfirmBinCodeChange">
+            <text class="penalty-save-text">确定</text>
+          </view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -213,7 +248,8 @@
 	  import type { StageCode } from '../../domain/models/types.uts'
 	  import { calcBinTotalPointsUnits } from '../../domain/services/ScoreCalculator.uts'
 	  import { calcFinalPoints, getPositionLabel as getPositionLabelUtil } from '../../domain/models/assignment.uts'
-	  import type { SessionPenaltyWorkerData, BinCardChangePayload, BinKojiChangePayload, PersonSelectPayload, BinPenaltyChangePayload } from '../../domain/models/assignment.uts'
+	  import { normalizeBinCode, parseBinCode } from '../../domain/models/ferment.uts'
+	  import type { SessionPenaltyWorkerData, BinCardChangePayload, BinKojiChangePayload, PersonSelectPayload, BinPenaltyChangePayload, BinCodeChangePayload } from '../../domain/models/assignment.uts'
 	  import {
 	    canSavePenaltyDraft as canSavePenaltyDraftUtil,
 	    checkPenaltyDraftBeforeSave,
@@ -276,6 +312,16 @@
           return [] as number[]
         }
       },
+      occupiedBinCodes: {
+        type: Array,
+        default: (): string[] => {
+          return [] as string[]
+        }
+      },
+      binSeqMax: {
+        type: Number,
+        default: 0
+      },
       defaultWorkerCount: {
         type: Number,
         default: 4
@@ -301,7 +347,7 @@
         default: 1.0
       }
     },
-    emits: ['change', 'kojiChange', 'penaltyChange'],
+    emits: ['change', 'kojiChange', 'penaltyChange', 'binCodeChange'],
     data() {
       return {
         kojiCount: 1200 as number,
@@ -310,6 +356,10 @@
         workerList: [] as BinWorkerItem[],
         showWorkerPicker: false as boolean,
         currentWorkerIndex: -1 as number,
+        // 修改发酵仓号弹窗状态
+        showBinCodeEditor: false as boolean,
+        binCodeDraft: '' as string,
+        binCodeError: '' as string,
         // 考核相关（使用 null 而非 -1）
         expandedPenaltyIndex: null as number | null,
         // 草稿模式：编辑时使用临时变量
@@ -696,8 +746,6 @@
         if (this.readonly == true) {
           return
         }
-        // 在倒数第二个位置插入（靠窗之前），保持门口和靠窗固定
-        const insertIndex = this.workerList.length - 1
         const newWorker: BinWorkerItem = {
           personId: null,
           personName: '',
@@ -707,21 +755,39 @@
           penaltyReason: '',
           penaltyId: null
         } as BinWorkerItem
-        this.workerList.splice(insertIndex, 0, newWorker)
+        if (this.isAnQu) {
+          // 安曲环节：直接在末尾追加，无固定岗位限制
+          this.workerList.push(newWorker)
+        } else {
+          // 非安曲环节：在倒数第二个位置插入（靠窗之前），保持门口和靠窗固定
+          const insertIndex = this.workerList.length - 1
+          this.workerList.splice(insertIndex, 0, newWorker)
+        }
         this.emitChange()
       },
 
-      onRemoveWorker() {
+      onRemoveWorker(index: number) {
         // 只读模式下禁止删除
         if (this.readonly == true) {
           return
         }
-        // 至少保留门口和靠窗两个固定岗位
-        if (this.workerList.length <= 2) {
-          return
+        if (this.isAnQu) {
+          // 安曲环节：至少保留1人，可删除任意位置
+          if (this.workerList.length <= 1) {
+            return
+          }
+        } else {
+          // 非安曲环节：至少保留门口和靠窗两个固定岗位，且不允许删除首尾
+          if (this.workerList.length <= 2) {
+            return
+          }
+          const lastIndex = this.workerList.length - 1
+          if (index == 0 || index == lastIndex) {
+            return
+          }
         }
-        // 删除倒数第二个位置（靠窗之前），保留门口和靠窗
-        this.workerList.splice(this.workerList.length - 2, 1)
+        // 删除指定位置的人员
+        this.workerList.splice(index, 1)
         this.emitChange()
       },
 
@@ -961,6 +1027,71 @@
       },
 
       // ============================================
+      // 修改发酵仓号（仅草稿编辑态可用）
+      // ============================================
+
+      onOpenBinCodeEditor() {
+        if (this.readonly == true) {
+          return
+        }
+        this.binCodeDraft = this.binCode as string
+        this.binCodeError = ''
+        this.showBinCodeEditor = true
+      },
+
+      onCloseBinCodeEditor() {
+        this.showBinCodeEditor = false
+        this.binCodeError = ''
+      },
+
+      onBinCodeInput(e: UniInputEvent) {
+        this.binCodeDraft = e.detail.value
+        this.binCodeError = ''
+      },
+
+      onConfirmBinCodeChange() {
+        if (this.readonly == true) {
+          this.onCloseBinCodeEditor()
+          return
+        }
+        const newCode = normalizeBinCode(this.binCodeDraft)
+        if (newCode == null) {
+          this.binCodeError = '仓号格式应为 班级-楼层-序号，如 3-3-18'
+          return
+        }
+        const currentCode = this.binCode as string
+        if (newCode == currentCode) {
+          // 未发生变化，直接关闭
+          this.onCloseBinCodeEditor()
+          return
+        }
+        // 楼层仓数上限校验（binSeqMax 由 entry 按该仓所在楼层的 seq_max 传入，0 表示不校验）
+        const seqMax = this.binSeqMax as number
+        if (seqMax > 0) {
+          const parsedNew = parseBinCode(newCode)
+          if (parsedNew != null && parsedNew.seq_no > seqMax) {
+            this.binCodeError = '仓号超出 ' + parsedNew.floor_no.toString() + ' 楼最大仓数 ' + seqMax.toString() + '，请核对仓号'
+            return
+          }
+        }
+        // 校验与会话内其他仓号不重复（occupiedBinCodes 由 entry 传入，已排除自身）
+        const occupied = this.occupiedBinCodes as string[]
+        for (let i = 0; i < occupied.length; i++) {
+          if (occupied[i] == newCode) {
+            this.binCodeError = '该仓号已被本会话其他仓使用'
+            return
+          }
+        }
+        const payload: BinCodeChangePayload = {
+          stageBinId: this.stageBinId as number,
+          binId: this.binId as number,
+          binCode: newCode
+        }
+        this.$emit('binCodeChange', payload)
+        this.onCloseBinCodeEditor()
+      },
+
+      // ============================================
       // 事件发送
       // ============================================
 
@@ -1047,6 +1178,21 @@
     font-weight: bold;
     color: #333333;
     margin-right: 8px;
+  }
+
+  .bin-code-edit-btn {
+    width: 26px;
+    height: 26px;
+    justify-content: center;
+    align-items: center;
+    background-color: #e6f7ff;
+    border-radius: 13px;
+    margin-right: 8px;
+  }
+
+  .bin-code-edit-text {
+    font-size: 14px;
+    color: #1890ff;
   }
 
   .scope-badge {
@@ -1186,7 +1332,9 @@
     align-items: center;
     background-color: #f0f2f5;
     border-radius: 12px;
-    margin-right: 8px;
+    margin-right: 4px;
+    margin-left: 22px;
+    flex-shrink: 0;
   }
 
   .position-text {
@@ -1195,7 +1343,7 @@
   }
 
   .bin-worker-selector {
-    width: 80px;
+    width: 64px;
     flex-direction: row;
     align-items: center;
     justify-content: center;
@@ -1207,6 +1355,7 @@
     border-color: #e8e8e8;
     margin-right: 4px;
     overflow: hidden;
+    flex-shrink: 0;
   }
 
   .placeholder-text {
@@ -1222,6 +1371,7 @@
   .worker-points {
     flex-direction: row;
     align-items: center;
+    flex-shrink: 0;
   }
 
   .stepper-btn-small {
@@ -1242,7 +1392,7 @@
   }
 
   .points-input {
-    width: 50px;
+    width: 40px;
     height: 28px;
     margin-left: 4px;
     margin-right: 4px;
@@ -1257,44 +1407,47 @@
     text-align: center;
   }
 
-  /* 添加/删除按钮 */
-  .worker-actions {
+  /* 添加人员 / 平分按钮 */
+  .worker-actions-row {
     flex-direction: row;
-    justify-content: flex-start;
-    margin-top: 4px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
   }
 
-  .action-btn {
-    padding: 6px 12px;
-    border-radius: 4px;
-    margin-right: 8px;
+  .add-worker-row {
+    align-items: center;
   }
 
-  .add-btn {
-    background-color: #f0f7ff;
+  .add-worker-text {
+    font-size: 13px;
+    color: #1890ff;
   }
 
-  .remove-btn {
-    background-color: #fff0f0;
+  .split-worker-row {
+    align-items: center;
   }
 
-  .action-btn-text {
-    font-size: 12px;
-    color: #007aff;
-  }
-
-  .remove-text {
-    color: #ff4d4f;
-  }
-
-  .split-btn {
-    background-color: #f0fff0;
-    margin-left: auto;
-    margin-right: 0;
-  }
-
-  .split-text {
+  .split-worker-text {
+    font-size: 13px;
     color: #52c41a;
+  }
+
+  /* 删除按钮 */
+  .remove-worker-btn {
+    width: 24px;
+    height: 24px;
+    background-color: #fff0f0;
+    border-radius: 12px;
+    justify-content: center;
+    align-items: center;
+    margin-left: 8px;
+    flex-shrink: 0;
+  }
+
+  .remove-worker-text {
+    font-size: 14px;
+    color: #ff4d4f;
   }
 
   /* 分配状态 */
@@ -1384,6 +1537,45 @@
     color: #666666;
   }
 
+  /* 修改发酵仓号弹窗 */
+  .bin-code-editor-container {
+    max-height: 300px;
+  }
+
+  .bin-code-editor-body {
+    margin-bottom: 12px;
+  }
+
+  .bin-code-editor-hint {
+    font-size: 13px;
+    color: #666666;
+    margin-bottom: 10px;
+  }
+
+  .bin-code-editor-input {
+    height: 40px;
+    padding: 0 12px;
+    background-color: #f5f7fa;
+    border-radius: 6px;
+    border-width: 1px;
+    border-style: solid;
+    border-color: #e8e8e8;
+    font-size: 16px;
+    color: #333333;
+  }
+
+  .bin-code-editor-error {
+    font-size: 12px;
+    color: #ff4d4f;
+    margin-top: 6px;
+  }
+
+  .bin-code-editor-actions {
+    flex-direction: row;
+    justify-content: flex-end;
+    align-items: center;
+  }
+
   /* ============================================ */
   /* 拖拽排序相关样式 */
   /* ============================================ */
@@ -1393,7 +1585,15 @@
     height: 24px;
     justify-content: center;
     align-items: center;
+  }
+
+  .drag-handle-placeholder {
+    width: 24px;
+    height: 24px;
+    justify-content: center;
+    align-items: center;
     margin-right: 4px;
+    flex-shrink: 0;
   }
 
   .drag-handle-text {
@@ -1418,6 +1618,7 @@
     border-width: 1px;
     border-style: solid;
     border-color: #e8e8e8;
+    flex-shrink: 0;
   }
 
   .penalty-btn-active {
