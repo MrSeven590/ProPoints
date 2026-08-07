@@ -324,7 +324,9 @@
     getHistoryRounds,
     deleteHistoryRound,
     getCurrentYear,
-    hasAnyRound
+    hasAnyRound,
+    hasCurrentRoundData,
+    correctToHistoryRound
   } from '../../domain/services/RoundService.uts'
 
   import type { RoundHistoryRecord } from '../../domain/services/RoundService.uts'
@@ -636,11 +638,42 @@
         // 检查是否存在历史冲突（排除当前轮次本身）
         const conflict = findHistoryConflict(this.classNo, this.correctYear, this.correctRoundNo, this.currentRoundId)
         if (conflict != null) {
-          uni.showModal({
-            title: '冲突提示',
-            content: '已存在 ' + this.correctYear + '年 第' + this.correctRoundNo + '轮 的历史记录，无法修正为相同的年度和轮次。',
-            showCancel: false
-          })
+          // 冲突时检查当前轮次是否有会话数据
+          const hasData = hasCurrentRoundData(this.classNo)
+          if (hasData) {
+            // 当前轮次有数据，不能恢复，只能提示
+            uni.showModal({
+              title: '冲突提示',
+              content: '已存在 ' + this.correctYear + '年 第' + this.correctRoundNo + '轮 的历史记录，且当前轮次已有录入数据，无法修正为相同的年度和轮次。',
+              showCancel: false
+            })
+          } else {
+            // 当前轮次无数据，可以安全恢复历史轮次
+            uni.showModal({
+              title: '发现历史记录',
+              content: '已存在 ' + this.correctYear + '年 第' + this.correctRoundNo + '轮 的历史记录。\n当前轮次无录入数据，可恢复该历史轮次（将删除当前空轮次）。是否恢复？',
+              confirmText: '恢复',
+              cancelText: '取消',
+              success: (res) => {
+                if (res.confirm == true) {
+                  const restoredRound = correctToHistoryRound(this.classNo, conflict.id)
+                  if (restoredRound != null) {
+                    this.showCorrectDialog = false
+                    this.loadRoundInfo()
+                    uni.showToast({
+                      title: '已恢复',
+                      icon: 'success'
+                    })
+                  } else {
+                    uni.showToast({
+                      title: '恢复失败',
+                      icon: 'none'
+                    })
+                  }
+                }
+              }
+            })
+          }
           return
         }
 
