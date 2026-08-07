@@ -320,3 +320,59 @@ export function isDataKey(key: string): boolean {
 export function getAnQuImportSnapshotKey(classNo: number, roundId: number): string {
   return `${KEY_PREFIX}:import:anqu:${classNo}:${roundId}`
 }
+
+// ============ AI 识图配置 Key ============
+
+/**
+ * MiMo API Key 配置
+ * 格式: pp:cfg:mimo-api-key
+ * 存储: 小米 MiMo 大模型 API Key
+ */
+export function getMimoApiKeyKey(): string {
+  return `${KEY_PREFIX}:cfg:mimo-api-key`
+}
+
+/**
+ * MiMo 模型选择配置
+ * 格式: pp:cfg:mimo-model
+ * 存储: 模型 ID（mimo-v2.5 | mimo-v2.5-pro；仅 mimo-v2.5 支持图像输入）
+ */
+export function getMimoModelKey(): string {
+  return `${KEY_PREFIX}:cfg:mimo-model`
+}
+
+/**
+ * MiMo API 协议选择配置
+ * 格式: pp:cfg:mimo-protocol
+ * 存储: 协议标识（openai_chat | responses | anthropic）
+ */
+export function getMimoProtocolKey(): string {
+  return `${KEY_PREFIX}:cfg:mimo-protocol`
+}
+
+/**
+ * MiMo API Base URL 配置
+ * 格式: pp:cfg:mimo-base-url
+ * 存储: Base URL（如 https://api.xiaomimimo.com 或 https://fufu.iqach.top）
+ */
+export function getMimoBaseUrlKey(): string {
+  return `${KEY_PREFIX}:cfg:mimo-base-url`
+}
+
+/**
+ * MiMo 借用共享 Key 开关
+ * 格式: pp:cfg:mimo-use-builtin
+ * 存储: boolean（'1' = 借用内置共享 Key，'0' = 使用自有配置）
+ */
+export function getMimoUseBuiltinKey(): string {
+  return `${KEY_PREFIX}:cfg:mimo-use-builtin`
+}
+
+/**
+ * OCR 识图历史记录
+ * 格式: pp:data:ocr-history
+ * 存储: UTSJSONObject[]（最多5条，FIFO 循环覆盖）
+ */
+export function getOcrHistoryKey(): string {
+  return `${KEY_PREFIX}:data:ocr-history`
+}

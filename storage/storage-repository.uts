@@ -31,7 +31,13 @@ import {
   getBinSeqMaxByFloorKey,
   getOplogKey,
   parseSessionKey,
-  isSessionKey
+  isSessionKey,
+  getMimoApiKeyKey,
+  getMimoModelKey,
+  getMimoProtocolKey,
+  getMimoBaseUrlKey,
+  getMimoUseBuiltinKey,
+  getOcrHistoryKey
 } from './storage-keys.uts'
 
 // ============ 通用读写方法 ============
@@ -964,6 +970,50 @@ export function clearSyncedOplogs(): void {
 }
 
 /**
+ * 检查指定轮次ID是否有任何会话数据（草稿或已提交）
+ * 注意：草稿 key 格式为 pp:session:{date}:{stage}:{roundId}:draft（6段），
+ * 已提交 key 格式为 pp:session:{date}:{stage}:{roundId}（5段），
+ * parseSessionKey 只处理5段格式会漏判草稿，因此这里用字符串匹配。
+ * @param roundId 轮次ID
+ * @returns 是否存在会话数据
+ */
+export function hasSessionDataForRoundId(roundId: number): boolean {
+  const keys = listAllSessionKeys()
+  const roundIdStr = roundId.toString()
+
+  for (let i = 0; i < keys.length; i++) {
+    // key 格式: pp:session:{date}:{stage}:{roundId} 或 pp:session:{date}:{stage}:{roundId}:draft
+    // 检查倒数第二段或最后一段是否为 roundId
+    const parts = keys[i].split(':')
+    // 已提交(5段): parts[4] = roundId
+    // 草稿(6段): parts[4] = roundId, parts[5] = 'draft'
+    if (parts.length >= 5 && parts[4] == roundIdStr) {
+      return true
+    }
+  }
+
+  return false
+}
+
+/**
+ * 删除指定轮次ID的所有草稿会话数据（用于清理残留草稿）
+ * @param roundId 轮次ID
+ */
+export function deleteDraftSessionsByRoundId(roundId: number): void {
+  const keys = listAllSessionKeys()
+  const roundIdStr = roundId.toString()
+
+  for (let i = 0; i < keys.length; i++) {
+    const parts = keys[i].split(':')
+    // 草稿格式: pp:session:{date}:{stage}:{roundId}:draft (6段)
+    if (parts.length == 6 && parts[4] == roundIdStr && parts[5] == 'draft') {
+      removeData(keys[i])
+      removeFromIndex(getDraftIndexKey(), keys[i])
+    }
+  }
+}
+
+/**
  * 列出所有会话 key
  * @returns 所有以 'pp:session:' 开头的 key 列表
  */
@@ -980,4 +1030,163 @@ export function listAllSessionKeys(): string[] {
   }
 
   return sessionKeys
+}
+
+// ============ MiMo AI 识图配置 ============
+
+/**
+ * 保存 MiMo API Key
+ * @param apiKey API Key 字符串
+ */
+export function saveMiMoApiKey(apiKey: string): void {
+  const data = { apiKey: apiKey } as UTSJSONObject
+  saveData(getMimoApiKeyKey(), data)
+}
+
+/**
+ * 加载 MiMo API Key
+ * @returns API Key 字符串，不存在返回 null
+ */
+export function loadMiMoApiKey(): string | null {
+  const data = loadData(getMimoApiKeyKey())
+  if (data == null) {
+    return null
+  }
+  const apiKey = data['apiKey']
+  if (apiKey == null) {
+    return null
+  }
+  return apiKey as string
+}
+
+/**
+ * 保存 MiMo 模型选择
+ * @param model 模型 ID
+ */
+export function saveMiMoModel(model: string): void {
+  const data = { model: model } as UTSJSONObject
+  saveData(getMimoModelKey(), data)
+}
+
+/**
+ * 加载 MiMo 模型选择
+ * @returns 模型 ID，不存在返回 null
+ */
+export function loadMiMoModel(): string | null {
+  const data = loadData(getMimoModelKey())
+  if (data == null) {
+    return null
+  }
+  const model = data['model']
+  if (model == null) {
+    return null
+  }
+  return model as string
+}
+
+/**
+ * 保存 MiMo API 协议选择
+ * @param protocol 协议标识
+ */
+export function saveMiMoProtocol(protocol: string): void {
+  const data = { protocol: protocol } as UTSJSONObject
+  saveData(getMimoProtocolKey(), data)
+}
+
+/**
+ * 加载 MiMo API 协议选择
+ * @returns 协议标识，不存在返回 null
+ */
+export function loadMiMoProtocol(): string | null {
+  const data = loadData(getMimoProtocolKey())
+  if (data == null) {
+    return null
+  }
+  const protocol = data['protocol']
+  if (protocol == null) {
+    return null
+  }
+  return protocol as string
+}
+
+/**
+ * 保存 MiMo API Base URL
+ * @param baseUrl Base URL
+ */
+export function saveMiMoBaseUrl(baseUrl: string): void {
+  const data = { baseUrl: baseUrl } as UTSJSONObject
+  saveData(getMimoBaseUrlKey(), data)
+}
+
+/**
+ * 加载 MiMo API Base URL
+ * @returns Base URL，不存在返回 null
+ */
+export function loadMiMoBaseUrl(): string | null {
+  const data = loadData(getMimoBaseUrlKey())
+  if (data == null) {
+    return null
+  }
+  const baseUrl = data['baseUrl']
+  if (baseUrl == null) {
+    return null
+  }
+  return baseUrl as string
+}
+
+/**
+ * 保存 MiMo 借用共享 Key 开关
+ * @param useBuiltin true=借用内置共享配置
+ */
+export function saveMiMoUseBuiltin(useBuiltin: boolean): void {
+  const data = { useBuiltin: useBuiltin } as UTSJSONObject
+  saveData(getMimoUseBuiltinKey(), data)
+}
+
+/**
+ * 加载 MiMo 借用共享 Key 开关
+ * @returns true=借用内置共享配置，不存在返回 null
+ */
+export function loadMiMoUseBuiltin(): boolean | null {
+  const data = loadData(getMimoUseBuiltinKey())
+  if (data == null) {
+    return null
+  }
+  const useBuiltin = data['useBuiltin']
+  if (useBuiltin == null) {
+    return null
+  }
+  return useBuiltin as boolean
+}
+
+/**
+ * 保存 OCR 识图历史记录列表
+ * @param history 历史记录数组（UTSJSONObject[]，含识别结果、stageCode、timestamp，可选 imagePath）
+ */
+export function saveOcrHistory(history: UTSJSONObject[]): void {
+  const wrapper = { list: history } as UTSJSONObject
+  saveData(getOcrHistoryKey(), wrapper)
+}
+
+/**
+ * 加载 OCR 识图历史记录列表
+ * @returns 历史记录数组，不存在返回空数组
+ */
+export function loadOcrHistory(): UTSJSONObject[] {
+  const data = loadData(getOcrHistoryKey())
+  if (data == null) {
+    return [] as UTSJSONObject[]
+  }
+  const list = data['list']
+  if (list == null) {
+    return [] as UTSJSONObject[]
+  }
+  return list as UTSJSONObject[]
+}
+
+/**
+ * 清空 OCR 识图历史记录
+ */
+export function clearOcrHistory(): void {
+  removeData(getOcrHistoryKey())
 }
